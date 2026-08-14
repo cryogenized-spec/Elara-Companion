@@ -1,0 +1,6 @@
+{
+  "name": "Elara — Gemini Companion Chat",
+  "description": "A polished, responsive AI chat web application for conversing with custom AI companion Elara using the Google Gemini API.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
