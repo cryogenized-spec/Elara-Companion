@@ -857,7 +857,7 @@ export default function App() {
   const targetDeleteConv = conversations.find((c) => c.id === deleteTargetId);
 
   return (
-    <div className="flex h-screen bg-[#0a0a0a] text-zinc-100 font-sans overflow-hidden select-none dark">
+    <div className="flex h-full w-full bg-[#0a0a0a] text-zinc-100 font-sans overflow-hidden select-none dark">
       {/* Sidebar Navigation */}
       <Sidebar
         conversations={conversations}
@@ -998,7 +998,7 @@ export default function App() {
                 <div
                   ref={scrollContainerRef}
                   onScroll={handleScroll}
-                  className="flex-1 overflow-y-auto space-y-3 pt-3 pb-6 pr-2.5 sm:pr-4 select-text custom-scrollbar relative z-10 transition-all"
+                  className="flex-1 overflow-y-auto touch-scroll space-y-3 pt-3 pb-6 pr-2.5 sm:pr-4 select-text custom-scrollbar relative z-10 transition-all"
                   style={{
                     paddingLeft: `${chatPaddingLeft}px`,
                   }}

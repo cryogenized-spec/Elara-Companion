@@ -125,7 +125,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   };
 
   return (
-    <footer className="p-4 md:p-6 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/90 to-transparent shrink-0 relative">
+    <footer className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 md:p-6 md:pb-[max(1.5rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/90 to-transparent shrink-0 relative">
       {/* Hidden File Input for Gallery / Local Files */}
       <input
         ref={fileInputRef}

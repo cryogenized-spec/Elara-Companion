@@ -966,7 +966,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-red-950/30 hover:bg-red-900/50 border border-red-800/40 text-xs font-medium text-red-400 transition-colors ml-auto"
                 >
                   <Trash2 className="w-4 h-4" />
-                  <span>Clear All Data</span>
+                  <span>Clear History</span>
                 </button>
               </div>
 
@@ -974,7 +974,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="mt-3 p-4 rounded-xl bg-red-950/60 border border-red-800/80 text-xs text-red-200 space-y-2">
                   <div className="flex items-center gap-2 font-semibold">
                     <AlertTriangle className="w-4 h-4 text-red-400" />
-                    <span>Are you sure you want to clear all conversations?</span>
+                    <span>Are you sure you want to clear your chat history?</span>
                   </div>
                   <p className="text-red-300/80">This action will delete all local history permanently.</p>
                   <div className="flex items-center gap-2 pt-1">
