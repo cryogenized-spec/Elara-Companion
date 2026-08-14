@@ -39,6 +39,8 @@ interface SettingsModalProps {
   onClearAllData: () => void;
 }
 
+import { loadRateLimits } from '../lib/storage';
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
@@ -56,6 +58,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [showPromptResetConfirm, setShowPromptResetConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  
+  const [rateLimits, setRateLimits] = useState<{ date: string; counts: Record<string, number> }>({ date: '', counts: {} });
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setRateLimits(loadRateLimits());
+    }
+  }, [isOpen]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const portraitFileInputRef = useRef<HTMLInputElement>(null);
@@ -698,6 +708,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="grid grid-cols-1 gap-2.5">
                   {AVAILABLE_MODELS.map((m) => {
                     const isSelected = formData.model === m.id;
+                    const count = rateLimits.counts[m.id] || 0;
                     return (
                       <div
                         key={m.id}
@@ -709,7 +720,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="font-semibold text-zinc-100 text-xs sm:text-sm">{m.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-zinc-100 text-xs sm:text-sm">{m.name}</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 font-mono">
+                              {count} calls today
+                            </span>
+                          </div>
                           {isSelected && <Check className="w-4 h-4 text-sky-400" />}
                         </div>
                         <p className="text-xs text-zinc-400 mt-1">{m.description}</p>

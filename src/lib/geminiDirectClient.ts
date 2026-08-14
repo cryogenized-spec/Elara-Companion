@@ -5,7 +5,6 @@ export interface DirectStreamParams {
   apiKey: string;
   model: string;
   systemPrompt?: string;
-  worldContext?: string;
   history?: { role: string; content: string; image?: string }[];
   message?: string;
   image?: string;
@@ -23,7 +22,6 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
     apiKey,
     model,
     systemPrompt,
-    worldContext,
     history = [],
     message,
     image,
@@ -93,11 +91,8 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
     });
   }
 
-  // System instructions + world context
+  // System instructions
   let fullSystemInstruction = systemPrompt || '';
-  if (worldContext && worldContext.trim()) {
-    fullSystemInstruction = `${fullSystemInstruction}\n\n=== LIVE WORLD STATE & CONTEXT ===\n${worldContext}`;
-  }
 
   const cleanModel = model.replace(/^models\//, '').trim() || 'gemini-3.7-flash';
 
@@ -120,35 +115,58 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
     throw new Error('Aborted before starting');
   }
 
-  const responseStream = await ai.models.generateContentStream({
-    model: cleanModel,
-    contents,
-    config,
-  });
+  return new Promise<void>((resolve, reject) => {
+    const handleAbort = () => {
+      reject(signal?.reason || new DOMException('Aborted', 'AbortError'));
+    };
 
-  for await (const chunk of responseStream) {
-    if (signal?.aborted) {
-      break;
+    if (signal) {
+      if (signal.aborted) {
+        return handleAbort();
+      }
+      signal.addEventListener('abort', handleAbort);
     }
-    const candidate = chunk.candidates?.[0];
-    const finishReason = candidate?.finishReason;
-    const safetyRatings = candidate?.safetyRatings;
 
-    const parts = candidate?.content?.parts;
-    if (parts && parts.length > 0) {
-      for (const part of parts) {
-        if ((part as any).thought) {
-          onChunk({ thoughtText: part.text });
-        } else if (part.text) {
-          onChunk({ text: part.text, finishReason, safetyRatings });
+    (async () => {
+      try {
+        const responseStream = await ai.models.generateContentStream({
+          model: cleanModel,
+          contents,
+          config,
+        });
+
+        for await (const chunk of responseStream) {
+          if (signal?.aborted) break;
+
+          const candidate = chunk.candidates?.[0];
+          const finishReason = candidate?.finishReason;
+          const safetyRatings = candidate?.safetyRatings;
+
+          const parts = candidate?.content?.parts;
+          if (parts && parts.length > 0) {
+            for (const part of parts) {
+              if ((part as any).thought) {
+                onChunk({ thoughtText: part.text });
+              } else if (part.text) {
+                onChunk({ text: part.text, finishReason, safetyRatings });
+              }
+            }
+          } else if (chunk.text) {
+            onChunk({ text: chunk.text, finishReason, safetyRatings });
+          } else if (finishReason) {
+            onChunk({ finishReason, safetyRatings });
+          }
+        }
+        resolve();
+      } catch (err) {
+        reject(err);
+      } finally {
+        if (signal) {
+          signal.removeEventListener('abort', handleAbort);
         }
       }
-    } else if (chunk.text) {
-      onChunk({ text: chunk.text, finishReason, safetyRatings });
-    } else if (finishReason) {
-      onChunk({ finishReason, safetyRatings });
-    }
-  }
+    })();
+  });
 }
 
 export async function runDirectTitleGeneration(apiKey: string, firstUserMsg: string, firstAssistantMsg: string): Promise<string> {

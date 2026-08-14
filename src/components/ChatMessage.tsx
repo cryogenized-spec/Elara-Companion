@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Message } from '../types';
+import remarkBreaks from 'remark-breaks';
+import { Message, CanvasData } from '../types';
 import { CodeBlock } from './CodeBlock';
 import { ThinkingScratchpad } from './ThinkingScratchpad';
-import { Copy, Check, RefreshCw, Edit3, AlertCircle, AlertTriangle, Sparkles, User, X, Play, Sliders } from 'lucide-react';
+import { Copy, Check, RefreshCw, Edit3, AlertCircle, AlertTriangle, Sparkles, User, X, Play, Sliders, Code } from 'lucide-react';
 
 interface ChatMessageProps {
   message: Message;
@@ -19,6 +20,7 @@ interface ChatMessageProps {
   onRetry?: () => void;
   onCompleteResponse?: () => void;
   onOpenSettings?: () => void;
+  onOpenCanvas?: (canvas: CanvasData) => void;
 }
 
 export const getAssistantBackgroundClasses = (bgStyle?: string) => {
@@ -74,6 +76,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   onRetry,
   onCompleteResponse,
   onOpenSettings,
+  onOpenCanvas,
 }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -257,10 +260,11 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                   </div>
                 </div>
               ) : (
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    code({ node, inline, className, children, ...props }: any) {
+                <div className="space-y-4">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkBreaks]}
+                    components={{
+                      code({ node, inline, className, children, ...props }: any) {
                       const match = /language-(\w+)/.exec(className || '');
                       const codeString = String(children).replace(/\n$/, '');
 
@@ -331,6 +335,28 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                 >
                   {message.content}
                 </ReactMarkdown>
+
+                  {/* Render extracted canvases as interactive buttons */}
+                  {message.canvases && message.canvases.length > 0 && (
+                    <div className="flex flex-col gap-2 mt-2 border-t border-zinc-700/50 pt-3">
+                      {message.canvases.map((canvas, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => onOpenCanvas && onOpenCanvas(canvas)}
+                          className="flex items-center gap-3 p-3 rounded-xl bg-sky-950/40 hover:bg-sky-900/60 border border-sky-500/30 text-sky-100 transition-colors text-left"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-sky-900/80 flex items-center justify-center shrink-0">
+                            <Code className="w-4 h-4 text-sky-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-sm font-semibold truncate">{canvas.title || 'Interactive Canvas'}</h4>
+                            <p className="text-xs text-sky-300/80 mt-0.5 truncate">Click to view and copy output</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* Streaming Cursor Indicator */}

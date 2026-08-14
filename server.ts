@@ -285,7 +285,6 @@ async function startServer() {
       image,
       history = [],
       systemPrompt,
-      worldContext,
       model,
       temperature,
       maxOutputTokens,
@@ -379,11 +378,6 @@ async function startServer() {
 
       // Combine base persona system prompt and dynamic world context block
       let combinedInstruction = systemPrompt || '';
-      if (worldContext && typeof worldContext === 'string' && worldContext.trim()) {
-        combinedInstruction = combinedInstruction
-          ? `${combinedInstruction.trim()}\n\n${worldContext.trim()}`
-          : worldContext.trim();
-      }
 
       config.systemInstruction = creativeFramingPrefix + (combinedInstruction || '');
 

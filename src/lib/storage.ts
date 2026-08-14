@@ -191,3 +191,31 @@ export function clearAllStorageData(): void {
     console.error('Failed to clear storage:', e);
   }
 }
+
+export function incrementRateLimit(modelId: string): void {
+  const dateStr = new Date().toLocaleDateString();
+  let data = loadRateLimits();
+  if (data.date !== dateStr) {
+    data = { date: dateStr, counts: {} };
+  }
+  data.counts[modelId] = (data.counts[modelId] || 0) + 1;
+  try {
+    localStorage.setItem('elara_api_rate_limits', JSON.stringify(data));
+  } catch (e) {
+    console.error('Failed to save rate limits:', e);
+  }
+}
+
+export function loadRateLimits(): { date: string; counts: Record<string, number> } {
+  const dateStr = new Date().toLocaleDateString();
+  try {
+    const raw = localStorage.getItem('elara_api_rate_limits');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.date === dateStr) return parsed;
+    }
+  } catch (e) {
+    console.error('Failed to load rate limits:', e);
+  }
+  return { date: dateStr, counts: {} };
+}

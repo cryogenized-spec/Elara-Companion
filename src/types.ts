@@ -7,6 +7,11 @@ export interface ThoughtStep {
   timestamp: number;
 }
 
+export interface CanvasData {
+  title: string;
+  content: string;
+}
+
 export interface Message {
   id: string;
   role: Role;
@@ -21,6 +26,7 @@ export interface Message {
   rawThoughts?: string;
   currentThoughtSentence?: string;
   thoughtDurationMs?: number;
+  canvases?: CanvasData[];
 }
 
 export interface Conversation {

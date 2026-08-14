@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Conversation, Message, ElaraSettings, WorldState, MemoryScratchpadState } from './types';
+import { CanvasModal } from './components/CanvasModal';
+import { CanvasData, Conversation, Message, ElaraSettings, WorldState, MemoryScratchpadState } from './types';
 import {
   loadConversations,
   saveConversations,
@@ -11,6 +12,7 @@ import {
   exportConversationMarkdown,
   importDataJSON,
   clearAllStorageData,
+  incrementRateLimit,
 } from './lib/storage';
 import {
   loadWorldState,
@@ -19,7 +21,6 @@ import {
   exportWorldStateJSON,
   importWorldStateJSON,
 } from './lib/worldStorage';
-import { assembleWorldContext } from './lib/contextAssembler';
 import {
   loadMemoryState,
   saveMemoryState,
@@ -27,13 +28,18 @@ import {
   exportMemoryJSON,
   importMemoryJSON,
 } from './lib/memoryStorage';
-import { retrieveRelevantMemories, formatMemoriesForPrompt } from './lib/memoryRetriever';
+import {
+  buildSystemPayload,
+  loadUserProfileNotes,
+  loadActiveScratchpad,
+} from './lib/contextManager';
 import { applyMemoryActions } from './lib/memoryProcessor';
 import {
   extractThoughtsAndContent,
   parseThoughtSteps,
   getActiveThoughtSentence,
 } from './utils/thoughtUtils';
+import { extractCanvases } from './utils/canvasUtils';
 import {
   runDirectGeminiStream,
   runDirectTitleGeneration,
@@ -84,6 +90,7 @@ export default function App() {
   const [worldModalOpen, setWorldModalOpen] = useState(false);
   const [memoryModalOpen, setMemoryModalOpen] = useState(false);
   const [viewerModalOpen, setViewerModalOpen] = useState(false);
+  const [activeCanvas, setActiveCanvas] = useState<CanvasData | null>(null);
   const portraitFileInputRef = useRef<HTMLInputElement>(null);
 
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
@@ -266,52 +273,69 @@ export default function App() {
       })
     );
 
-    // Process system prompt replacing [[user]] placeholder
-    const formattedSystemPrompt = settings.systemPrompt.replaceAll(
+    const baseSystemInstruction = settings.systemPrompt.replaceAll(
       '[[user]]',
       settings.userName || 'User'
     );
 
-    // Assemble dynamic live world context block with current time & timezone
-    const dynamicWorldContext = assembleWorldContext(
-      worldState,
-      settings.userName || 'User',
-      settings.timezone || 'Africa/Johannesburg'
-    );
+    const activeModelId = settings.model || 'gemini-3.7-flash';
+    const uiSettingsSummary = `Theme: ${settings.theme}, User: ${settings.userName || 'User'}, Timezone: ${settings.timezone}`;
 
-    // Contextually retrieve top relevant long-term memories for current topic
-    const recentHistorySnippet = historyMessages
-      .slice(-3)
-      .map((m) => `${m.role}: ${m.content}`)
-      .join('\n');
-    const relevantMemories = retrieveRelevantMemories(
-      memoryState,
-      messageText,
-      recentHistorySnippet,
-      10
-    );
-    const formattedMemoryBlock = formatMemoriesForPrompt(
-      relevantMemories,
-      settings.userName || 'User'
-    );
+    const userProfileNotes = loadUserProfileNotes();
+    const activeScratchpad = loadActiveScratchpad();
 
-    // Combine World Context & Retrieved Memories
-    let combinedContext = dynamicWorldContext;
-    if (formattedMemoryBlock) {
-      combinedContext = `${dynamicWorldContext}\n\n${formattedMemoryBlock}`;
-    }
+    const formattedSystemPrompt = buildSystemPayload({
+      baseSystemInstruction,
+      activeModelId,
+      uiSettingsSummary,
+      userProfileNotes,
+      activeScratchpad,
+    });
 
     // Filter history if enabled
     const historyPayload = settings.includeHistory
-      ? historyMessages.map((m) => ({
-          role: m.role,
-          content: m.content,
-          image: m.image,
-        }))
+      ? historyMessages.map((m) => {
+          let reconstructedContent = m.content;
+          if (m.canvases && m.canvases.length > 0) {
+            reconstructedContent += '\n\n' + m.canvases.map(c => `<canvas title="${c.title}">\n${c.content}\n</canvas>`).join('\n\n');
+          }
+          return {
+            role: m.role,
+            content: reconstructedContent,
+            image: m.image,
+          };
+        })
       : [];
 
     let accumulatedText = '';
     let streamedThoughts = '';
+
+    let lastChunkTime = Date.now();
+    let isDone = false;
+
+    // Watchdog interval to catch stalled background processes on mobile
+    const WATCHDOG_TIMEOUT_MS = 20000;
+    const watchdogInterval = setInterval(() => {
+      if (isDone) {
+        clearInterval(watchdogInterval);
+        return;
+      }
+      if (Date.now() - lastChunkTime > WATCHDOG_TIMEOUT_MS) {
+        console.warn('Stream watchdog timeout: No chunks received in 20s. Aborting.');
+        controller.abort(new Error('Connection lost or timed out in background.'));
+        clearInterval(watchdogInterval);
+      }
+    }, 5000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !isDone) {
+        if (Date.now() - lastChunkTime > WATCHDOG_TIMEOUT_MS) {
+          console.warn('Stream stale after waking up from background. Aborting.');
+          controller.abort(new Error('Connection lost while in background.'));
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const handleChunkArrival = (chunk: {
       text?: string;
@@ -319,6 +343,8 @@ export default function App() {
       finishReason?: string;
       safetyRatings?: any;
     }) => {
+      lastChunkTime = Date.now();
+
       if (chunk.finishReason === 'SAFETY') {
         console.warn('[Gemini Safety Cutoff Triggered]', {
           finishReason: chunk.finishReason,
@@ -367,13 +393,15 @@ export default function App() {
       }
 
       if (chunk.text || chunk.finishReason === 'SAFETY') {
-        const { cleanContent, combinedThoughts, isInsideThoughtTag } =
+        let { cleanContent, combinedThoughts, isInsideThoughtTag } =
           extractThoughtsAndContent(accumulatedText, streamedThoughts);
+        const { cleanContent: finalCleanContent, canvases } = extractCanvases(cleanContent);
+        
         const activeSentence = getActiveThoughtSentence(combinedThoughts);
         const thoughtSteps = parseThoughtSteps(combinedThoughts);
 
         const isThinking =
-          isInsideThoughtTag || (cleanContent.length === 0 && Boolean(streamedThoughts));
+          isInsideThoughtTag || (finalCleanContent.length === 0 && Boolean(streamedThoughts));
 
         setConversations((prev) =>
           prev.map((c) => {
@@ -382,7 +410,8 @@ export default function App() {
               m.id === assistantMsgId
                 ? {
                     ...m,
-                    content: cleanContent,
+                    content: finalCleanContent,
+                    canvases,
                     isThinking: isThinking,
                     rawThoughts: combinedThoughts,
                     currentThoughtSentence: activeSentence,
@@ -399,13 +428,15 @@ export default function App() {
     };
 
     try {
+      // Increment API rate limit
+      incrementRateLimit(settings.model || 'gemini-3.7-flash');
+
       // If user configured a direct API Key, run direct client streaming
       if (settings.apiKey && settings.apiKey.trim()) {
         await runDirectGeminiStream({
           apiKey: settings.apiKey.trim(),
           model: settings.model || 'gemini-3.7-flash',
           systemPrompt: formattedSystemPrompt,
-          worldContext: combinedContext,
           history: historyPayload,
           message: messageText,
           image: attachedImage,
@@ -430,7 +461,6 @@ export default function App() {
               image: attachedImage,
               history: historyPayload,
               systemPrompt: formattedSystemPrompt,
-              worldContext: combinedContext,
               model: settings.model,
               temperature: settings.temperature,
               maxOutputTokens: settings.maxOutputTokens,
@@ -440,6 +470,7 @@ export default function App() {
             }),
           });
         } catch (fetchErr: any) {
+          if (fetchErr.name === 'AbortError') throw fetchErr;
           // If network fetch failed (static GitHub Pages hosting without backend)
           throw new Error(
             'Cannot reach backend server. If running on GitHub Pages, please enter your Gemini API Key in Settings (Model & API tab).'
@@ -462,50 +493,59 @@ export default function App() {
         const decoder = new TextDecoder();
         let buffer = '';
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n\n');
-          buffer = lines.pop() || '';
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n\n');
+            buffer = lines.pop() || '';
 
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (trimmed.startsWith('data: ')) {
-              const jsonStr = trimmed.replace('data: ', '');
-              try {
-                const data = JSON.parse(jsonStr);
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (trimmed.startsWith('data: ')) {
+                const jsonStr = trimmed.replace('data: ', '');
+                try {
+                  const data = JSON.parse(jsonStr);
 
-                if (data.error) {
-                  throw new Error(data.error);
-                }
+                  if (data.error) {
+                    throw new Error(data.error);
+                  }
 
-                handleChunkArrival({
-                  text: data.text,
-                  thoughtText: data.thoughtText,
-                  finishReason: data.finishReason,
-                  safetyRatings: data.safetyRatings,
-                });
+                  handleChunkArrival({
+                    text: data.text,
+                    thoughtText: data.thoughtText,
+                    finishReason: data.finishReason,
+                    safetyRatings: data.safetyRatings,
+                  });
 
-                if (data.done) {
-                  break;
-                }
-              } catch (e: any) {
-                if (e.message && !e.message.includes('JSON')) {
-                  throw e;
+                  if (data.done) {
+                    break;
+                  }
+                } catch (e: any) {
+                  if (e.message && !e.message.includes('JSON')) {
+                    throw e;
+                  }
                 }
               }
             }
           }
+        } finally {
+          reader.releaseLock();
         }
       }
 
+      isDone = true;
+      clearInterval(watchdogInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+
       // Mark streaming and thinking completed & finalize structured steps
-      const { cleanContent, combinedThoughts } = extractThoughtsAndContent(
+      let { cleanContent, combinedThoughts } = extractThoughtsAndContent(
         accumulatedText,
         streamedThoughts
       );
+      const { cleanContent: finalCleanContent, canvases } = extractCanvases(cleanContent);
       const finalSteps = parseThoughtSteps(combinedThoughts);
 
       setConversations((prev) =>
@@ -515,7 +555,8 @@ export default function App() {
             m.id === assistantMsgId
               ? {
                   ...m,
-                  content: cleanContent,
+                  content: finalCleanContent,
+                  canvases,
                   isStreaming: false,
                   isThinking: false,
                   rawThoughts: combinedThoughts,
@@ -581,7 +622,7 @@ export default function App() {
       }
 
     } catch (err: any) {
-      if (err.name === 'AbortError') {
+      if (err.name === 'AbortError' && !err.message?.includes('Connection lost')) {
         console.log('Stream generation stopped by user');
       } else {
         console.error('Streaming error:', err);
@@ -607,6 +648,8 @@ export default function App() {
         const currentSelectedModel = settings.model || 'gemini-3.7-flash';
         if (userFacingError.startsWith('⚠️') || userFacingError.includes('HTTP 429') || userFacingError.includes('HTTP 503')) {
           // Already properly formatted
+        } else if (userFacingError.includes('Connection lost')) {
+          userFacingError = `⚠️ ${userFacingError} Please check your connection and retry.`;
         } else if (userFacingError.includes('Quota exceeded') || userFacingError.includes('429') || userFacingError.includes('RESOURCE_EXHAUSTED')) {
           userFacingError = `⚠️ API Call Rate Exceeded (HTTP 429): Quota limit reached for [${currentSelectedModel}]. Please wait a moment or manually select a different model.`;
         } else if (userFacingError.includes('503') || userFacingError.includes('UNAVAILABLE')) {
@@ -621,6 +664,7 @@ export default function App() {
                 ? {
                     ...m,
                     isStreaming: false,
+                    isThinking: false,
                     isError: true,
                     errorMessage: userFacingError,
                   }
@@ -631,6 +675,9 @@ export default function App() {
         );
       }
     } finally {
+      isDone = true;
+      clearInterval(watchdogInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
@@ -1060,6 +1107,7 @@ export default function App() {
                             onRetry={handleRetry}
                             onCompleteResponse={handleCompleteResponse}
                             onOpenSettings={() => setSettingsOpen(true)}
+                            onOpenCanvas={(canvas) => setActiveCanvas(canvas)}
                           />
                         );
                       });
@@ -1216,6 +1264,11 @@ export default function App() {
         title={targetDeleteConv?.title || ''}
         onClose={() => setDeleteTargetId(null)}
         onConfirm={handleDeleteConfirm}
+      />
+
+      <CanvasModal
+        canvas={activeCanvas}
+        onClose={() => setActiveCanvas(null)}
       />
     </div>
   );
