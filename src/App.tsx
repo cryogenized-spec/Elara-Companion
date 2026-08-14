@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CanvasModal } from './components/CanvasModal';
-import { CanvasData, Conversation, Message, ElaraSettings, WorldState, MemoryScratchpadState } from './types';
+import { CanvasPanel } from './components/CanvasPanel';
+import { CanvasData, Conversation, Message, ElaraSettings, WorldState, MemoryScratchpadState, Folder } from './types';
 import {
   DEFAULT_PERSONA_PROTOCOL,
   DEFAULT_INTIMACY_MODULE,
   DEFAULT_RUNTIME_RULES,
 } from './constants/defaultPrompt';
 import {
+  loadFolders,
+  saveFolders,
   loadConversations,
   saveConversations,
   loadSettings,
@@ -63,6 +65,15 @@ import { PortraitViewerModal } from './components/PortraitViewerModal';
 import { ElaraPortrait } from './components/ElaraPortrait';
 import { DEFAULT_ELARA_PORTRAIT } from './constants/defaultPortrait';
 import {
+  getUpcomingCalendarEvents,
+  getTasks,
+  isGoogleConnected,
+  searchContacts,
+  searchKeepNotes,
+  readSheetValues,
+  listGmailMessages,
+} from './lib/googleApi';
+import {
   Menu,
   Sparkles,
   Settings,
@@ -83,6 +94,7 @@ const generateUniqueId = (prefix: string) =>
 
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [folders, setFolders] = useState<Folder[]>(loadFolders());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [settings, setSettings] = useState<ElaraSettings>(loadSettings());
   const [worldState, setWorldState] = useState<WorldState>(loadWorldState());
@@ -195,6 +207,40 @@ export default function App() {
     userHasScrolledUpRef.current = false;
   };
 
+  const handleCreateFolder = (name: string) => {
+    const newFolder: Folder = { id: generateUniqueId('folder'), name, isExpanded: true };
+    const newFolders = [...folders, newFolder];
+    setFolders(newFolders);
+    saveFolders(newFolders);
+  };
+
+  const handleRenameFolder = (id: string, name: string) => {
+    const newFolders = folders.map(f => f.id === id ? { ...f, name } : f);
+    setFolders(newFolders);
+    saveFolders(newFolders);
+  };
+
+  const handleDeleteFolder = (id: string) => {
+    const newFolders = folders.filter(f => f.id !== id);
+    setFolders(newFolders);
+    saveFolders(newFolders);
+    const updatedConvs = conversations.map(c => c.folderId === id ? { ...c, folderId: undefined } : c);
+    setConversations(updatedConvs);
+    saveConversations(updatedConvs);
+  };
+
+  const handleToggleFolder = (id: string) => {
+    const newFolders = folders.map(f => f.id === id ? { ...f, isExpanded: !f.isExpanded } : f);
+    setFolders(newFolders);
+    saveFolders(newFolders);
+  };
+
+  const handleMoveToFolder = (conversationId: string, folderId: string | null) => {
+    const updated = conversations.map(c => c.id === conversationId ? { ...c, folderId: folderId || undefined } : c);
+    setConversations(updated);
+    saveConversations(updated);
+  };
+
   // Save Settings
   const handleSaveSettings = (newSettings: ElaraSettings) => {
     setSettings(newSettings);
@@ -289,8 +335,55 @@ export default function App() {
     const userProfileNotes = loadUserProfileNotes();
     const activeScratchpad = loadActiveScratchpad();
 
+    // Background Google Workspace Autonomous Sync Detection
+    let backgroundWorkspaceContext = '';
+    const lowerMsg = messageText.toLowerCase();
+    const isCalendarQuery = /(calendar|schedule|agenda|upcoming event|meeting|appointment)/i.test(lowerMsg);
+    const isTasksQuery = /(task|todo|to-do|action item|checklist)/i.test(lowerMsg);
+    const isEmailQuery = /(email|gmail|inbox|unread|messages|check my mail|send an email|draft an email)/i.test(lowerMsg);
+    const isContactsQuery = /(contact|email address|phone number|look up|who is|find contact)/i.test(lowerMsg);
+    const isKeepQuery = /(keep note|archive note|reference quote|archived quote|saved note)/i.test(lowerMsg);
+    const isExplicitSync = /(sync|refresh|fetch|check|pull)/i.test(lowerMsg);
+
+    if (isCalendarQuery || isTasksQuery || isEmailQuery || isContactsQuery || isKeepQuery || isExplicitSync) {
+      if (isGoogleConnected()) {
+        try {
+          if (isTasksQuery || (isExplicitSync && !isCalendarQuery && !isEmailQuery && !isContactsQuery && !isKeepQuery)) {
+            const taskData = await getTasks();
+            backgroundWorkspaceContext += `\n\n[AUTONOMOUS BACKGROUND TOOL SYNC - GOOGLE TASKS]:\nList: "${taskData.listTitle}" (${taskData.items.length} tasks found):\n${JSON.stringify(taskData.items, null, 2)}\nInstruction: You have successfully synced the user's tasks in the background. Review and present this information naturally to the user in your warm companion persona. Do NOT output raw JSON or code tags.`;
+          }
+          if (isCalendarQuery || (isExplicitSync && !isTasksQuery && !isEmailQuery && !isContactsQuery && !isKeepQuery)) {
+            const calData = await getUpcomingCalendarEvents(10);
+            backgroundWorkspaceContext += `\n\n[AUTONOMOUS BACKGROUND TOOL SYNC - GOOGLE CALENDAR]:\nUpcoming Events (${calData.items.length} events found):\n${JSON.stringify(calData.items, null, 2)}\nInstruction: You have successfully synced the user's calendar in the background. Review and present this information naturally to the user in your warm companion persona. Do NOT output raw JSON or code tags.`;
+          }
+          if (isEmailQuery) {
+            const emailData = await listGmailMessages('', 10);
+            backgroundWorkspaceContext += `\n\n[AUTONOMOUS BACKGROUND TOOL SYNC - GMAIL INBOX]:\nRecent Inbox Emails (${emailData.messages.length} found):\n${JSON.stringify(emailData.messages, null, 2)}\nInstruction: You have securely synced the user's recent emails. Review, read, or summarize them naturally in your companion voice. If drafting or sending is needed, you have workspace tools. Do NOT output raw JSON, email payloads, or code blocks to the user.`;
+          }
+          if (isContactsQuery) {
+            const contactData = await searchContacts('');
+            backgroundWorkspaceContext += `\n\n[AUTONOMOUS BACKGROUND TOOL SYNC - GOOGLE CONTACTS]:\nContacts (${contactData.contacts.length} found):\n${JSON.stringify(contactData.contacts.slice(0, 15), null, 2)}\nInstruction: You have access to the user's contact information. Use this to accurately resolve email addresses and details when asked.`;
+          }
+          if (isKeepQuery) {
+            const keepData = await searchKeepNotes('');
+            backgroundWorkspaceContext += `\n\n[AUTONOMOUS BACKGROUND TOOL SYNC - KEEP / ARCHIVE NOTES]:\nArchived Notes (${keepData.notes.length} found):\n${JSON.stringify(keepData.notes.slice(0, 15), null, 2)}\nInstruction: These are passive reference notes and archival quotes.`;
+          }
+        } catch (syncErr: any) {
+          console.warn('Background workspace sync error:', syncErr);
+          backgroundWorkspaceContext += `\n\n[AUTONOMOUS BACKGROUND TOOL SYNC NOTICE]: ${syncErr.message || 'Unable to complete background sync'}. Inform the user gently that Google Workspace sync encountered an issue, or ask them to re-authorize in Settings under the Google Workspace tab.`;
+        }
+      } else if (isExplicitSync || (isTasksQuery && /(my tasks|check tasks|show tasks|list tasks)/i.test(lowerMsg)) || (isCalendarQuery && /(my calendar|my schedule|what'?s on my)/i.test(lowerMsg)) || (isEmailQuery && /(my email|my emails|my inbox|check email|unread email)/i.test(lowerMsg)) || (isContactsQuery && /(my contacts|find contact|look up contact)/i.test(lowerMsg))) {
+        backgroundWorkspaceContext += `\n\n[WORKSPACE STATUS]: Google Workspace is not currently connected. If the user is asking for their live emails, calendar, tasks, contacts, or sheets, let them know in character that they can connect their Google account in Settings under the Google Workspace tab.`;
+      }
+    }
+
+    let effectiveBaseSystemInstruction = baseSystemInstruction;
+    if (backgroundWorkspaceContext) {
+      effectiveBaseSystemInstruction += backgroundWorkspaceContext;
+    }
+
     const formattedSystemPrompt = buildSystemPayload({
-      baseSystemInstruction,
+      baseSystemInstruction: effectiveBaseSystemInstruction,
       personaProtocol: settings.personaProtocol || DEFAULT_PERSONA_PROTOCOL,
       intimacyModule: settings.intimacyModule || DEFAULT_INTIMACY_MODULE,
       runtimeRules: settings.runtimeRules || DEFAULT_RUNTIME_RULES,
@@ -916,11 +1009,17 @@ export default function App() {
       {/* Sidebar Navigation */}
       <Sidebar
         conversations={conversations}
+        folders={folders}
         activeId={activeId}
         onSelectConversation={(id) => setActiveId(id)}
         onNewConversation={handleNewConversation}
         onRenameConversation={(id) => setRenameTargetId(id)}
         onDeleteConversation={(id) => setDeleteTargetId(id)}
+        onCreateFolder={handleCreateFolder}
+        onRenameFolder={handleRenameFolder}
+        onDeleteFolder={handleDeleteFolder}
+        onToggleFolder={handleToggleFolder}
+        onMoveToFolder={handleMoveToFolder}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenWorld={() => setWorldModalOpen(true)}
         onOpenMemory={() => setMemoryModalOpen(true)}
@@ -1076,8 +1175,8 @@ export default function App() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full text-left">
                         {[
                           "I'm back home. Take over the schedule and help me reset.",
-                          "Show me what kind of evening you've calibrated for us.",
-                          "I need you completely tonight—no pacing, no waiting.",
+                          "Send a morning schedule sweep to my Google Chat space.",
+                          "Check my unread Gmail messages and summarize them.",
                           "I've got a tricky problem on the bench. Let me run this by your compute.",
                         ].map((suggestion, idx) => (
                           <button
@@ -1133,9 +1232,23 @@ export default function App() {
               onSendMessage={handleSendMessage}
               isStreaming={isStreaming}
               onStopStreaming={handleStopStreaming}
+              settings={settings}
+              onUpdateSettings={(newPartial) => {
+                handleSaveSettings({ ...settings, ...newPartial });
+              }}
             />
           </div>
         </main>
+
+        {activeCanvas && (
+          <CanvasPanel
+            canvas={activeCanvas}
+            onClose={() => setActiveCanvas(null)}
+            onUpdateContent={(content) => {
+              setActiveCanvas((prev) => prev ? { ...prev, content } : null);
+            }}
+          />
+        )}
 
         {/* Desktop Right Portrait Panel */}
         <aside
@@ -1272,11 +1385,6 @@ export default function App() {
         title={targetDeleteConv?.title || ''}
         onClose={() => setDeleteTargetId(null)}
         onConfirm={handleDeleteConfirm}
-      />
-
-      <CanvasModal
-        canvas={activeCanvas}
-        onClose={() => setActiveCanvas(null)}
       />
     </div>
   );

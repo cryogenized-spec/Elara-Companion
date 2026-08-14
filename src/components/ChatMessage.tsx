@@ -5,6 +5,7 @@ import remarkBreaks from 'remark-breaks';
 import { Message, CanvasData } from '../types';
 import { CodeBlock } from './CodeBlock';
 import { ThinkingScratchpad } from './ThinkingScratchpad';
+import { EmailDraftButton } from './EmailDraftButton';
 import { Copy, Check, RefreshCw, Edit3, AlertCircle, AlertTriangle, Sparkles, User, X, Play, Sliders, Code } from 'lucide-react';
 
 interface ChatMessageProps {
@@ -101,6 +102,11 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
     setEditContent(message.content);
     setIsEditing(false);
   };
+
+  // Hide system messages and sync payloads from the user's chat bubble view
+  if ((message.role as string) === 'system' || message.content.startsWith('[SYSTEM MESSAGE:')) {
+    return null;
+  }
 
   return (
     <div className="w-full py-2.5 transition-colors">
@@ -302,6 +308,16 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                         </blockquote>
                       );
                     },
+                    a({ href, children }) {
+                      if (href?.startsWith('https://mail.google.com/mail/')) {
+                        return <EmailDraftButton url={href} />;
+                      }
+                      return (
+                        <a href={href} target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline">
+                          {children}
+                        </a>
+                      );
+                    },
                     table({ children }) {
                       return (
                         <div className="overflow-x-auto my-3 rounded-lg border border-zinc-800">
@@ -318,18 +334,6 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                     },
                     td({ children }) {
                       return <td className="px-3 py-2 border-b border-zinc-800/60 text-zinc-300">{children}</td>;
-                    },
-                    a({ href, children }) {
-                      return (
-                        <a
-                          href={href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sky-400 hover:underline"
-                        >
-                          {children}
-                        </a>
-                      );
                     },
                   }}
                 >

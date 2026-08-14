@@ -29,6 +29,12 @@ export interface Message {
   canvases?: CanvasData[];
 }
 
+export interface Folder {
+  id: string;
+  name: string;
+  isExpanded?: boolean;
+}
+
 export interface Conversation {
   id: string;
   title: string;
@@ -38,6 +44,7 @@ export interface Conversation {
   model?: string;
   temperature?: number;
   maxOutputTokens?: number;
+  folderId?: string;
 }
 
 export interface ElaraSettings {
@@ -63,6 +70,10 @@ export interface ElaraSettings {
   thinkingBudget?: number;
   apiKey?: string;
   customBackendUrl?: string;
+  speechLanguage?: string;
+  speechAutoSend?: boolean;
+  speechAutoCapitalize?: boolean;
+  speechPauseTimeout?: number;
 }
 
 export interface RoomLocation {

@@ -52,6 +52,10 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
   fontSize: 14,
   textBackground: 'slate',
   thinkingBudget: 4096,
+  speechLanguage: 'en-US',
+  speechAutoSend: false,
+  speechAutoCapitalize: true,
+  speechPauseTimeout: 2000,
 };
 
 export function loadSettings(): ElaraSettings {
@@ -75,6 +79,28 @@ export function saveSettings(settings: ElaraSettings): void {
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
   } catch (e) {
     console.error('Failed to save settings to storage:', e);
+  }
+}
+
+const FOLDERS_STORAGE_KEY = 'elara_folders_v1';
+
+export function loadFolders(): import('../types').Folder[] {
+  try {
+    const raw = localStorage.getItem(FOLDERS_STORAGE_KEY);
+    if (!raw) return [{ id: 'default', name: 'General', isExpanded: true }];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [{ id: 'default', name: 'General', isExpanded: true }];
+  } catch (e) {
+    console.error('Failed to load folders from storage:', e);
+    return [{ id: 'default', name: 'General', isExpanded: true }];
+  }
+}
+
+export function saveFolders(folders: import('../types').Folder[]): void {
+  try {
+    localStorage.setItem(FOLDERS_STORAGE_KEY, JSON.stringify(folders));
+  } catch (e) {
+    console.error('Failed to save folders to storage:', e);
   }
 }
 

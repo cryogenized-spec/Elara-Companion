@@ -29,7 +29,58 @@ import {
   Key,
   Globe,
   ExternalLink,
+  Calendar,
+  CheckSquare,
+  FileText,
+  CheckCircle2,
+  AlertCircle,
+  Link as LinkIcon,
+  Mic,
+  Volume2,
+  Table,
+  Users,
+  Bookmark,
+  Mail,
+  Send,
+  Inbox,
+  MessageSquare,
+  Bot,
+  Radio,
+  BellRing,
+  Share2,
+  Copy,
 } from 'lucide-react';
+import {
+  getUpcomingCalendarEvents,
+  getTasks,
+  requestGoogleAuth,
+  isGoogleConnected,
+  createGoogleDoc,
+  searchContacts,
+  searchKeepNotes,
+  createKeepNote,
+  createGoogleSheet,
+  listGmailMessages,
+  sendGmailMessage,
+  createGmailDraft,
+  listChatSpaces,
+  sendChatMessage,
+  sendChatCardMessage,
+  postChatWebhook,
+  buildTaskApprovalCard,
+  buildDraftPreviewCard,
+  buildScheduleSweepCard,
+  buildSystemAlertCard,
+  loadSpaceWebhooks,
+  saveSpaceWebhooks,
+  CalendarEventItem,
+  TaskItem,
+  ContactPerson,
+  KeepNoteItem,
+  GmailMessageSummary,
+  ChatSpace,
+  SpaceWebhookConfig,
+} from '../lib/googleApi';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -59,16 +110,81 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClearAllData,
 }) => {
   const [formData, setFormData] = useState<ElaraSettings>(settings);
-  const [activeTab, setActiveTab] = useState<'persona' | 'visuals' | 'system' | 'data'>('visuals');
+  const [activeTab, setActiveTab] = useState<'persona' | 'visuals' | 'voice' | 'workspace' | 'system' | 'data'>('visuals');
   const [showPromptResetConfirm, setShowPromptResetConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
+
+  // Workspace Sync State
+  const [isGoogleAuthed, setIsGoogleAuthed] = useState(isGoogleConnected());
+  const [isCalendarSyncing, setIsCalendarSyncing] = useState(false);
+  const [calendarSyncResult, setCalendarSyncResult] = useState<{ count: number; timestamp: string; events: CalendarEventItem[] } | null>(null);
+  const [calendarSyncError, setCalendarSyncError] = useState<string | null>(null);
+
+  const [isTasksSyncing, setIsTasksSyncing] = useState(false);
+  const [tasksSyncResult, setTasksSyncResult] = useState<{ count: number; listTitle: string; timestamp: string; tasks: TaskItem[] } | null>(null);
+  const [tasksSyncError, setTasksSyncError] = useState<string | null>(null);
+
+  const [isDocsExporting, setIsDocsExporting] = useState(false);
+  const [docsExportUrl, setDocsExportUrl] = useState<string | null>(null);
+  const [docsExportError, setDocsExportError] = useState<string | null>(null);
+
+  // Sheets Sync State
+  const [isSheetsCreating, setIsSheetsCreating] = useState(false);
+  const [sheetsResultUrl, setSheetsResultUrl] = useState<string | null>(null);
+  const [sheetsError, setSheetsError] = useState<string | null>(null);
+
+  // Contacts Sync State
+  const [isContactsSyncing, setIsContactsSyncing] = useState(false);
+  const [contactsResult, setContactsResult] = useState<{ count: number; timestamp: string; contacts: ContactPerson[] } | null>(null);
+  const [contactsError, setContactsError] = useState<string | null>(null);
+
+  // Keep Notes Archive State
+  const [keepNotesList, setKeepNotesList] = useState<KeepNoteItem[]>([]);
+  const [isKeepLoading, setIsKeepLoading] = useState(false);
+  const [newKeepTitle, setNewKeepTitle] = useState('');
+  const [newKeepContent, setNewKeepContent] = useState('');
+
+  // Gmail Inbox & Messaging State
+  const [isGmailSyncing, setIsGmailSyncing] = useState(false);
+  const [gmailResult, setGmailResult] = useState<{ count: number; timestamp: string; messages: GmailMessageSummary[] } | null>(null);
+  const [gmailError, setGmailError] = useState<string | null>(null);
+  const [testEmailTo, setTestEmailTo] = useState('');
+  const [testEmailSubject, setTestEmailSubject] = useState('');
+  const [testEmailBody, setTestEmailBody] = useState('');
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [sendEmailStatus, setSendEmailStatus] = useState<string | null>(null);
+
+  // Google Chat & Webhooks State
+  const [chatSpaces, setChatSpaces] = useState<ChatSpace[]>([]);
+  const [isChatSpacesLoading, setIsChatSpacesLoading] = useState(false);
+  const [chatSpacesError, setChatSpacesError] = useState<string | null>(null);
+  const [spaceWebhooks, setSpaceWebhooks] = useState<SpaceWebhookConfig[]>([]);
+  const [newWebhookName, setNewWebhookName] = useState('');
+  const [newWebhookUrl, setNewWebhookUrl] = useState('');
+  const [newWebhookSpaceId, setNewWebhookSpaceId] = useState('');
+  const [newWebhookAutoDaily, setNewWebhookAutoDaily] = useState(true);
+  const [newWebhookAutoTasks, setNewWebhookAutoTasks] = useState(true);
+  const [selectedTarget, setSelectedTarget] = useState<string>('');
+  const [testMessageText, setTestMessageText] = useState('Hello from Elara Workspace Engine!');
+  const [testCardType, setTestCardType] = useState<'text' | 'task_approval' | 'draft_preview' | 'schedule_sweep' | 'system_alert'>('text');
+  const [isDispatchingChat, setIsDispatchingChat] = useState(false);
+  const [chatDispatchStatus, setChatDispatchStatus] = useState<string | null>(null);
+  const [isProactivePushing, setIsProactivePushing] = useState(false);
+  const [proactivePushStatus, setProactivePushStatus] = useState<string | null>(null);
+  const [copiedEndpoint, setCopiedEndpoint] = useState(false);
   
   const [rateLimits, setRateLimits] = useState<{ date: string; counts: Record<string, number> }>({ date: '', counts: {} });
 
   React.useEffect(() => {
     if (isOpen) {
       setRateLimits(loadRateLimits());
+      setIsGoogleAuthed(isGoogleConnected());
+      const loadedHooks = loadSpaceWebhooks();
+      setSpaceWebhooks(loadedHooks);
+      if (loadedHooks.length > 0 && !selectedTarget) {
+        setSelectedTarget(loadedHooks[0].webhookUrl);
+      }
     }
   }, [isOpen]);
 
@@ -94,6 +210,321 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleSave = () => {
     onSaveSettings(formData);
     onClose();
+  };
+
+  const handleConnectGoogle = async () => {
+    try {
+      await requestGoogleAuth(true);
+      setIsGoogleAuthed(true);
+    } catch (err: any) {
+      console.error('Google Auth error:', err);
+    }
+  };
+
+  const handleManualCalendarSync = async () => {
+    setIsCalendarSyncing(true);
+    setCalendarSyncError(null);
+    try {
+      const data = await getUpcomingCalendarEvents(15);
+      setCalendarSyncResult({
+        count: data.items.length,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        events: data.items,
+      });
+      setIsGoogleAuthed(true);
+    } catch (err: any) {
+      setCalendarSyncError(err.message || 'Failed to sync calendar');
+    } finally {
+      setIsCalendarSyncing(false);
+    }
+  };
+
+  const handleManualTasksSync = async () => {
+    setIsTasksSyncing(true);
+    setTasksSyncError(null);
+    try {
+      const data = await getTasks();
+      setTasksSyncResult({
+        count: data.items.length,
+        listTitle: data.listTitle || 'My Tasks',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        tasks: data.items,
+      });
+      setIsGoogleAuthed(true);
+    } catch (err: any) {
+      setTasksSyncError(err.message || 'Failed to sync tasks');
+    } finally {
+      setIsTasksSyncing(false);
+    }
+  };
+
+  const handleManualDocsExport = async () => {
+    setIsDocsExporting(true);
+    setDocsExportError(null);
+    try {
+      const title = `Elara Companion Export - ${new Date().toLocaleDateString()}`;
+      const content = `# ${title}\n\n## System Instructions\n${formData.systemPrompt}\n\n## Persona Protocol\n${formData.personaProtocol}\n\n## Runtime Rules\n${formData.runtimeRules}\n`;
+      const res = await createGoogleDoc(title, content);
+      setDocsExportUrl(res.url);
+      setIsGoogleAuthed(true);
+    } catch (err: any) {
+      setDocsExportError(err.message || 'Failed to export to Google Docs');
+    } finally {
+      setIsDocsExporting(false);
+    }
+  };
+
+  const handleManualSheetsCreate = async () => {
+    setIsSheetsCreating(true);
+    setSheetsError(null);
+    try {
+      const title = `Elara Structured Log - ${new Date().toLocaleDateString()}`;
+      const headers = ['Timestamp', 'Category', 'Description', 'Notes', 'LoggedBy'];
+      const sheet = await createGoogleSheet(title, headers);
+      setSheetsResultUrl(sheet.spreadsheetUrl);
+      setIsGoogleAuthed(true);
+    } catch (err: any) {
+      setSheetsError(err.message || 'Failed to create Google Spreadsheet');
+    } finally {
+      setIsSheetsCreating(false);
+    }
+  };
+
+  const handleManualContactsSync = async () => {
+    setIsContactsSyncing(true);
+    setContactsError(null);
+    try {
+      const res = await searchContacts('', 25);
+      setContactsResult({
+        count: res.contacts.length,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        contacts: res.contacts,
+      });
+      setIsGoogleAuthed(true);
+    } catch (err: any) {
+      setContactsError(err.message || 'Failed to fetch Google Contacts');
+    } finally {
+      setIsContactsSyncing(false);
+    }
+  };
+
+  const handleLoadKeepNotes = async () => {
+    setIsKeepLoading(true);
+    try {
+      const res = await searchKeepNotes('');
+      setKeepNotesList(res.notes);
+    } catch (err) {
+      console.warn('Failed to load Keep notes:', err);
+    } finally {
+      setIsKeepLoading(false);
+    }
+  };
+
+  const handleCreateKeepNote = async () => {
+    if (!newKeepTitle.trim() && !newKeepContent.trim()) return;
+    try {
+      const note = await createKeepNote(newKeepTitle.trim() || 'Archive Note', newKeepContent.trim(), ['Archive', 'Reference']);
+      setKeepNotesList((prev) => [note, ...prev]);
+      setNewKeepTitle('');
+      setNewKeepContent('');
+    } catch (err) {
+      console.warn('Failed to create keep note:', err);
+    }
+  };
+
+  const handleManualGmailSync = async () => {
+    setIsGmailSyncing(true);
+    setGmailError(null);
+    try {
+      const res = await listGmailMessages('', 15);
+      setGmailResult({
+        count: res.messages.length,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        messages: res.messages,
+      });
+      setIsGoogleAuthed(true);
+    } catch (err: any) {
+      setGmailError(err.message || 'Failed to sync Gmail inbox');
+    } finally {
+      setIsGmailSyncing(false);
+    }
+  };
+
+  const handleSendQuickEmail = async () => {
+    if (!testEmailTo.trim() || !testEmailSubject.trim() || !testEmailBody.trim()) return;
+    setIsSendingEmail(true);
+    setSendEmailStatus(null);
+    try {
+      await sendGmailMessage(testEmailTo.trim(), testEmailSubject.trim(), testEmailBody.trim());
+      setSendEmailStatus('✓ Email sent successfully!');
+      setTestEmailTo('');
+      setTestEmailSubject('');
+      setTestEmailBody('');
+      setIsGoogleAuthed(true);
+      setTimeout(() => setSendEmailStatus(null), 4000);
+    } catch (err: any) {
+      setSendEmailStatus('❌ Error: ' + (err.message || 'Failed to send email'));
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  const handleCreateQuickDraft = async () => {
+    if (!testEmailTo.trim() || !testEmailSubject.trim() || !testEmailBody.trim()) return;
+    setIsSendingEmail(true);
+    setSendEmailStatus(null);
+    try {
+      await createGmailDraft(testEmailTo.trim(), testEmailSubject.trim(), testEmailBody.trim());
+      setSendEmailStatus('✓ Draft saved to your Gmail drafts!');
+      setTestEmailTo('');
+      setTestEmailSubject('');
+      setTestEmailBody('');
+      setIsGoogleAuthed(true);
+      setTimeout(() => setSendEmailStatus(null), 4000);
+    } catch (err: any) {
+      setSendEmailStatus('❌ Error: ' + (err.message || 'Failed to create draft'));
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  // Google Chat & Webhook Handlers
+  const handleScanChatSpaces = async () => {
+    setIsChatSpacesLoading(true);
+    setChatSpacesError(null);
+    try {
+      const res = await listChatSpaces(30);
+      setChatSpaces(res.spaces);
+      if (res.spaces.length > 0 && !selectedTarget) {
+        setSelectedTarget(res.spaces[0].name);
+      }
+      setIsGoogleAuthed(true);
+    } catch (err: any) {
+      setChatSpacesError(err.message || 'Failed to list Google Chat spaces');
+    } finally {
+      setIsChatSpacesLoading(false);
+    }
+  };
+
+  const handleSaveWebhookConfig = async () => {
+    if (!newWebhookName.trim() || !newWebhookUrl.trim()) return;
+    const cleanSpaceId = newWebhookSpaceId.trim() || newWebhookName.trim().toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const newConfig: SpaceWebhookConfig = {
+      id: `wh_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      spaceId: cleanSpaceId,
+      name: newWebhookName.trim(),
+      webhookUrl: newWebhookUrl.trim(),
+      autoDailySummary: newWebhookAutoDaily,
+      autoTaskAlerts: newWebhookAutoTasks,
+    };
+
+    const updated = [newConfig, ...spaceWebhooks.filter((w) => w.spaceId !== cleanSpaceId)];
+    setSpaceWebhooks(updated);
+    saveSpaceWebhooks(updated);
+
+    // Sync with backend router
+    try {
+      await fetch('/api/chat/webhooks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newConfig),
+      });
+    } catch (e) {
+      console.warn('Backend webhook sync notice:', e);
+    }
+
+    setNewWebhookName('');
+    setNewWebhookUrl('');
+    setNewWebhookSpaceId('');
+  };
+
+  const handleDeleteWebhookConfig = async (id: string) => {
+    const updated = spaceWebhooks.filter((w) => w.id !== id && w.spaceId !== id);
+    setSpaceWebhooks(updated);
+    saveSpaceWebhooks(updated);
+    try {
+      await fetch(`/api/chat/webhooks/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Backend webhook delete notice:', e);
+    }
+  };
+
+  const handleDispatchTestChat = async () => {
+    if (!selectedTarget) return;
+    setIsDispatchingChat(true);
+    setChatDispatchStatus(null);
+    try {
+      const isWebhook = selectedTarget.startsWith('http');
+      let cardPayload: any = null;
+
+      if (testCardType === 'task_approval') {
+        cardPayload = buildTaskApprovalCard('Consolidate Workspace Logs', 'task_ui_1', 'Review and merge background tasks into Google Docs');
+      } else if (testCardType === 'draft_preview') {
+        cardPayload = buildDraftPreviewCard('Weekly Briefing Draft', 'Draft email prepared for team review with action item breakdown.', 'https://mail.google.com', 'gmail');
+      } else if (testCardType === 'schedule_sweep') {
+        const events = await getUpcomingCalendarEvents(5);
+        cardPayload = buildScheduleSweepCard(
+          events.items.map((e) => ({
+            summary: e.summary,
+            time: e.start.dateTime || e.start.date || 'TBD',
+            location: e.location,
+          }))
+        );
+      } else if (testCardType === 'system_alert') {
+        cardPayload = buildSystemAlertCard('Elara Dual-Mode Router Status', 'Google Chat API and Space Webhook endpoints active and operational.', 'info');
+      }
+
+      if (isWebhook) {
+        if (testCardType === 'text') {
+          await postChatWebhook(selectedTarget, { text: testMessageText });
+        } else {
+          await postChatWebhook(selectedTarget, { cardsV2: [cardPayload] });
+        }
+      } else {
+        if (testCardType === 'text') {
+          await sendChatMessage(selectedTarget, testMessageText);
+        } else {
+          await sendChatCardMessage(selectedTarget, [cardPayload], testMessageText || 'Elara Interactive Card');
+        }
+      }
+
+      setChatDispatchStatus('✓ Dispatched successfully to Google Chat!');
+      setTimeout(() => setChatDispatchStatus(null), 4000);
+    } catch (err: any) {
+      setChatDispatchStatus('❌ Error: ' + (err.message || 'Dispatch failed'));
+    } finally {
+      setIsDispatchingChat(false);
+    }
+  };
+
+  const handleProactivePushTrigger = async (type: 'morning_sweep' | 'task_summary' | 'system_alert') => {
+    setIsProactivePushing(true);
+    setProactivePushStatus(null);
+    try {
+      const res = await fetch('/api/chat/proactive/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type,
+          customTitle: type === 'morning_sweep' ? '🌅 Morning Schedule Sweep' : type === 'task_summary' ? '⚡ Background Task Status' : '🛡️ Elara System Briefing',
+          customMessage: `Autonomous proactive notification triggered at ${new Date().toLocaleTimeString()}.`,
+        }),
+      });
+      const data = await res.json();
+      setProactivePushStatus(`✓ Push delivered to ${data.dispatchedCount || 0} registered webhook space(s)!`);
+      setTimeout(() => setProactivePushStatus(null), 4000);
+    } catch (err: any) {
+      setProactivePushStatus('❌ Push failed: ' + (err.message || 'Network error'));
+    } finally {
+      setIsProactivePushing(false);
+    }
+  };
+
+  const handleCopyInboundEndpoint = () => {
+    const fullUrl = `${window.location.origin}/api/google-chat/event`;
+    navigator.clipboard.writeText(fullUrl);
+    setCopiedEndpoint(true);
+    setTimeout(() => setCopiedEndpoint(false), 2500);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -200,7 +631,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="flex border-b border-zinc-800 bg-zinc-950/30 px-6 pt-2 gap-2 text-xs font-medium overflow-x-auto shrink-0">
           <button
             onClick={() => setActiveTab('visuals')}
-            className={`px-3.5 py-2 rounded-t-xl transition-all border-b-2 flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-t-xl transition-all border-b-2 flex items-center gap-1.5 shrink-0 ${
               activeTab === 'visuals'
                 ? 'border-sky-500 text-sky-400 bg-zinc-900/80 font-semibold'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
@@ -211,7 +642,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('persona')}
-            className={`px-3.5 py-2 rounded-t-xl transition-all border-b-2 flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-t-xl transition-all border-b-2 flex items-center gap-1.5 shrink-0 ${
               activeTab === 'persona'
                 ? 'border-sky-500 text-sky-400 bg-zinc-900/80 font-semibold'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
@@ -221,8 +652,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <span>Model & User</span>
           </button>
           <button
+            onClick={() => setActiveTab('voice')}
+            className={`px-3.5 py-2 rounded-t-xl transition-all border-b-2 flex items-center gap-1.5 shrink-0 ${
+              activeTab === 'voice'
+                ? 'border-sky-500 text-sky-400 bg-zinc-900/80 font-semibold'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
+            }`}
+          >
+            <Mic className="w-3.5 h-3.5" />
+            <span>Voice & Speech</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('workspace')}
+            className={`px-3.5 py-2 rounded-t-xl transition-all border-b-2 flex items-center gap-1.5 shrink-0 ${
+              activeTab === 'workspace'
+                ? 'border-sky-500 text-sky-400 bg-zinc-900/80 font-semibold'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Google Workspace & Sync</span>
+          </button>
+          <button
             onClick={() => setActiveTab('system')}
-            className={`px-3.5 py-2 rounded-t-xl transition-all border-b-2 flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-t-xl transition-all border-b-2 flex items-center gap-1.5 shrink-0 ${
               activeTab === 'system'
                 ? 'border-sky-500 text-sky-400 bg-zinc-900/80 font-semibold'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
@@ -233,7 +686,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('data')}
-            className={`px-3.5 py-2 rounded-t-xl transition-all border-b-2 flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-t-xl transition-all border-b-2 flex items-center gap-1.5 shrink-0 ${
               activeTab === 'data'
                 ? 'border-sky-500 text-sky-400 bg-zinc-900/80 font-semibold'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
@@ -902,6 +1355,1150 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     }`}
                   />
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: GOOGLE WORKSPACE & SYNC */}
+          {activeTab === 'workspace' && (
+            <div className="space-y-6">
+              {/* Account Connection Status Banner */}
+              <div className="bg-zinc-900/70 border border-zinc-800/90 rounded-2xl p-4 sm:p-5 space-y-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-sky-950/80 border border-sky-500/30 flex items-center justify-center text-sky-400">
+                      <Globe className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-200">
+                        Google Workspace Integration
+                      </h3>
+                      <p className="text-[11px] text-zinc-400">
+                        OAuth connection for Google Calendar, Google Tasks & Google Docs
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {isGoogleAuthed ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/60 border border-emerald-700/50 text-[11px] font-medium text-emerald-300">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        Connected & Active
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-950/50 border border-amber-800/40 text-[11px] font-medium text-amber-300">
+                        <AlertCircle className="w-3 h-3 text-amber-400" />
+                        Auth Required
+                      </span>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleConnectGoogle}
+                      className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs font-medium text-zinc-200 transition-colors flex items-center gap-1.5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 text-sky-400" />
+                      <span>{isGoogleAuthed ? 'Re-Authorize' : 'Connect Account'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-sky-950/30 border border-sky-800/30 text-[11px] text-sky-200/90 leading-relaxed">
+                  💡 <strong>Autonomous Background Sync:</strong> Elara reads, writes, drafts, and syncs Gmail emails, calendar, tasks, contacts, and sheets autonomously in the background when prompted. No raw JSON is displayed in chat.
+                </div>
+              </div>
+
+              {/* 1. Gmail Inbox & Composing */}
+              <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-4 sm:p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <Mail className="w-4 h-4 text-red-400" />
+                    <div>
+                      <h4 className="text-xs font-semibold text-zinc-200">Gmail</h4>
+                      <p className="text-[11px] text-zinc-400">Read inbox messages, draft responses, and send emails</p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleManualGmailSync}
+                    disabled={isGmailSyncing}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-red-600/90 hover:bg-red-500 text-white text-xs font-medium transition-all shadow-sm disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isGmailSyncing ? 'animate-spin' : ''}`} />
+                    <span>{isGmailSyncing ? 'Syncing...' : 'Sync Inbox Now'}</span>
+                  </button>
+                </div>
+
+                {gmailError && (
+                  <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/50 text-xs text-red-300 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                    <span>{gmailError}</span>
+                  </div>
+                )}
+
+                {gmailResult && (
+                  <div className="space-y-2.5">
+                    <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/50 text-xs text-red-300 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-red-400" />
+                        <span>
+                          {gmailResult.count === 0
+                            ? 'No recent emails found in inbox.'
+                            : `✓ Synced ${gmailResult.count} recent ${
+                                gmailResult.count === 1 ? 'email' : 'emails'
+                              }`}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-red-400/80 font-mono">
+                        Last synced: {gmailResult.timestamp}
+                      </span>
+                    </div>
+
+                    {gmailResult.messages.length > 0 && (
+                      <div className="max-h-48 overflow-y-auto space-y-1.5 custom-scrollbar pr-1">
+                        {gmailResult.messages.map((m) => (
+                          <div
+                            key={m.id}
+                            className="p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 flex items-start justify-between gap-3 text-xs"
+                          >
+                            <div className="space-y-0.5 min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-zinc-100 truncate">{m.from}</span>
+                                {m.isUnread && (
+                                  <span className="px-1.5 py-0.2 rounded bg-red-500/20 border border-red-500/40 text-[9px] font-bold text-red-300">
+                                    NEW
+                                  </span>
+                                )}
+                              </div>
+                              <p className="font-medium text-zinc-300 truncate">{m.subject}</p>
+                              <p className="text-[11px] text-zinc-500 line-clamp-1">{m.snippet}</p>
+                            </div>
+                            <span className="text-[10px] text-zinc-500 font-mono whitespace-nowrap shrink-0">
+                              {m.date ? new Date(m.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Quick Compose or Draft Test */}
+                <div className="pt-3 border-t border-zinc-800/60 space-y-2">
+                  <div className="text-[11px] font-medium text-zinc-400">Quick Compose & Draft Test:</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="email"
+                      placeholder="To: recipient@example.com"
+                      value={testEmailTo}
+                      onChange={(e) => setTestEmailTo(e.target.value)}
+                      className="px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-red-500"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Subject..."
+                      value={testEmailSubject}
+                      onChange={(e) => setTestEmailSubject(e.target.value)}
+                      className="px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-red-500"
+                    />
+                  </div>
+                  <textarea
+                    placeholder="Email body text..."
+                    rows={2}
+                    value={testEmailBody}
+                    onChange={(e) => setTestEmailBody(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-red-500 resize-none"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCreateQuickDraft}
+                      disabled={isSendingEmail || !testEmailTo.trim() || !testEmailSubject.trim() || !testEmailBody.trim()}
+                      className="flex-1 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-colors disabled:opacity-50"
+                    >
+                      Save as Draft
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSendQuickEmail}
+                      disabled={isSendingEmail || !testEmailTo.trim() || !testEmailSubject.trim() || !testEmailBody.trim()}
+                      className="flex-1 py-1.5 rounded-lg bg-red-600/90 hover:bg-red-500 text-white text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{isSendingEmail ? 'Sending...' : 'Send Email'}</span>
+                    </button>
+                  </div>
+                  {sendEmailStatus && (
+                    <div className="p-2 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-200">
+                      {sendEmailStatus}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 2. Google Calendar Manual Sync */}
+              <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-4 sm:p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <Calendar className="w-4 h-4 text-sky-400" />
+                    <div>
+                      <h4 className="text-xs font-semibold text-zinc-200">Google Calendar</h4>
+                      <p className="text-[11px] text-zinc-400">View and sync your primary Google Calendar schedule</p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleManualCalendarSync}
+                    disabled={isCalendarSyncing}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-sky-600/90 hover:bg-sky-500 text-white text-xs font-medium transition-all shadow-sm disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isCalendarSyncing ? 'animate-spin' : ''}`} />
+                    <span>{isCalendarSyncing ? 'Syncing...' : 'Sync Calendar Now'}</span>
+                  </button>
+                </div>
+
+                {calendarSyncError && (
+                  <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/50 text-xs text-red-300 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                    <span>{calendarSyncError}</span>
+                  </div>
+                )}
+
+                {calendarSyncResult && (
+                  <div className="space-y-2.5">
+                    <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/50 text-xs text-emerald-300 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span>
+                          {calendarSyncResult.count === 0
+                            ? 'No upcoming events found on your primary calendar.'
+                            : `✓ Successfully synced ${calendarSyncResult.count} upcoming calendar ${
+                                calendarSyncResult.count === 1 ? 'event' : 'events'
+                              }`}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-emerald-400/80 font-mono">
+                        Last synced: {calendarSyncResult.timestamp}
+                      </span>
+                    </div>
+
+                    {calendarSyncResult.events.length > 0 && (
+                      <div className="max-h-48 overflow-y-auto space-y-1.5 custom-scrollbar pr-1">
+                        {calendarSyncResult.events.map((evt) => (
+                          <div
+                            key={evt.id}
+                            className="p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 flex items-start justify-between gap-3 text-xs"
+                          >
+                            <div>
+                              <p className="font-medium text-zinc-100">{evt.summary}</p>
+                              <p className="text-[11px] text-zinc-400 mt-0.5">
+                                {evt.start.dateTime
+                                  ? `${new Date(evt.start.dateTime).toLocaleDateString([], {
+                                      weekday: 'short',
+                                      month: 'short',
+                                      day: 'numeric',
+                                    })} at ${new Date(evt.start.dateTime).toLocaleTimeString([], {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })}`
+                                  : evt.start.date || 'All Day'}
+                              </p>
+                              {evt.location && (
+                                <p className="text-[10px] text-zinc-500 mt-0.5">📍 {evt.location}</p>
+                              )}
+                            </div>
+                            {evt.htmlLink && (
+                              <a
+                                href={evt.htmlLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-sky-400 hover:text-sky-300 p-1"
+                                title="Open in Google Calendar"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Google Tasks Manual Sync */}
+              <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-4 sm:p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <CheckSquare className="w-4 h-4 text-emerald-400" />
+                    <div>
+                      <h4 className="text-xs font-semibold text-zinc-200">Google Tasks</h4>
+                      <p className="text-[11px] text-zinc-400">View and sync tasks from your Google account</p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleManualTasksSync}
+                    disabled={isTasksSyncing}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-medium transition-all shadow-sm disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isTasksSyncing ? 'animate-spin' : ''}`} />
+                    <span>{isTasksSyncing ? 'Syncing...' : 'Sync Tasks Now'}</span>
+                  </button>
+                </div>
+
+                {tasksSyncError && (
+                  <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/50 text-xs text-red-300 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                    <span>{tasksSyncError}</span>
+                  </div>
+                )}
+
+                {tasksSyncResult && (
+                  <div className="space-y-2.5">
+                    <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/50 text-xs text-emerald-300 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span>
+                          {tasksSyncResult.count === 0
+                            ? 'No tasks found in your list.'
+                            : `✓ Successfully synced ${tasksSyncResult.count} ${
+                                tasksSyncResult.count === 1 ? 'task' : 'tasks'
+                              } from "${tasksSyncResult.listTitle}"`}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-emerald-400/80 font-mono">
+                        Last synced: {tasksSyncResult.timestamp}
+                      </span>
+                    </div>
+
+                    {tasksSyncResult.tasks.length > 0 && (
+                      <div className="max-h-48 overflow-y-auto space-y-1.5 custom-scrollbar pr-1">
+                        {tasksSyncResult.tasks.map((task) => (
+                          <div
+                            key={task.id}
+                            className="p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 flex items-start justify-between gap-3 text-xs"
+                          >
+                            <div className="flex items-start gap-2">
+                              <span
+                                className={`mt-0.5 inline-block w-3.5 h-3.5 rounded border ${
+                                  task.status === 'completed'
+                                    ? 'bg-emerald-500 border-emerald-400 text-white'
+                                    : 'border-zinc-600'
+                                } flex items-center justify-center`}
+                              >
+                                {task.status === 'completed' && <Check className="w-2.5 h-2.5" />}
+                              </span>
+                              <div>
+                                <p
+                                  className={`font-medium ${
+                                    task.status === 'completed'
+                                      ? 'text-zinc-500 line-through'
+                                      : 'text-zinc-100'
+                                  }`}
+                                >
+                                  {task.title}
+                                </p>
+                                {task.notes && (
+                                  <p className="text-[11px] text-zinc-400 mt-0.5 whitespace-pre-wrap">
+                                    {task.notes}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <span
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-medium ${
+                                task.status === 'completed'
+                                  ? 'bg-zinc-800 text-zinc-400'
+                                  : 'bg-emerald-950/50 text-emerald-300 border border-emerald-800/40'
+                              }`}
+                            >
+                              {task.status === 'completed' ? 'Done' : 'Pending'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 3. Google Docs Export */}
+              <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-4 sm:p-5 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <FileText className="w-4 h-4 text-amber-400" />
+                    <div>
+                      <h4 className="text-xs font-semibold text-zinc-200">Google Docs</h4>
+                      <p className="text-[11px] text-zinc-400">Export companion instructions & prompt state to Google Docs</p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleManualDocsExport}
+                    disabled={isDocsExporting}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-600/90 hover:bg-amber-500 text-white text-xs font-medium transition-all shadow-sm disabled:opacity-50"
+                  >
+                    <Download className={`w-3.5 h-3.5 ${isDocsExporting ? 'animate-spin' : ''}`} />
+                    <span>{isDocsExporting ? 'Exporting...' : 'Export to Docs'}</span>
+                  </button>
+                </div>
+
+                {docsExportError && (
+                  <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/50 text-xs text-red-300 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                    <span>{docsExportError}</span>
+                  </div>
+                )}
+
+                {docsExportUrl && (
+                  <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/50 text-xs text-emerald-300 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <span>✓ Google Doc created successfully!</span>
+                    </div>
+                    <a
+                      href={docsExportUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 font-medium underline"
+                    >
+                      <span>Open in Docs</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* 4. Google Sheets (Structured Data Logging) */}
+              <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-4 sm:p-5 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <Table className="w-4 h-4 text-emerald-400" />
+                    <div>
+                      <h4 className="text-xs font-semibold text-zinc-200">Google Sheets</h4>
+                      <p className="text-[11px] text-zinc-400">Structured data registers, item inventories & automated logs</p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleManualSheetsCreate}
+                    disabled={isSheetsCreating}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-medium transition-all shadow-sm disabled:opacity-50"
+                  >
+                    <Download className={`w-3.5 h-3.5 ${isSheetsCreating ? 'animate-spin' : ''}`} />
+                    <span>{isSheetsCreating ? 'Creating Sheet...' : 'Create New Sheet Log'}</span>
+                  </button>
+                </div>
+
+                {sheetsError && (
+                  <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/50 text-xs text-red-300 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                    <span>{sheetsError}</span>
+                  </div>
+                )}
+
+                {sheetsResultUrl && (
+                  <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/50 text-xs text-emerald-300 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <span>✓ Google Sheet log initialized!</span>
+                    </div>
+                    <a
+                      href={sheetsResultUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-medium underline"
+                    >
+                      <span>Open Spreadsheet</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* 5. Google Contacts (People Resolution) */}
+              <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-4 sm:p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <Users className="w-4 h-4 text-purple-400" />
+                    <div>
+                      <h4 className="text-xs font-semibold text-zinc-200">Google Contacts</h4>
+                      <p className="text-[11px] text-zinc-400">Resolve email addresses, names, and contact details for messages and invites</p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleManualContactsSync}
+                    disabled={isContactsSyncing}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-purple-600/90 hover:bg-purple-500 text-white text-xs font-medium transition-all shadow-sm disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isContactsSyncing ? 'animate-spin' : ''}`} />
+                    <span>{isContactsSyncing ? 'Syncing...' : 'Sync Contacts'}</span>
+                  </button>
+                </div>
+
+                {contactsError && (
+                  <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/50 text-xs text-red-300 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                    <span>{contactsError}</span>
+                  </div>
+                )}
+
+                {contactsResult && (
+                  <div className="space-y-2.5">
+                    <div className="p-3 rounded-xl bg-purple-950/40 border border-purple-800/50 text-xs text-purple-300 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-purple-400" />
+                        <span>✓ Loaded {contactsResult.count} contacts from your Google account.</span>
+                      </div>
+                      <span className="text-[10px] text-purple-400/80 font-mono">
+                        Last synced: {contactsResult.timestamp}
+                      </span>
+                    </div>
+
+                    {contactsResult.contacts.length > 0 && (
+                      <div className="max-h-48 overflow-y-auto space-y-1.5 custom-scrollbar pr-1">
+                        {contactsResult.contacts.map((c, i) => (
+                          <div
+                            key={c.resourceName || i}
+                            className="p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 flex items-center justify-between gap-3 text-xs"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-6 h-6 rounded-full bg-purple-950/80 border border-purple-700/50 flex items-center justify-center text-[10px] font-bold text-purple-300">
+                                {c.displayName.charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <p className="font-medium text-zinc-100">{c.displayName}</p>
+                                {c.emailAddresses && c.emailAddresses.length > 0 && (
+                                  <p className="text-[11px] text-zinc-400">{c.emailAddresses.join(', ')}</p>
+                                )}
+                              </div>
+                            </div>
+                            {c.phoneNumbers && c.phoneNumbers.length > 0 && (
+                              <span className="text-[10px] text-zinc-500 font-mono">
+                                {c.phoneNumbers[0]}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 6. Google Keep / Passive Reference Notes Archive */}
+              <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-4 sm:p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <Bookmark className="w-4 h-4 text-amber-400" />
+                    <div>
+                      <h4 className="text-xs font-semibold text-zinc-200">Google Keep & Reference Archive</h4>
+                      <p className="text-[11px] text-zinc-400">Passive reference notes, research specs & archival quotes (distinct from tasks)</p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleLoadKeepNotes}
+                    disabled={isKeepLoading}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-all shadow-sm"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isKeepLoading ? 'animate-spin' : ''}`} />
+                    <span>Refresh Archive</span>
+                  </button>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-zinc-800/60">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Note Title / Subject..."
+                      value={newKeepTitle}
+                      onChange={(e) => setNewKeepTitle(e.target.value)}
+                      className="px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Reference content or quote..."
+                      value={newKeepContent}
+                      onChange={(e) => setNewKeepContent(e.target.value)}
+                      className="px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCreateKeepNote}
+                    disabled={!newKeepTitle.trim() && !newKeepContent.trim()}
+                    className="w-full py-1.5 rounded-lg bg-amber-600/90 hover:bg-amber-500 text-white text-xs font-medium transition-colors disabled:opacity-50"
+                  >
+                    + Save to Passive Reference Archive
+                  </button>
+                </div>
+
+                {keepNotesList.length > 0 && (
+                  <div className="max-h-48 overflow-y-auto space-y-1.5 custom-scrollbar pr-1 pt-1">
+                    {keepNotesList.map((n) => (
+                      <div
+                        key={n.id}
+                        className="p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 text-xs space-y-1"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-amber-300">{n.title}</span>
+                          <span className="text-[10px] text-zinc-500 font-mono">
+                            {new Date(n.updatedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="text-zinc-300 text-[11px] whitespace-pre-wrap">{n.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 7. Google Chat & Webhooks Integration (Dual-Mode Engine) */}
+              <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-4 sm:p-5 space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-emerald-950/80 border border-emerald-500/30 text-emerald-400">
+                      <MessageSquare className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-semibold text-zinc-100">Google Chat & Webhook Integration</h4>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-950 text-emerald-300 border border-emerald-700/50">
+                          Dual-Mode Engine
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400">
+                        1-on-1 Direct Messaging, Workspace Space Webhooks, interactive CardV2 approvals & proactive push briefings
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleScanChatSpaces}
+                      disabled={isChatSpacesLoading}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-all shadow-sm disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isChatSpacesLoading ? 'animate-spin' : ''}`} />
+                      <span>{isChatSpacesLoading ? 'Scanning...' : 'Scan Spaces & DMs'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopyInboundEndpoint}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 text-xs font-medium transition-all border border-zinc-700/50"
+                      title="Copy webhook event endpoint for Google Cloud / Chat Bot configuration"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>{copiedEndpoint ? 'Copied!' : 'Copy Inbound URL'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {chatSpacesError && (
+                  <div className="p-3 rounded-xl bg-red-950/40 border border-red-800/50 text-xs text-red-300 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                    <span>{chatSpacesError}</span>
+                  </div>
+                )}
+
+                {/* Sub-Card A: Central Inbound Endpoint & Dynamic Dispatch Router */}
+                <div className="p-3.5 rounded-xl bg-zinc-950/80 border border-zinc-800 space-y-2 text-xs">
+                  <div className="flex items-center justify-between text-zinc-300 font-medium">
+                    <div className="flex items-center gap-2">
+                      <Radio className="w-4 h-4 text-sky-400" />
+                      <span>Central Inbound Handler & Dynamic Dispatch Router</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
+                      Active: /api/google-chat/event
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 leading-relaxed">
+                    <b>1-on-1 DM Route:</b> Private alerts, confidential companion chatter, and high-priority manual execution.<br />
+                    <b>Workspace Space Route:</b> Threaded topic hubs (e.g. <code>#operations</code>, <code>#schedules</code>, <code>#workbench-notes</code>) for operational logs and batch briefings.
+                  </p>
+                </div>
+
+                {/* Sub-Card B: Discovered Google Chat Spaces & DMs */}
+                {chatSpaces.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-zinc-300">
+                        Discovered Google Chat Spaces & Channels ({chatSpaces.length})
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto custom-scrollbar">
+                      {chatSpaces.map((sp) => (
+                        <div
+                          key={sp.name}
+                          onClick={() => setSelectedTarget(sp.name)}
+                          className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all flex items-center justify-between ${
+                            selectedTarget === sp.name
+                              ? 'bg-emerald-950/40 border-emerald-500/80 text-emerald-200'
+                              : 'bg-zinc-950/60 border-zinc-800/80 text-zinc-300 hover:border-zinc-700'
+                          }`}
+                        >
+                          <div className="truncate mr-2">
+                            <div className="font-medium truncate">{sp.displayName || 'Direct Message'}</div>
+                            <div className="text-[10px] text-zinc-500 font-mono truncate">{sp.name}</div>
+                          </div>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0 bg-zinc-900 border border-zinc-700 text-zinc-400">
+                            {sp.spaceType || sp.type || 'SPACE'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-Card C: Workspace Space Webhook Manager */}
+                <div className="space-y-3 pt-3 border-t border-zinc-800/80">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-amber-400" />
+                      <span className="text-xs font-semibold text-zinc-200">
+                        Space Webhooks Manager (Topic Hubs)
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-zinc-400">
+                      {spaceWebhooks.length} webhook(s) registered
+                    </span>
+                  </div>
+
+                  {/* Add Webhook Form */}
+                  <div className="p-3.5 rounded-xl bg-zinc-950/70 border border-zinc-800/80 space-y-3 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <input
+                        type="text"
+                        placeholder="Space Name (e.g. Operations Hub)"
+                        value={newWebhookName}
+                        onChange={(e) => setNewWebhookName(e.target.value)}
+                        className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Space ID Slug (e.g. operations)"
+                        value={newWebhookSpaceId}
+                        onChange={(e) => setNewWebhookSpaceId(e.target.value)}
+                        className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500"
+                      />
+                      <input
+                        type="url"
+                        placeholder="Incoming Webhook URL (https://chat.googleapis.com/...)"
+                        value={newWebhookUrl}
+                        onChange={(e) => setNewWebhookUrl(e.target.value)}
+                        className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                      <div className="flex items-center gap-4 text-[11px] text-zinc-300">
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={newWebhookAutoDaily}
+                            onChange={(e) => setNewWebhookAutoDaily(e.target.checked)}
+                            className="rounded border-zinc-700 bg-zinc-900 text-emerald-500 focus:ring-0"
+                          />
+                          <span>Auto Morning Sweeps</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={newWebhookAutoTasks}
+                            onChange={(e) => setNewWebhookAutoTasks(e.target.checked)}
+                            className="rounded border-zinc-700 bg-zinc-900 text-emerald-500 focus:ring-0"
+                          />
+                          <span>Task Execution Alerts</span>
+                        </label>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleSaveWebhookConfig}
+                        disabled={!newWebhookName.trim() || !newWebhookUrl.trim()}
+                        className="px-3.5 py-1.5 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-medium transition-all disabled:opacity-50"
+                      >
+                        + Register Space Webhook
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Registered Webhooks List */}
+                  {spaceWebhooks.length > 0 && (
+                    <div className="space-y-2">
+                      {spaceWebhooks.map((hook) => (
+                        <div
+                          key={hook.id}
+                          className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800 flex flex-wrap items-center justify-between gap-2 text-xs"
+                        >
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-zinc-200">{hook.name}</span>
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-900 text-zinc-400 border border-zinc-800">
+                                #{hook.spaceId}
+                              </span>
+                              {hook.autoDailySummary && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800">
+                                  🌅 Daily Sweep
+                                </span>
+                              )}
+                              {hook.autoTaskAlerts && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-sky-950 text-sky-300 border border-sky-800">
+                                  ⚡ Tasks
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-zinc-500 font-mono truncate max-w-sm">
+                              {hook.webhookUrl}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedTarget(hook.webhookUrl);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] transition-colors"
+                            >
+                              Select as Target
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteWebhookConfig(hook.id)}
+                              className="px-2 py-1 rounded-lg hover:bg-red-950/60 text-red-400 text-[11px] transition-colors"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Sub-Card D: Interactive Card Payloads & Dispatch Sandbox */}
+                <div className="space-y-3 pt-3 border-t border-zinc-800/80">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Bot className="w-4 h-4 text-emerald-400" />
+                      <span className="text-xs font-semibold text-zinc-200">
+                        Interactive Card Payloads & Dispatch Sandbox
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-zinc-400">CardV2 Actions & Deep Links</span>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-zinc-950/70 border border-zinc-800/80 space-y-3 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] text-zinc-400 block mb-1">Destination Target</label>
+                        <select
+                          value={selectedTarget}
+                          onChange={(e) => setSelectedTarget(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500"
+                        >
+                          <option value="">Select a Space or Webhook...</option>
+                          {chatSpaces.map((sp) => (
+                            <option key={sp.name} value={sp.name}>
+                              [API] {sp.displayName || sp.name} ({sp.spaceType || 'Space'})
+                            </option>
+                          ))}
+                          {spaceWebhooks.map((wh) => (
+                            <option key={wh.id} value={wh.webhookUrl}>
+                              [Webhook] {wh.name} (#{wh.spaceId})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] text-zinc-400 block mb-1">Card Payload Template</label>
+                        <select
+                          value={testCardType}
+                          onChange={(e) => setTestCardType(e.target.value as any)}
+                          className="w-full px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500"
+                        >
+                          <option value="text">Plain Text Message</option>
+                          <option value="task_approval">Task Approval Card (Interactive Buttons)</option>
+                          <option value="draft_preview">Draft Preview Card (Deep Links)</option>
+                          <option value="schedule_sweep">Morning Schedule Sweep Card</option>
+                          <option value="system_alert">Elara System Alert Card</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] text-zinc-400 block mb-1">Message Content / Note</label>
+                      <input
+                        type="text"
+                        value={testMessageText}
+                        onChange={(e) => setTestMessageText(e.target.value)}
+                        placeholder="Message or card title note..."
+                        className="w-full px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                      <div className="text-[11px]">
+                        {chatDispatchStatus && (
+                          <span className={chatDispatchStatus.startsWith('✓') ? 'text-emerald-400 font-medium' : 'text-red-400'}>
+                            {chatDispatchStatus}
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleDispatchTestChat}
+                        disabled={!selectedTarget || isDispatchingChat}
+                        className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-medium transition-all shadow-sm disabled:opacity-50"
+                      >
+                        <Send className={`w-3.5 h-3.5 ${isDispatchingChat ? 'animate-spin' : ''}`} />
+                        <span>{isDispatchingChat ? 'Dispatching...' : 'Dispatch to Google Chat'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sub-Card E: Proactive Outbound Notification Engine */}
+                <div className="space-y-3 pt-3 border-t border-zinc-800/80">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <BellRing className="w-4 h-4 text-sky-400" />
+                      <span className="text-xs font-semibold text-zinc-200">
+                        Proactive Outbound Push Engine
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-zinc-400">Autonomous Broadcast</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleProactivePushTrigger('morning_sweep')}
+                      disabled={isProactivePushing || spaceWebhooks.length === 0}
+                      className="p-3 rounded-xl bg-zinc-950/70 border border-zinc-800 hover:border-emerald-500/60 text-left transition-all group disabled:opacity-40"
+                    >
+                      <div className="text-xs font-medium text-emerald-300 group-hover:text-emerald-200 flex items-center gap-1.5">
+                        <span>🌅</span> Morning Schedule Sweep
+                      </div>
+                      <p className="text-[10px] text-zinc-400 mt-1">
+                        Pushes today's Google Calendar agenda & priority tasks to registered spaces
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleProactivePushTrigger('task_summary')}
+                      disabled={isProactivePushing || spaceWebhooks.length === 0}
+                      className="p-3 rounded-xl bg-zinc-950/70 border border-zinc-800 hover:border-sky-500/60 text-left transition-all group disabled:opacity-40"
+                    >
+                      <div className="text-xs font-medium text-sky-300 group-hover:text-sky-200 flex items-center gap-1.5">
+                        <span>⚡</span> Task Status Briefing
+                      </div>
+                      <p className="text-[10px] text-zinc-400 mt-1">
+                        Broadcasts task completion logs & pending item alerts to space webhooks
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleProactivePushTrigger('system_alert')}
+                      disabled={isProactivePushing || spaceWebhooks.length === 0}
+                      className="p-3 rounded-xl bg-zinc-950/70 border border-zinc-800 hover:border-amber-500/60 text-left transition-all group disabled:opacity-40"
+                    >
+                      <div className="text-xs font-medium text-amber-300 group-hover:text-amber-200 flex items-center gap-1.5">
+                        <span>🛡️</span> System Status Alert
+                      </div>
+                      <p className="text-[10px] text-zinc-400 mt-1">
+                        Sends workspace health check & latency briefing across all spaces
+                      </p>
+                    </button>
+                  </div>
+
+                  {proactivePushStatus && (
+                    <div className="p-2.5 rounded-xl bg-zinc-950/90 border border-zinc-800 text-xs flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="text-emerald-300">{proactivePushStatus}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: VOICE & SPEECH-TO-TEXT */}
+          {activeTab === 'voice' && (
+            <div className="space-y-6">
+              {/* Header Overview Card */}
+              <div className="bg-gradient-to-r from-emerald-950/40 via-zinc-900 to-zinc-900 border border-emerald-500/30 rounded-2xl p-5 shadow-lg space-y-2">
+                <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
+                  <Mic className="w-4 h-4" />
+                  <span>Live Speech-to-Text & Voice Dictation</span>
+                </div>
+                <p className="text-xs text-zinc-300 leading-relaxed">
+                  Speak directly to Elara using your microphone. High-speed speech recognition translates your voice into real-time text inside the chat composer, with automatic sentence capitalization and intelligent pause detection.
+                </p>
+                <div className="pt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-950/80 border border-emerald-600/40 text-emerald-300 font-mono">
+                    ✓ Browser Native Web Speech API
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-sky-950/80 border border-sky-600/40 text-sky-300 font-mono">
+                    ✓ Gemini Audio Transcription Fallback
+                  </span>
+                </div>
+              </div>
+
+              {/* Language Selection */}
+              <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-semibold text-zinc-200 block">
+                      Spoken Language
+                    </label>
+                    <p className="text-[11px] text-zinc-400">
+                      Primary dialect used for acoustic speech modeling
+                    </p>
+                  </div>
+                  <select
+                    value={formData.speechLanguage || 'en-US'}
+                    onChange={(e) => setFormData({ ...formData, speechLanguage: e.target.value })}
+                    className="bg-zinc-950 border border-zinc-800 text-zinc-100 rounded-xl px-3 py-1.5 text-xs focus:border-emerald-500 focus:outline-none transition-colors"
+                  >
+                    <option value="en-US">English (United States)</option>
+                    <option value="en-GB">English (United Kingdom)</option>
+                    <option value="en-AU">English (Australia)</option>
+                    <option value="en-CA">English (Canada)</option>
+                    <option value="en-IN">English (India)</option>
+                    <option value="es-ES">Español (España)</option>
+                    <option value="es-MX">Español (México)</option>
+                    <option value="es-US">Español (Estados Unidos)</option>
+                    <option value="fr-FR">Français (France)</option>
+                    <option value="fr-CA">Français (Canada)</option>
+                    <option value="de-DE">Deutsch (Deutschland)</option>
+                    <option value="it-IT">Italiano (Italia)</option>
+                    <option value="pt-BR">Português (Brasil)</option>
+                    <option value="pt-PT">Português (Portugal)</option>
+                    <option value="ja-JP">日本語 (Japanese)</option>
+                    <option value="ko-KR">한국어 (Korean)</option>
+                    <option value="zh-CN">中文 (Mandarin - Simplified)</option>
+                    <option value="zh-TW">中文 (Mandarin - Traditional)</option>
+                    <option value="ru-RU">Русский (Russian)</option>
+                    <option value="af-ZA">Afrikaans (South Africa)</option>
+                    <option value="nl-NL">Nederlands (Netherlands)</option>
+                    <option value="sv-SE">Svenska (Sweden)</option>
+                    <option value="ar-SA">العربية (Arabic - Saudi Arabia)</option>
+                    <option value="hi-IN">हिन्दी (Hindi)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Formatting & Behavior Controls */}
+              <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-5 space-y-5">
+                <h4 className="text-xs font-semibold text-zinc-200">Voice Transcription Behavior</h4>
+
+                {/* Auto-Capitalize */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-medium text-zinc-200 block">
+                      Auto-Capitalize Sentences
+                    </label>
+                    <p className="text-[11px] text-zinc-400">
+                      Automatically capitalize the start of sentences and proper pronouns ("I", "I'm")
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({
+                        ...formData,
+                        speechAutoCapitalize: formData.speechAutoCapitalize !== false ? false : true,
+                      })
+                    }
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      formData.speechAutoCapitalize !== false ? 'bg-emerald-600' : 'bg-zinc-800'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        formData.speechAutoCapitalize !== false ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Auto-Send on Pause */}
+                <div className="flex items-center justify-between pt-3 border-t border-zinc-800/60">
+                  <div>
+                    <label className="text-xs font-medium text-zinc-200 block">
+                      Auto-Send on Speech Pause
+                    </label>
+                    <p className="text-[11px] text-zinc-400">
+                      Automatically dispatch the message after a period of conversational silence
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({
+                        ...formData,
+                        speechAutoSend: !formData.speechAutoSend,
+                      })
+                    }
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      formData.speechAutoSend ? 'bg-emerald-600' : 'bg-zinc-800'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        formData.speechAutoSend ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Pause Timeout Slider */}
+                {formData.speechAutoSend && (
+                  <div className="pt-3 border-t border-zinc-800/60 space-y-2 animate-in fade-in">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-zinc-200">Silence Pause Duration</span>
+                      <span className="font-mono text-emerald-400 font-semibold">
+                        {((formData.speechPauseTimeout || 2000) / 1000).toFixed(1)}s
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1000}
+                      max={4000}
+                      step={250}
+                      value={formData.speechPauseTimeout || 2000}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          speechPauseTimeout: parseInt(e.target.value, 10),
+                        })
+                      }
+                      className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                    />
+                    <div className="flex justify-between text-[10px] text-zinc-500 font-mono">
+                      <span>1.0s (Fast)</span>
+                      <span>2.0s (Recommended)</span>
+                      <span>4.0s (Relaxed)</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
