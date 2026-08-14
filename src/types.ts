@@ -42,6 +42,9 @@ export interface Conversation {
 
 export interface ElaraSettings {
   systemPrompt: string;
+  personaProtocol: string;
+  intimacyModule: string;
+  runtimeRules: string;
   userName: string;
   model: string;
   temperature: number;

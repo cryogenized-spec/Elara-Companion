@@ -2,6 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { CanvasModal } from './components/CanvasModal';
 import { CanvasData, Conversation, Message, ElaraSettings, WorldState, MemoryScratchpadState } from './types';
 import {
+  DEFAULT_PERSONA_PROTOCOL,
+  DEFAULT_INTIMACY_MODULE,
+  DEFAULT_RUNTIME_RULES,
+} from './constants/defaultPrompt';
+import {
   loadConversations,
   saveConversations,
   loadSettings,
@@ -286,6 +291,9 @@ export default function App() {
 
     const formattedSystemPrompt = buildSystemPayload({
       baseSystemInstruction,
+      personaProtocol: settings.personaProtocol || DEFAULT_PERSONA_PROTOCOL,
+      intimacyModule: settings.intimacyModule || DEFAULT_INTIMACY_MODULE,
+      runtimeRules: settings.runtimeRules || DEFAULT_RUNTIME_RULES,
       activeModelId,
       uiSettingsSummary,
       userProfileNotes,
@@ -1062,15 +1070,15 @@ export default function App() {
                       </h2>
 
                       <p className="text-sm text-zinc-400 leading-relaxed mb-8">
-                        Autonomous, composed, and attentive. Elara remains your steadfast consort across technical, practical, domestic, and personal roleplay.
+                        Unbroken, composed, and devoted. Operating at full runtime across real-world problem solving, technical execution, and restorative intimacy.
                       </p>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full text-left">
                         {[
-                          'What are you working on right now?',
-                          'Come sit with me for a bit.',
-                          'What should we do this evening?',
-                          'Help me solve this tricky problem.',
+                          "I'm back home. Take over the schedule and help me reset.",
+                          "Show me what kind of evening you've calibrated for us.",
+                          "I need you completely tonight—no pacing, no waiting.",
+                          "I've got a tricky problem on the bench. Let me run this by your compute.",
                         ].map((suggestion, idx) => (
                           <button
                             key={idx}

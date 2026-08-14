@@ -1,5 +1,10 @@
 import { Conversation, ElaraSettings } from '../types';
-import { DEFAULT_ELARA_SYSTEM_PROMPT } from '../constants/defaultPrompt';
+import { 
+  DEFAULT_ELARA_SYSTEM_PROMPT,
+  DEFAULT_PERSONA_PROTOCOL,
+  DEFAULT_INTIMACY_MODULE,
+  DEFAULT_RUNTIME_RULES
+} from '../constants/defaultPrompt';
 
 const CONVERSATIONS_STORAGE_KEY = 'elara_conversations_v1';
 const SETTINGS_STORAGE_KEY = 'elara_settings_v1';
@@ -28,6 +33,9 @@ export function saveCustomPortrait(base64Img: string | null): void {
 
 export const DEFAULT_SETTINGS: ElaraSettings = {
   systemPrompt: DEFAULT_ELARA_SYSTEM_PROMPT,
+  personaProtocol: DEFAULT_PERSONA_PROTOCOL,
+  intimacyModule: DEFAULT_INTIMACY_MODULE,
+  runtimeRules: DEFAULT_RUNTIME_RULES,
   userName: 'User',
   model: 'gemini-3.7-flash',
   temperature: 0.85,

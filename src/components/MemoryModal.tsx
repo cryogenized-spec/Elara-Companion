@@ -7,6 +7,7 @@ import {
   MemoryImportance,
 } from '../types';
 import {
+  ArrowLeft,
   BookOpen,
   Search,
   Plus,
@@ -346,48 +347,69 @@ export const MemoryModal: React.FC<MemoryModalProps> = ({
       <div className="relative w-full max-w-5xl h-[92vh] flex flex-col rounded-2xl bg-zinc-950 border border-zinc-800/80 shadow-2xl overflow-hidden text-zinc-100">
         
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/60">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
-              <BookOpen className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight text-zinc-100 flex items-center gap-2">
-                Elara's Long-Term Memory Scratchpad
-                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono">
-                  {memoryState.memories.length} notes
-                </span>
-              </h2>
-              <p className="text-xs text-zinc-400">
-                Persistent, evolving notebook of observations, recollections, preferences, and shared landmarks.
-              </p>
-            </div>
+        <div className="flex flex-col px-4 sm:px-6 py-4 border-b border-zinc-800 bg-zinc-900/60 gap-4 shrink-0">
+          
+          {/* Mobile Top Navigation */}
+          <div className="flex sm:hidden items-center justify-between pb-2 mb-1 border-b border-zinc-800/50">
+            <button
+              onClick={onClose}
+              className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200 transition-colors text-xs font-medium"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </button>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono">
+              {memoryState.memories.length} notes
+            </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="hidden sm:flex p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 shrink-0">
+                <BookOpen className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-base sm:text-lg font-semibold tracking-tight text-zinc-100 flex flex-wrap items-center gap-2 leading-tight">
+                  <BookOpen className="w-4 h-4 text-amber-400 sm:hidden shrink-0" />
+                  <span className="truncate">Elara's Long-Term Memory</span>
+                  <span className="hidden sm:inline-block text-xs px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono whitespace-nowrap">
+                    {memoryState.memories.length} notes
+                  </span>
+                </h2>
+                <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed line-clamp-2 sm:line-clamp-none">
+                  Persistent, evolving notebook of observations, recollections, preferences, and shared landmarks.
+                </p>
+              </div>
+            </div>
+
+            {/* Desktop Close Button */}
+            <button
+              onClick={onClose}
+              className="hidden sm:flex p-2 rounded-xl text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 transition-colors shrink-0"
+              title="Close window"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Actions Row */}
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <button
               onClick={handleRunMaintenance}
               disabled={isMaintaining}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-950/60 hover:bg-purple-900/80 text-purple-300 border border-purple-800/60 text-xs font-medium transition-colors disabled:opacity-50"
+              className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-xl bg-purple-950/60 hover:bg-purple-900/80 text-purple-300 border border-purple-800/60 text-xs font-medium transition-colors disabled:opacity-50"
               title="Run AI Deduplication and Maintenance check"
             >
               <Sparkles className={`w-3.5 h-3.5 ${isMaintaining ? 'animate-spin' : ''}`} />
-              <span>{isMaintaining ? 'Auditing...' : 'Audit & Maintenance'}</span>
+              <span className="whitespace-nowrap">{isMaintaining ? 'Auditing...' : 'Audit & Maintenance'}</span>
             </button>
 
             <button
               onClick={handleOpenAdd}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-medium text-xs transition-colors shadow-sm"
+              className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-medium text-xs transition-colors shadow-sm"
             >
               <Plus className="w-4 h-4" />
-              <span>Add Memory Note</span>
-            </button>
-
-            <button
-              onClick={onClose}
-              className="p-2 rounded-xl text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 transition-colors"
-            >
-              <X className="w-5 h-5" />
+              <span className="whitespace-nowrap">Add Memory Note</span>
             </button>
           </div>
         </div>

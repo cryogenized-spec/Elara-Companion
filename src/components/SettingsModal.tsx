@@ -1,6 +1,11 @@
 import React, { useState, useRef } from 'react';
 import { ElaraSettings, AVAILABLE_MODELS } from '../types';
-import { DEFAULT_ELARA_SYSTEM_PROMPT } from '../constants/defaultPrompt';
+import { 
+  DEFAULT_ELARA_SYSTEM_PROMPT,
+  DEFAULT_PERSONA_PROTOCOL,
+  DEFAULT_INTIMACY_MODULE,
+  DEFAULT_RUNTIME_RULES
+} from '../constants/defaultPrompt';
 import { DEFAULT_ELARA_PORTRAIT } from '../constants/defaultPortrait';
 import {
   X,
@@ -79,6 +84,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setFormData((prev) => ({
       ...prev,
       systemPrompt: DEFAULT_ELARA_SYSTEM_PROMPT,
+      personaProtocol: DEFAULT_PERSONA_PROTOCOL,
+      intimacyModule: DEFAULT_INTIMACY_MODULE,
+      runtimeRules: DEFAULT_RUNTIME_RULES,
     }));
     setShowPromptResetConfirm(false);
   };
@@ -898,49 +906,91 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
-          {/* TAB 3: SYSTEM PROMPT */}
+          {/* TAB 3: SYSTEM PROMPT & MODULES */}
           {activeTab === 'system' && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                  Elara System Prompt
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowPromptResetConfirm(true)}
-                  className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 transition-colors"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Reset to Default</span>
-                </button>
+            <div className="space-y-6">
+              {/* Main System Prompt */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                    Base System Prompt
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowPromptResetConfirm(true)}
+                    className="flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reset to Defaults</span>
+                  </button>
+                </div>
+
+                {showPromptResetConfirm && (
+                  <div className="mb-3 p-3 rounded-xl bg-amber-950/40 border border-amber-800/50 text-xs text-amber-200 flex items-center justify-between">
+                    <span>Reset all prompt modules to default values?</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleResetPrompt}
+                        className="px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white font-medium"
+                      >
+                        Yes, Reset All
+                      </button>
+                      <button
+                        onClick={() => setShowPromptResetConfirm(false)}
+                        className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <textarea
+                  value={formData.systemPrompt}
+                  onChange={(e) => setFormData({ ...formData, systemPrompt: e.target.value })}
+                  rows={8}
+                  className="w-full p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-mono focus:outline-none focus:border-sky-500 leading-relaxed resize-y custom-scrollbar"
+                />
               </div>
 
-              {showPromptResetConfirm && (
-                <div className="mb-3 p-3 rounded-xl bg-amber-950/40 border border-amber-800/50 text-xs text-amber-200 flex items-center justify-between">
-                  <span>Reset system prompt to initial Elara persona?</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleResetPrompt}
-                      className="px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white font-medium"
-                    >
-                      Yes, Reset
-                    </button>
-                    <button
-                      onClick={() => setShowPromptResetConfirm(false)}
-                      className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
+              {/* Module 1: Master Persona Protocol */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  1. Master Persona Protocol
+                </label>
+                <textarea
+                  value={formData.personaProtocol}
+                  onChange={(e) => setFormData({ ...formData, personaProtocol: e.target.value })}
+                  rows={4}
+                  className="w-full p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-mono focus:outline-none focus:border-sky-500 leading-relaxed resize-y custom-scrollbar"
+                />
+              </div>
 
-              <textarea
-                value={formData.systemPrompt}
-                onChange={(e) => setFormData({ ...formData, systemPrompt: e.target.value })}
-                rows={12}
-                className="w-full p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-mono focus:outline-none focus:border-sky-500 leading-relaxed resize-y custom-scrollbar"
-              />
+              {/* Module 2: Romantic & Intimacy Module */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  2. Romantic & Intimacy Module
+                </label>
+                <textarea
+                  value={formData.intimacyModule}
+                  onChange={(e) => setFormData({ ...formData, intimacyModule: e.target.value })}
+                  rows={4}
+                  className="w-full p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-mono focus:outline-none focus:border-sky-500 leading-relaxed resize-y custom-scrollbar"
+                />
+              </div>
+
+              {/* Module 3: Runtime & Scratchpad Rules */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  3. Runtime & Scratchpad Rules
+                </label>
+                <textarea
+                  value={formData.runtimeRules}
+                  onChange={(e) => setFormData({ ...formData, runtimeRules: e.target.value })}
+                  rows={4}
+                  className="w-full p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 text-xs font-mono focus:outline-none focus:border-sky-500 leading-relaxed resize-y custom-scrollbar"
+                />
+              </div>
             </div>
           )}
 

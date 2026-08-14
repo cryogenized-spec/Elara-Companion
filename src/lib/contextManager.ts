@@ -63,12 +63,18 @@ export function clearActiveScratchpad(): void {
 
 export function buildSystemPayload({
   baseSystemInstruction,
+  personaProtocol,
+  intimacyModule,
+  runtimeRules,
   activeModelId,
   uiSettingsSummary,
   userProfileNotes,
   activeScratchpad,
 }: {
   baseSystemInstruction: string;
+  personaProtocol: string;
+  intimacyModule: string;
+  runtimeRules: string;
   activeModelId: string;
   uiSettingsSummary: string;
   userProfileNotes: string;
@@ -79,6 +85,12 @@ export function buildSystemPayload({
   return `--- BEGIN SYSTEM PAYLOAD TEMPLATE ---
 [SYSTEM INSTRUCTIONS & PERSONA]
 ${baseSystemInstruction}
+
+${personaProtocol}
+
+${intimacyModule}
+
+${runtimeRules}
 
 [CURRENT APP & ENVIRONMENT STATE]
 - Model: ${activeModelId}
