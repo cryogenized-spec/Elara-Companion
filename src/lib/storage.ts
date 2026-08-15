@@ -52,6 +52,7 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
   fontSize: 14,
   textBackground: 'slate',
   thinkingBudget: 4096,
+  sendOnEnter: false,
   speechLanguage: 'en-US',
   speechAutoSend: false,
   speechAutoCapitalize: true,

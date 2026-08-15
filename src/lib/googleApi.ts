@@ -12,9 +12,13 @@ const SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/contacts.readonly',
-  'https://www.googleapis.com/auth/chat.messages',
   'https://www.googleapis.com/auth/chat.spaces',
   'https://www.googleapis.com/auth/chat.spaces.readonly',
+  'https://www.googleapis.com/auth/chat.spaces.create',
+  'https://www.googleapis.com/auth/chat.messages',
+  'https://www.googleapis.com/auth/chat.messages.readonly',
+  'https://www.googleapis.com/auth/chat.messages.create',
+  'https://www.googleapis.com/auth/chat.memberships.readonly',
 ].join(' ');
 
 const DEFAULT_CLIENT_ID = '988991302383-rj8vah445mk9r991k10pc4knk2omk2p4.apps.googleusercontent.com';
@@ -931,6 +935,32 @@ export async function searchKeepNotes(query: string): Promise<{ notes: KeepNoteI
   return { notes: filtered };
 }
 
+export async function listKeepNotes(): Promise<{ notes: KeepNoteItem[] }> {
+  const notes = loadLocalKeepArchive();
+  return { notes };
+}
+
+export async function updateKeepNote(id: string, updates: Partial<KeepNoteItem>): Promise<KeepNoteItem | null> {
+  const current = loadLocalKeepArchive();
+  const idx = current.findIndex((n) => n.id === id);
+  if (idx === -1) return null;
+  const updated: KeepNoteItem = {
+    ...current[idx],
+    ...updates,
+    updatedAt: new Date().toISOString(),
+  };
+  current[idx] = updated;
+  saveLocalKeepArchive(current);
+  return updated;
+}
+
+export async function deleteKeepNote(id: string): Promise<boolean> {
+  const current = loadLocalKeepArchive();
+  const filtered = current.filter((n) => n.id !== id);
+  saveLocalKeepArchive(filtered);
+  return true;
+}
+
 // ----------------------------------------------------
 // Google Chat API & Webhooks Engine
 // ----------------------------------------------------
@@ -950,6 +980,7 @@ export interface ChatMessageResult {
   thread?: { name: string };
   space?: { name: string };
   createTime?: string;
+  sender?: string;
 }
 
 export interface SpaceWebhookConfig {
@@ -1174,6 +1205,92 @@ export async function listChatSpaces(pageSize = 30): Promise<{ spaces: ChatSpace
   }));
 
   return { spaces };
+}
+
+export async function createChatSpace(
+  displayName: string,
+  spaceType: 'SPACE' | 'GROUP_CHAT' = 'SPACE'
+): Promise<ChatSpace> {
+  const token = await requestGoogleAuth();
+
+  const res = await fetch('https://chat.googleapis.com/v1/spaces', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      displayName,
+      spaceType,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseGoogleApiError(res, 'Failed to create Google Chat space'));
+  }
+
+  const data = await res.json();
+  return {
+    name: data.name,
+    displayName: data.displayName || displayName,
+    type: data.type || data.spaceType || spaceType,
+    spaceType: data.spaceType || spaceType,
+  };
+}
+
+export async function getChatSpace(spaceName: string): Promise<ChatSpace> {
+  const token = await requestGoogleAuth();
+  const cleanSpace = spaceName.startsWith('spaces/') ? spaceName : `spaces/${spaceName}`;
+
+  const res = await fetch(`https://chat.googleapis.com/v1/${cleanSpace}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseGoogleApiError(res, 'Failed to fetch Google Chat space'));
+  }
+
+  const data = await res.json();
+  return {
+    name: data.name,
+    displayName: data.displayName || 'Space',
+    type: data.type || data.spaceType || 'SPACE',
+    spaceType: data.spaceType || data.type,
+    spaceThreadingState: data.spaceThreadingState,
+  };
+}
+
+export async function listChatMessages(
+  spaceName: string,
+  pageSize = 20
+): Promise<{ messages: ChatMessageResult[] }> {
+  const token = await requestGoogleAuth();
+  const cleanSpace = spaceName.startsWith('spaces/') ? spaceName : `spaces/${spaceName}`;
+
+  const res = await fetch(`https://chat.googleapis.com/v1/${cleanSpace}/messages?pageSize=${pageSize}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseGoogleApiError(res, 'Failed to list Google Chat space messages'));
+  }
+
+  const data = await res.json();
+  const raw = data.messages || [];
+  const messages: ChatMessageResult[] = raw.map((m: any) => ({
+    name: m.name,
+    text: m.text || (m.cardsV2 ? '[Interactive Card]' : ''),
+    thread: m.thread,
+    space: m.space,
+    createTime: m.createTime,
+    sender: m.sender?.displayName || m.sender?.name || 'User',
+  }));
+
+  return { messages };
 }
 
 export async function sendChatMessage(
@@ -1539,6 +1656,43 @@ export async function executeWorkspaceTool(toolName: string, args: any = {}): Pr
         };
       }
 
+      case 'list_keep_notes': {
+        const result = await listKeepNotes();
+        return {
+          status: 'success',
+          count: result.notes.length,
+          notes: result.notes,
+        };
+      }
+
+      case 'update_keep_note': {
+        const { noteId, title, content, tags } = args;
+        if (!noteId) {
+          return { status: 'error', message: 'Missing noteId' };
+        }
+        const updated = await updateKeepNote(noteId, { title, content, tags });
+        if (!updated) {
+          return { status: 'error', message: `Note with id "${noteId}" not found.` };
+        }
+        return {
+          status: 'success',
+          message: `Updated note: ${updated.title}`,
+          note: updated,
+        };
+      }
+
+      case 'delete_keep_note': {
+        const { noteId } = args;
+        if (!noteId) {
+          return { status: 'error', message: 'Missing noteId' };
+        }
+        await deleteKeepNote(noteId);
+        return {
+          status: 'success',
+          message: `Deleted Keep archive note: ${noteId}`,
+        };
+      }
+
       case 'list_chat_spaces': {
         const result = await listChatSpaces(args?.pageSize || 20);
         return {
@@ -1550,6 +1704,32 @@ export async function executeWorkspaceTool(toolName: string, args: any = {}): Pr
             type: s.type,
             spaceType: s.spaceType,
           })),
+        };
+      }
+
+      case 'create_chat_space': {
+        const { displayName, spaceType } = args;
+        if (!displayName) {
+          return { status: 'error', message: 'Missing displayName for Google Chat space' };
+        }
+        const created = await createChatSpace(displayName, spaceType || 'SPACE');
+        return {
+          status: 'success',
+          message: `Created Google Chat Space: "${created.displayName}" (${created.name})`,
+          space: created,
+        };
+      }
+
+      case 'list_chat_messages': {
+        const { spaceName, pageSize } = args;
+        if (!spaceName) {
+          return { status: 'error', message: 'Missing spaceName' };
+        }
+        const result = await listChatMessages(spaceName, pageSize || 20);
+        return {
+          status: 'success',
+          count: result.messages.length,
+          messages: result.messages,
         };
       }
 
@@ -1987,6 +2167,55 @@ export const WORKSPACE_FUNCTION_DECLARATIONS = [
     },
   },
   {
+    name: 'list_keep_notes',
+    description: 'List all stored Keep archive notes and research specs.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {},
+    },
+  },
+  {
+    name: 'update_keep_note',
+    description: 'Update the title, content, or tags of an existing Keep archive note.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        noteId: {
+          type: 'STRING',
+          description: 'The unique ID of the note to update.',
+        },
+        title: {
+          type: 'STRING',
+          description: 'New title for the note.',
+        },
+        content: {
+          type: 'STRING',
+          description: 'New text content for the note.',
+        },
+        tags: {
+          type: 'ARRAY',
+          items: { type: 'STRING' },
+          description: 'Updated tags for categorization.',
+        },
+      },
+      required: ['noteId'],
+    },
+  },
+  {
+    name: 'delete_keep_note',
+    description: 'Delete a note from the Keep archive.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        noteId: {
+          type: 'STRING',
+          description: 'The unique ID of the note to delete.',
+        },
+      },
+      required: ['noteId'],
+    },
+  },
+  {
     name: 'list_chat_spaces',
     description: "List the user's available Google Chat Spaces and 1-on-1 Direct Message channels.",
     parameters: {
@@ -1997,6 +2226,42 @@ export const WORKSPACE_FUNCTION_DECLARATIONS = [
           description: 'Maximum number of spaces to return (default 20).',
         },
       },
+    },
+  },
+  {
+    name: 'create_chat_space',
+    description: 'Create a new Google Chat Space for group collaboration or project topic threads.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        displayName: {
+          type: 'STRING',
+          description: 'The display name for the new Chat Space.',
+        },
+        spaceType: {
+          type: 'STRING',
+          description: 'The type of space: "SPACE" (default) or "GROUP_CHAT".',
+        },
+      },
+      required: ['displayName'],
+    },
+  },
+  {
+    name: 'list_chat_messages',
+    description: 'List recent chat messages from a specific Google Chat space or 1-on-1 DM channel.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        spaceName: {
+          type: 'STRING',
+          description: 'The resource name of the space (e.g. "spaces/AAAAAAAAAAA").',
+        },
+        pageSize: {
+          type: 'INTEGER',
+          description: 'Number of recent messages to retrieve (default 20).',
+        },
+      },
+      required: ['spaceName'],
     },
   },
   {

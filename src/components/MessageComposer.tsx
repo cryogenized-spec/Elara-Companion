@@ -150,9 +150,17 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   }, [isMenuOpen]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+    const sendOnEnter = settings?.sendOnEnter ?? false;
+    if (sendOnEnter) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    } else {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        handleSend();
+      }
     }
   };
 
@@ -443,7 +451,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             {/* Left Tools / Status */}
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-zinc-500 font-mono hidden sm:inline">
-                Shift + Enter for new line
+                {(settings?.sendOnEnter ?? false) ? 'Enter to send • Shift+Enter newline' : 'Enter for newline • Click Send'}
               </span>
               {autoSendEnabled && !isListening && (
                 <span className="text-[10px] text-emerald-400/90 font-medium flex items-center gap-1 bg-emerald-950/40 border border-emerald-800/30 px-1.5 py-0.5 rounded-md">
@@ -552,7 +560,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                   onClick={handleSend}
                   disabled={(!input.trim() && !attachedImage) || disabled}
                   className="bg-sky-600 hover:bg-sky-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white p-2 rounded-xl transition-all shadow-lg shadow-sky-900/20 cursor-pointer"
-                  title="Send message (Enter)"
+                  title={(settings?.sendOnEnter ?? false) ? 'Send message (Enter)' : 'Send message (Click or Ctrl+Enter)'}
                 >
                   <Send className="w-4 h-4" />
                 </button>

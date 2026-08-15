@@ -61,11 +61,15 @@ import {
   searchContacts,
   searchKeepNotes,
   createKeepNote,
+  deleteKeepNote,
+  listKeepNotes,
   createGoogleSheet,
   listGmailMessages,
   sendGmailMessage,
   createGmailDraft,
   listChatSpaces,
+  createChatSpace,
+  listChatMessages,
   sendChatMessage,
   sendChatCardMessage,
   postChatWebhook,
@@ -81,6 +85,7 @@ import {
   KeepNoteItem,
   GmailMessageSummary,
   ChatSpace,
+  ChatMessageResult,
   SpaceWebhookConfig,
 } from '../lib/googleApi';
 
@@ -188,6 +193,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isKeepLoading, setIsKeepLoading] = useState(false);
   const [newKeepTitle, setNewKeepTitle] = useState('');
   const [newKeepContent, setNewKeepContent] = useState('');
+  const [keepSearchQuery, setKeepSearchQuery] = useState('');
 
   // Gmail Inbox & Messaging State
   const [isGmailSyncing, setIsGmailSyncing] = useState(false);
@@ -203,6 +209,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [chatSpaces, setChatSpaces] = useState<ChatSpace[]>([]);
   const [isChatSpacesLoading, setIsChatSpacesLoading] = useState(false);
   const [chatSpacesError, setChatSpacesError] = useState<string | null>(null);
+  const [newSpaceDisplayName, setNewSpaceDisplayName] = useState('');
+  const [newSpaceType, setNewSpaceType] = useState<'SPACE' | 'GROUP_CHAT'>('SPACE');
+  const [isCreatingSpace, setIsCreatingSpace] = useState(false);
+  const [createSpaceStatus, setCreateSpaceStatus] = useState<string | null>(null);
+  const [spaceMessages, setSpaceMessages] = useState<ChatMessageResult[]>([]);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [messagesSpaceName, setMessagesSpaceName] = useState<string | null>(null);
   const [spaceWebhooks, setSpaceWebhooks] = useState<SpaceWebhookConfig[]>([]);
   const [newWebhookName, setNewWebhookName] = useState('');
   const [newWebhookUrl, setNewWebhookUrl] = useState('');
@@ -352,10 +365,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  const handleLoadKeepNotes = async () => {
+  const handleLoadKeepNotes = async (query = '') => {
     setIsKeepLoading(true);
     try {
-      const res = await searchKeepNotes('');
+      const res = await searchKeepNotes(query);
       setKeepNotesList(res.notes);
     } catch (err) {
       console.warn('Failed to load Keep notes:', err);
@@ -373,6 +386,48 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setNewKeepContent('');
     } catch (err) {
       console.warn('Failed to create keep note:', err);
+    }
+  };
+
+  const handleDeleteKeepNoteItem = async (id: string) => {
+    try {
+      await deleteKeepNote(id);
+      setKeepNotesList((prev) => prev.filter((n) => n.id !== id));
+    } catch (err) {
+      console.warn('Failed to delete keep note:', err);
+    }
+  };
+
+  const handleCreateChatSpace = async () => {
+    if (!newSpaceDisplayName.trim()) return;
+    setIsCreatingSpace(true);
+    setCreateSpaceStatus(null);
+    try {
+      const created = await createChatSpace(newSpaceDisplayName.trim(), newSpaceType);
+      setChatSpaces((prev) => [created, ...prev]);
+      setSelectedTarget(created.name);
+      setCreateSpaceStatus(`✓ Created Space: "${created.displayName}"`);
+      setNewSpaceDisplayName('');
+      setTimeout(() => setCreateSpaceStatus(null), 4000);
+    } catch (err: any) {
+      setCreateSpaceStatus('❌ Error: ' + (err.message || 'Failed to create space'));
+    } finally {
+      setIsCreatingSpace(false);
+    }
+  };
+
+  const handleLoadSpaceMessages = async (spaceName: string) => {
+    if (!spaceName) return;
+    setIsLoadingMessages(true);
+    setMessagesSpaceName(spaceName);
+    try {
+      const res = await listChatMessages(spaceName, 20);
+      setSpaceMessages(res.messages);
+    } catch (err: any) {
+      console.warn('Failed to fetch space messages:', err);
+      setSpaceMessages([]);
+    } finally {
+      setIsLoadingMessages(false);
     }
   };
 
@@ -1109,6 +1164,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* Keyboard & Composer Input Controls */}
+              <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 space-y-4">
+                <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+                  <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
+                      <Sliders className="w-4 h-4 text-sky-400" />
+                      <span>Keyboard & Mobile Input Controls</span>
+                    </h3>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Configure message dispatch behavior for touch keyboards and physical input.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-3.5 rounded-xl bg-zinc-950/60 border border-zinc-800">
+                  <div className="space-y-0.5 pr-4">
+                    <p className="text-xs font-medium text-zinc-200">Send message on Enter key</p>
+                    <p className="text-[11px] text-zinc-500 leading-relaxed">
+                      When turned off (recommended for mobile keyboards), pressing Enter creates a newline, and messages are sent using the Send button or Ctrl/Cmd+Enter.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, sendOnEnter: !formData.sendOnEnter })}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      formData.sendOnEnter ? 'bg-sky-600' : 'bg-zinc-800'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        formData.sendOnEnter ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
                 </div>
               </div>
             </div>
@@ -2011,20 +2103,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="flex items-center gap-2.5">
                     <Bookmark className="w-4 h-4 text-amber-400" />
                     <div>
-                      <h4 className="text-xs font-semibold text-zinc-200">Google Keep & Reference Archive</h4>
-                      <p className="text-[11px] text-zinc-400">Passive reference notes, research specs & archival quotes (distinct from tasks)</p>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-semibold text-zinc-200">Google Keep & Reference Archive</h4>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-950/60 text-amber-300 border border-amber-800/40">
+                          Active Sync
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400">Passive reference notes, research specs & archival quotes</p>
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleLoadKeepNotes}
-                    disabled={isKeepLoading}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-all shadow-sm"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isKeepLoading ? 'animate-spin' : ''}`} />
-                    <span>Refresh Archive</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleLoadKeepNotes(keepSearchQuery)}
+                      disabled={isKeepLoading}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-all shadow-sm"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isKeepLoading ? 'animate-spin' : ''}`} />
+                      <span>Refresh</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Search & Filter */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Search notes in archive..."
+                    value={keepSearchQuery}
+                    onChange={(e) => {
+                      setKeepSearchQuery(e.target.value);
+                      handleLoadKeepNotes(e.target.value);
+                    }}
+                    className="w-full px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                  />
                 </div>
 
                 <div className="space-y-2 pt-2 border-t border-zinc-800/60">
@@ -2050,22 +2163,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     disabled={!newKeepTitle.trim() && !newKeepContent.trim()}
                     className="w-full py-1.5 rounded-lg bg-amber-600/90 hover:bg-amber-500 text-white text-xs font-medium transition-colors disabled:opacity-50"
                   >
-                    + Save to Passive Reference Archive
+                    + Save to Reference Archive
                   </button>
                 </div>
 
                 {keepNotesList.length > 0 && (
-                  <div className="max-h-48 overflow-y-auto space-y-1.5 custom-scrollbar pr-1 pt-1">
+                  <div className="max-h-56 overflow-y-auto space-y-2 custom-scrollbar pr-1 pt-1">
                     {keepNotesList.map((n) => (
                       <div
                         key={n.id}
-                        className="p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 text-xs space-y-1"
+                        className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800/80 text-xs space-y-1.5 group"
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-amber-300">{n.title}</span>
-                          <span className="text-[10px] text-zinc-500 font-mono">
-                            {new Date(n.updatedAt).toLocaleDateString()}
-                          </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="font-semibold text-amber-300 truncate">{n.title}</span>
+                            {n.tags && n.tags.map((tag) => (
+                              <span key={tag} className="px-1.5 py-0.5 rounded text-[9px] bg-zinc-900 text-zinc-400 border border-zinc-800">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {n.url && (
+                              <a
+                                href={n.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[10px] text-amber-400 hover:underline flex items-center gap-1"
+                              >
+                                <span>Doc Link</span>
+                                <ExternalLink className="w-2.5 h-2.5" />
+                              </a>
+                            )}
+                            <span className="text-[10px] text-zinc-500 font-mono">
+                              {new Date(n.updatedAt).toLocaleDateString()}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteKeepNoteItem(n.id)}
+                              className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-red-950/30 transition-colors"
+                              title="Delete note"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
                         </div>
                         <p className="text-zinc-300 text-[11px] whitespace-pre-wrap">{n.content}</p>
                       </div>
@@ -2089,7 +2230,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </span>
                       </div>
                       <p className="text-[11px] text-zinc-400">
-                        1-on-1 Direct Messaging, Workspace Space Webhooks, interactive CardV2 approvals & proactive push briefings
+                        1-on-1 Direct Messaging, Workspace Spaces, interactive CardV2 approvals & proactive push briefings
                       </p>
                     </div>
                   </div>
@@ -2140,7 +2281,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </p>
                 </div>
 
-                {/* Sub-Card B: Discovered Google Chat Spaces & DMs */}
+                {/* Sub-Card B: Create Space & Discovered Google Chat Spaces */}
+                <div className="space-y-3 pt-2 border-t border-zinc-800/60">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-300">
+                      Create Space / Channel
+                    </span>
+                    {createSpaceStatus && (
+                      <span className={`text-[11px] ${createSpaceStatus.startsWith('✓') ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {createSpaceStatus}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Space Display Name (e.g. Project Operations)..."
+                      value={newSpaceDisplayName}
+                      onChange={(e) => setNewSpaceDisplayName(e.target.value)}
+                      className="flex-1 min-w-[200px] px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500"
+                    />
+                    <select
+                      value={newSpaceType}
+                      onChange={(e) => setNewSpaceType(e.target.value as any)}
+                      className="px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="SPACE">Named Space</option>
+                      <option value="GROUP_CHAT">Group Chat</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleCreateChatSpace}
+                      disabled={!newSpaceDisplayName.trim() || isCreatingSpace}
+                      className="px-3.5 py-1.5 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-medium transition-all disabled:opacity-50"
+                    >
+                      {isCreatingSpace ? 'Creating...' : '+ Create Space'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Discovered Google Chat Spaces & DMs */}
                 {chatSpaces.length > 0 && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
@@ -2148,11 +2328,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         Discovered Google Chat Spaces & Channels ({chatSpaces.length})
                       </span>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto custom-scrollbar">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto custom-scrollbar">
                       {chatSpaces.map((sp) => (
                         <div
                           key={sp.name}
-                          onClick={() => setSelectedTarget(sp.name)}
+                          onClick={() => {
+                            setSelectedTarget(sp.name);
+                            handleLoadSpaceMessages(sp.name);
+                          }}
                           className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all flex items-center justify-between ${
                             selectedTarget === sp.name
                               ? 'bg-emerald-950/40 border-emerald-500/80 text-emerald-200'
@@ -2163,12 +2346,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <div className="font-medium truncate">{sp.displayName || 'Direct Message'}</div>
                             <div className="text-[10px] text-zinc-500 font-mono truncate">{sp.name}</div>
                           </div>
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0 bg-zinc-900 border border-zinc-700 text-zinc-400">
-                            {sp.spaceType || sp.type || 'SPACE'}
-                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-900 border border-zinc-700 text-zinc-400">
+                              {sp.spaceType || sp.type || 'SPACE'}
+                            </span>
+                          </div>
                         </div>
                       ))}
                     </div>
+
+                    {/* Messages viewer for selected space */}
+                    {selectedTarget && selectedTarget.startsWith('spaces/') && (
+                      <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800 space-y-2 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-emerald-300">
+                            Recent Messages ({messagesSpaceName === selectedTarget ? spaceMessages.length : 0})
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleLoadSpaceMessages(selectedTarget)}
+                            disabled={isLoadingMessages}
+                            className="text-[11px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1"
+                          >
+                            <RefreshCw className={`w-3 h-3 ${isLoadingMessages ? 'animate-spin' : ''}`} />
+                            <span>{isLoadingMessages ? 'Loading...' : 'Fetch Messages'}</span>
+                          </button>
+                        </div>
+
+                        {spaceMessages.length > 0 ? (
+                          <div className="max-h-36 overflow-y-auto space-y-1.5 custom-scrollbar pr-1">
+                            {spaceMessages.map((msg) => (
+                              <div key={msg.name} className="p-2 rounded-lg bg-zinc-900/80 border border-zinc-800 text-[11px] space-y-0.5">
+                                <div className="flex items-center justify-between text-zinc-400 text-[10px]">
+                                  <span className="font-semibold text-zinc-300">{msg.sender}</span>
+                                  {msg.createTime && (
+                                    <span>{new Date(msg.createTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                  )}
+                                </div>
+                                <p className="text-zinc-200">{msg.text}</p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-zinc-500 italic">No recent messages loaded. Click Fetch Messages to read.</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 

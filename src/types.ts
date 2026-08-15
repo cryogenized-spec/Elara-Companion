@@ -68,6 +68,7 @@ export interface ElaraSettings {
   fontSize?: number;
   textBackground?: 'slate' | 'deep-onyx' | 'midnight-blue' | 'cyber-violet' | 'emerald-terminal' | 'frosted-glass' | 'high-contrast';
   thinkingBudget?: number;
+  sendOnEnter?: boolean;
   apiKey?: string;
   customBackendUrl?: string;
   speechLanguage?: string;
