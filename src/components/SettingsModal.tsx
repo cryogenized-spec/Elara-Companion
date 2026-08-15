@@ -51,6 +51,8 @@ import {
   Share2,
   Copy,
   Save,
+  HelpCircle,
+  Info,
 } from 'lucide-react';
 import {
   getUpcomingCalendarEvents,
@@ -227,6 +229,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [testCardType, setTestCardType] = useState<'text' | 'task_approval' | 'draft_preview' | 'schedule_sweep' | 'system_alert'>('text');
   const [isDispatchingChat, setIsDispatchingChat] = useState(false);
   const [chatDispatchStatus, setChatDispatchStatus] = useState<string | null>(null);
+  const [showChatTroubleshooting, setShowChatTroubleshooting] = useState(false);
   const [isProactivePushing, setIsProactivePushing] = useState(false);
   const [proactivePushStatus, setProactivePushStatus] = useState<string | null>(null);
   const [copiedEndpoint, setCopiedEndpoint] = useState(false);
@@ -2325,34 +2328,72 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-zinc-300">
-                        Discovered Google Chat Spaces & Channels ({chatSpaces.length})
+                        Discovered Contacts, Spaces & DMs ({chatSpaces.length})
                       </span>
+                      <span className="text-[11px] text-zinc-500">Auto-resolved names</span>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto custom-scrollbar">
-                      {chatSpaces.map((sp) => (
-                        <div
-                          key={sp.name}
-                          onClick={() => {
-                            setSelectedTarget(sp.name);
-                            handleLoadSpaceMessages(sp.name);
-                          }}
-                          className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all flex items-center justify-between ${
-                            selectedTarget === sp.name
-                              ? 'bg-emerald-950/40 border-emerald-500/80 text-emerald-200'
-                              : 'bg-zinc-950/60 border-zinc-800/80 text-zinc-300 hover:border-zinc-700'
-                          }`}
-                        >
-                          <div className="truncate mr-2">
-                            <div className="font-medium truncate">{sp.displayName || 'Direct Message'}</div>
-                            <div className="text-[10px] text-zinc-500 font-mono truncate">{sp.name}</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto custom-scrollbar">
+                      {chatSpaces.map((sp) => {
+                        const isDm =
+                          sp.spaceType === 'DIRECT_MESSAGE' ||
+                          sp.type === 'DIRECT_MESSAGE' ||
+                          sp.type === 'DM' ||
+                          sp.singleUserBotDm;
+                        const isGroup = sp.spaceType === 'GROUP_CHAT' || sp.type === 'GROUP_CHAT';
+                        const label = sp.displayName || (isDm ? 'Direct Message' : isGroup ? 'Group Conversation' : 'Workspace Space');
+
+                        return (
+                          <div
+                            key={sp.name}
+                            onClick={() => {
+                              setSelectedTarget(sp.name);
+                              handleLoadSpaceMessages(sp.name);
+                            }}
+                            className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all flex items-center justify-between ${
+                              selectedTarget === sp.name
+                                ? 'bg-emerald-950/40 border-emerald-500/80 text-emerald-200'
+                                : 'bg-zinc-950/60 border-zinc-800/80 text-zinc-300 hover:border-zinc-700'
+                            }`}
+                          >
+                            <div className="truncate mr-2 flex items-center gap-2">
+                              <div
+                                className={`w-7 h-7 rounded-lg shrink-0 flex items-center justify-center text-xs font-semibold ${
+                                  isDm
+                                    ? 'bg-sky-950/80 text-sky-300 border border-sky-700/40'
+                                    : isGroup
+                                    ? 'bg-amber-950/80 text-amber-300 border border-amber-700/40'
+                                    : 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/40'
+                                }`}
+                              >
+                                {isDm ? (
+                                  <User className="w-3.5 h-3.5" />
+                                ) : isGroup ? (
+                                  <Users className="w-3.5 h-3.5" />
+                                ) : (
+                                  <MessageSquare className="w-3.5 h-3.5" />
+                                )}
+                              </div>
+                              <div className="truncate">
+                                <div className="font-semibold text-zinc-100 truncate text-[12px]">{label}</div>
+                                <div className="text-[10px] text-zinc-500 font-mono truncate">{sp.name}</div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
+                                  isDm
+                                    ? 'bg-sky-950/80 text-sky-300 border-sky-800/60'
+                                    : isGroup
+                                    ? 'bg-amber-950/80 text-amber-300 border-amber-800/60'
+                                    : 'bg-emerald-950/80 text-emerald-300 border-emerald-800/60'
+                                }`}
+                              >
+                                {isDm ? 'DM' : isGroup ? 'Group' : 'Space'}
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-900 border border-zinc-700 text-zinc-400">
-                              {sp.spaceType || sp.type || 'SPACE'}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
                     {/* Messages viewer for selected space */}
@@ -2544,11 +2585,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           className="w-full px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500"
                         >
                           <option value="">Select a Space or Webhook...</option>
-                          {chatSpaces.map((sp) => (
-                            <option key={sp.name} value={sp.name}>
-                              [API] {sp.displayName || sp.name} ({sp.spaceType || 'Space'})
-                            </option>
-                          ))}
+                          {chatSpaces.map((sp) => {
+                            const isDm =
+                              sp.spaceType === 'DIRECT_MESSAGE' ||
+                              sp.type === 'DIRECT_MESSAGE' ||
+                              sp.type === 'DM' ||
+                              sp.singleUserBotDm;
+                            const isGroup = sp.spaceType === 'GROUP_CHAT' || sp.type === 'GROUP_CHAT';
+                            const prefix = isDm ? '[DM]' : isGroup ? '[Group]' : '[Space]';
+                            return (
+                              <option key={sp.name} value={sp.name}>
+                                {prefix} {sp.displayName || sp.name}
+                              </option>
+                            );
+                          })}
                           {spaceWebhooks.map((wh) => (
                             <option key={wh.id} value={wh.webhookUrl}>
                               [Webhook] {wh.name} (#{wh.spaceId})
@@ -2585,24 +2635,104 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
 
                     <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                      <div className="text-[11px]">
+                      <div className="text-[11px] flex-1">
                         {chatDispatchStatus && (
-                          <span className={chatDispatchStatus.startsWith('✓') ? 'text-emerald-400 font-medium' : 'text-red-400'}>
+                          <div className={`p-2 rounded-lg border text-[11px] ${
+                            chatDispatchStatus.startsWith('✓')
+                              ? 'bg-emerald-950/60 border-emerald-700/50 text-emerald-300'
+                              : 'bg-red-950/50 border-red-800/60 text-red-300'
+                          }`}>
                             {chatDispatchStatus}
-                          </span>
+                          </div>
                         )}
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={handleDispatchTestChat}
-                        disabled={!selectedTarget || isDispatchingChat}
-                        className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-medium transition-all shadow-sm disabled:opacity-50"
-                      >
-                        <Send className={`w-3.5 h-3.5 ${isDispatchingChat ? 'animate-spin' : ''}`} />
-                        <span>{isDispatchingChat ? 'Dispatching...' : 'Dispatch to Google Chat'}</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowChatTroubleshooting(!showChatTroubleshooting)}
+                          className="px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs transition-all border border-zinc-700/50 flex items-center gap-1"
+                        >
+                          <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
+                          <span>{showChatTroubleshooting ? 'Hide Setup Help' : 'Setup & Troubleshooting'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleDispatchTestChat}
+                          disabled={!selectedTarget || isDispatchingChat}
+                          className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-medium transition-all shadow-sm disabled:opacity-50"
+                        >
+                          <Send className={`w-3.5 h-3.5 ${isDispatchingChat ? 'animate-spin' : ''}`} />
+                          <span>{isDispatchingChat ? 'Dispatching...' : 'Dispatch to Google Chat'}</span>
+                        </button>
+                      </div>
                     </div>
+
+                    {/* Google Chat App Error & Interactive Troubleshooting Guide */}
+                    {(showChatTroubleshooting || (chatDispatchStatus && chatDispatchStatus.includes('Google Chat app not found')) || (chatSpacesError && chatSpacesError.includes('Chat app'))) && (
+                      <div className="mt-3 p-4 rounded-xl bg-amber-950/30 border border-amber-500/40 space-y-3 text-xs animate-fadeIn">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 text-amber-300 font-semibold text-xs">
+                            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                            <span>Troubleshooting Guide: Google Chat Direct REST API vs Space Webhooks</span>
+                          </div>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/80 border border-amber-700/50 text-amber-300">
+                            Google Cloud Notice
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-zinc-300 leading-relaxed">
+                          Google Chat enforces security on the REST API: direct <code>messages.create</code> calls to personal DMs/Spaces require a one-time <b>Google Chat App configuration</b> in the Google Cloud Console. Alternatively, <b>Space Webhooks</b> work immediately with zero configuration!
+                        </p>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                          {/* Solution 1: Space Webhook */}
+                          <div className="p-3 rounded-lg bg-zinc-900/90 border border-emerald-500/30 space-y-2">
+                            <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+                              <Zap className="w-3.5 h-3.5" />
+                              <span>Option 1: Instant Space Webhook (Recommended)</span>
+                            </div>
+                            <p className="text-[11px] text-zinc-400">
+                              Incoming Space Webhooks bypass all Chat bot registration requirements and work immediately for Cards, alerts, and sweeps.
+                            </p>
+                            <ol className="list-decimal list-inside text-[11px] text-zinc-300 space-y-1">
+                              <li>Open your Google Chat Space (web or mobile)</li>
+                              <li>Click Space title &rarr; <b>Apps & integrations</b> &rarr; <b>Webhooks</b></li>
+                              <li>Click <b>Add webhook</b>, name it "Elara", copy URL</li>
+                              <li>Paste into the <b>Space Webhooks Manager</b> above and send!</li>
+                            </ol>
+                          </div>
+
+                          {/* Solution 2: Google Cloud Console Setup */}
+                          <div className="p-3 rounded-lg bg-zinc-900/90 border border-sky-500/30 space-y-2">
+                            <div className="flex items-center gap-1.5 text-sky-400 font-semibold">
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              <span>Option 2: 1-Minute Google Cloud Console Config</span>
+                            </div>
+                            <p className="text-[11px] text-zinc-400">
+                              To send direct 1:1 messages or DMs via user OAuth:
+                            </p>
+                            <ol className="list-decimal list-inside text-[11px] text-zinc-300 space-y-1">
+                              <li>Open Google Cloud Console &rarr; <b>Google Chat API</b></li>
+                              <li>Click the <b>Configuration</b> tab</li>
+                              <li>Enter App name (e.g. <i>Elara</i>) and any avatar image URL</li>
+                              <li>Under <i>Interactive features</i>, check <b>Receive 1:1 messages</b></li>
+                              <li>Under <i>Visibility</i>, check your email domain & click <b>Save</b></li>
+                            </ol>
+                            <a
+                              href="https://console.cloud.google.com/apis/api/chat.googleapis.com/hangouts-chat"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-sky-950 text-sky-300 border border-sky-800 text-[11px] font-medium hover:bg-sky-900 transition-colors mt-1"
+                            >
+                              <span>Open Google Cloud Chat API Config</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 

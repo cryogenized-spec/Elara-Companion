@@ -965,6 +965,13 @@ export async function deleteKeepNote(id: string): Promise<boolean> {
 // Google Chat API & Webhooks Engine
 // ----------------------------------------------------
 
+export interface ChatSpaceMember {
+  name: string;
+  displayName: string;
+  avatarUrl?: string;
+  type?: string;
+}
+
 export interface ChatSpace {
   name: string; // e.g. "spaces/AAAAAAAAAAA"
   displayName?: string;
@@ -972,6 +979,7 @@ export interface ChatSpace {
   spaceType?: 'SPACE' | 'DIRECT_MESSAGE' | 'GROUP_CHAT';
   spaceThreadingState?: string;
   singleUserBotDm?: boolean;
+  members?: ChatSpaceMember[];
 }
 
 export interface ChatMessageResult {
@@ -1179,7 +1187,38 @@ export function buildSystemAlertCard(title: string, message: string, severity: '
 }
 
 // Google Chat REST API calls
-export async function listChatSpaces(pageSize = 30): Promise<{ spaces: ChatSpace[] }> {
+export async function listSpaceMembers(
+  spaceName: string,
+  passedToken?: string
+): Promise<ChatSpaceMember[]> {
+  try {
+    const token = passedToken || (await requestGoogleAuth());
+    const cleanSpace = spaceName.startsWith('spaces/') ? spaceName : `spaces/${spaceName}`;
+
+    const res = await fetch(`https://chat.googleapis.com/v1/${cleanSpace}/members`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!res.ok) {
+      return [];
+    }
+
+    const data = await res.json();
+    const rawMemberships = data.memberships || [];
+    return rawMemberships.map((m: any) => ({
+      name: m.member?.name || m.name || '',
+      displayName: m.member?.displayName || m.member?.name || 'Contact',
+      avatarUrl: m.member?.avatarUrl,
+      type: m.member?.type || 'HUMAN',
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function listChatSpaces(pageSize = 40): Promise<{ spaces: ChatSpace[] }> {
   const token = await requestGoogleAuth();
 
   const res = await fetch(`https://chat.googleapis.com/v1/spaces?pageSize=${pageSize}`, {
@@ -1195,16 +1234,56 @@ export async function listChatSpaces(pageSize = 30): Promise<{ spaces: ChatSpace
   const data = await res.json();
   const rawSpaces = data.spaces || [];
 
-  const spaces: ChatSpace[] = rawSpaces.map((s: any) => ({
-    name: s.name,
-    displayName: s.displayName || (s.spaceType === 'DIRECT_MESSAGE' || s.type === 'DIRECT_MESSAGE' ? '1-on-1 Direct Message' : 'Unnamed Space'),
-    type: s.type || s.spaceType || 'SPACE',
-    spaceType: s.spaceType || s.type,
-    spaceThreadingState: s.spaceThreadingState,
-    singleUserBotDm: s.singleUserBotDm || false,
-  }));
+  // Parallel resolve members for spaces to extract contact names for DMs and Group Chats
+  const resolvedSpaces: ChatSpace[] = await Promise.all(
+    rawSpaces.map(async (s: any) => {
+      const spaceType = s.spaceType || s.type || 'SPACE';
+      let displayName = (s.displayName || '').trim();
+      let members: ChatSpaceMember[] = [];
 
-  return { spaces };
+      const needsMemberResolution =
+        !displayName ||
+        spaceType === 'DIRECT_MESSAGE' ||
+        spaceType === 'DM' ||
+        spaceType === 'GROUP_CHAT' ||
+        s.singleUserBotDm;
+
+      if (needsMemberResolution) {
+        members = await listSpaceMembers(s.name, token);
+
+        if (members.length > 0) {
+          const humans = members.filter((m) => m.type !== 'BOT' && m.displayName && m.displayName !== 'User');
+          const chosen = humans.length > 0 ? humans : members;
+          const memberNames = chosen.map((m) => m.displayName).filter(Boolean);
+
+          if (memberNames.length > 0) {
+            displayName = memberNames.join(', ');
+          }
+        }
+      }
+
+      if (!displayName) {
+        displayName =
+          spaceType === 'DIRECT_MESSAGE' || spaceType === 'DM'
+            ? '1-on-1 Direct Message'
+            : spaceType === 'GROUP_CHAT'
+            ? 'Group Conversation'
+            : 'Workspace Space';
+      }
+
+      return {
+        name: s.name,
+        displayName,
+        type: s.type || spaceType,
+        spaceType: spaceType === 'DM' ? 'DIRECT_MESSAGE' : spaceType,
+        spaceThreadingState: s.spaceThreadingState,
+        singleUserBotDm: s.singleUserBotDm || false,
+        members,
+      };
+    })
+  );
+
+  return { spaces: resolvedSpaces };
 }
 
 export async function createChatSpace(
