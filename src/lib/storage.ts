@@ -240,6 +240,14 @@ export function incrementRateLimit(modelId: string): void {
   }
 }
 
+export function generateUniqueId(prefix: string = 'id'): string {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+export function generateId(prefix: string = 'id'): string {
+  return generateUniqueId(prefix);
+}
+
 export function loadRateLimits(): { date: string; counts: Record<string, number> } {
   const dateStr = new Date().toLocaleDateString();
   try {

@@ -1,5 +1,6 @@
-import React, { useState, useRef } from 'react';
-import { ElaraSettings, AVAILABLE_MODELS } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { ElaraSettings, AVAILABLE_MODELS, PersonaSnapshot } from '../types';
+import { getDbSnapshots, setDbSnapshots } from '../lib/db';
 import { 
   DEFAULT_ELARA_SYSTEM_PROMPT,
   DEFAULT_PERSONA_PROTOCOL,
@@ -49,6 +50,7 @@ import {
   BellRing,
   Share2,
   Copy,
+  Save,
 } from 'lucide-react';
 import {
   getUpcomingCalendarEvents,
@@ -110,6 +112,48 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClearAllData,
 }) => {
   const [formData, setFormData] = useState<ElaraSettings>(settings);
+  const [snapshots, setSnapshots] = useState<PersonaSnapshot[]>([]);
+  const [snapshotName, setSnapshotName] = useState('');
+  const [showSnapshotPrompt, setShowSnapshotPrompt] = useState(false);
+
+  useEffect(() => {
+    getDbSnapshots().then(setSnapshots);
+  }, []);
+
+  const handleSaveSnapshot = async () => {
+    if (!snapshotName.trim()) return;
+    const newSnapshot: PersonaSnapshot = {
+      id: `snap_${Date.now()}`,
+      name: snapshotName.trim(),
+      timestamp: Date.now(),
+      systemPrompt: formData.systemPrompt,
+      personaProtocol: formData.personaProtocol,
+      intimacyModule: formData.intimacyModule,
+      runtimeRules: formData.runtimeRules
+    };
+    const updated = [newSnapshot, ...snapshots];
+    setSnapshots(updated);
+    await setDbSnapshots(updated);
+    setSnapshotName('');
+    setShowSnapshotPrompt(false);
+  };
+
+  const handleLoadSnapshot = (snap: PersonaSnapshot) => {
+    setFormData({
+      ...formData,
+      systemPrompt: snap.systemPrompt,
+      personaProtocol: snap.personaProtocol,
+      intimacyModule: snap.intimacyModule,
+      runtimeRules: snap.runtimeRules
+    });
+  };
+
+  const handleDeleteSnapshot = async (id: string) => {
+    const updated = snapshots.filter(s => s.id !== id);
+    setSnapshots(updated);
+    await setDbSnapshots(updated);
+  };
+
   const [activeTab, setActiveTab] = useState<'persona' | 'visuals' | 'voice' | 'workspace' | 'system' | 'data'>('visuals');
   const [showPromptResetConfirm, setShowPromptResetConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -1073,6 +1117,73 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* TAB 2: MODEL & USER */}
           {activeTab === 'persona' && (
             <div className="space-y-5">
+
+              {/* Persona Snapshots */}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Persona Snapshots</h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowSnapshotPrompt(!showSnapshotPrompt)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 rounded-lg text-xs font-medium transition-colors"
+                  >
+                    <Save className="w-3.5 h-3.5" /> Save Snapshot
+                  </button>
+                </div>
+                
+                {showSnapshotPrompt && (
+                  <div className="flex items-center gap-2 mb-4 animate-in fade-in slide-in-from-top-2">
+                    <input
+                      type="text"
+                      value={snapshotName}
+                      onChange={(e) => setSnapshotName(e.target.value)}
+                      placeholder="e.g., Strict Tutor, Flirty, Default"
+                      className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-100 focus:outline-none focus:border-sky-500"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveSnapshot}
+                      disabled={!snapshotName.trim()}
+                      className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium transition-colors"
+                    >
+                      Save
+                    </button>
+                  </div>
+                )}
+
+                {snapshots.length > 0 ? (
+                  <div className="space-y-2">
+                    {snapshots.map(snap => (
+                      <div key={snap.id} className="flex items-center justify-between p-2 rounded-lg bg-zinc-950 border border-zinc-800/50">
+                        <div>
+                          <p className="text-xs font-medium text-zinc-200">{snap.name}</p>
+                          <p className="text-[10px] text-zinc-500">{new Date(snap.timestamp).toLocaleString()}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleLoadSnapshot(snap)}
+                            className="px-2 py-1 text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded transition-colors"
+                          >
+                            Load
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSnapshot(snap.id)}
+                            className="p-1 text-zinc-500 hover:text-red-400 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-zinc-500 italic">No snapshots saved yet. Save a snapshot to easily switch between persona configurations.</p>
+                )}
+              </div>
+
               {/* User Name & Timezone Config */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

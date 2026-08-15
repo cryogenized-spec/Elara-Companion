@@ -292,3 +292,14 @@ export const AVAILABLE_MODELS: GeminiModelOption[] = [
   },
 ];
 
+
+
+export interface PersonaSnapshot {
+  id: string;
+  name: string;
+  timestamp: number;
+  systemPrompt: string;
+  personaProtocol: string;
+  intimacyModule: string;
+  runtimeRules: string;
+}

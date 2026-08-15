@@ -1,105 +1,89 @@
+import { DEFAULT_ELARA_PORTRAIT } from "./constants/defaultPortrait";
+import { Menu, Download, BookOpen, Globe, Settings, Sparkles } from "lucide-react";
+
 import React, { useState, useEffect, useRef } from 'react';
 import { CanvasPanel } from './components/CanvasPanel';
 import { CanvasData, Conversation, Message, ElaraSettings, WorldState, MemoryScratchpadState, Folder } from './types';
-import {
-  DEFAULT_PERSONA_PROTOCOL,
-  DEFAULT_INTIMACY_MODULE,
-  DEFAULT_RUNTIME_RULES,
-} from './constants/defaultPrompt';
-import {
-  loadFolders,
-  saveFolders,
-  loadConversations,
-  saveConversations,
-  loadSettings,
-  saveSettings,
-  loadCustomPortrait,
-  saveCustomPortrait,
-  exportAllDataJSON,
-  exportConversationMarkdown,
-  importDataJSON,
-  clearAllStorageData,
-  incrementRateLimit,
-} from './lib/storage';
-import {
-  loadWorldState,
-  saveWorldState,
-  resetWorldState,
-  exportWorldStateJSON,
-  importWorldStateJSON,
-} from './lib/worldStorage';
-import {
-  loadMemoryState,
-  saveMemoryState,
-  resetMemoryState,
-  exportMemoryJSON,
-  importMemoryJSON,
-} from './lib/memoryStorage';
-import {
-  buildSystemPayload,
-  loadUserProfileNotes,
-  loadActiveScratchpad,
-} from './lib/contextManager';
-import { applyMemoryActions } from './lib/memoryProcessor';
-import {
-  extractThoughtsAndContent,
-  parseThoughtSteps,
-  getActiveThoughtSentence,
-} from './utils/thoughtUtils';
+import { DEFAULT_PERSONA_PROTOCOL, DEFAULT_INTIMACY_MODULE, DEFAULT_RUNTIME_RULES } from './constants/defaultPrompt';
+import { DEFAULT_WORLD_STATE } from './constants/defaultWorldState';
+
+import { exportAllDataJSON, exportConversationMarkdown, importDataJSON, incrementRateLimit, DEFAULT_SETTINGS, generateUniqueId } from './lib/storage';
+import { resetWorldState, exportWorldStateJSON, importWorldStateJSON } from './lib/worldStorage';
+import { resetMemoryState, exportMemoryJSON, importMemoryJSON, DEFAULT_MEMORY_STATE } from './lib/memoryStorage';
+import { loadUserProfileNotes, loadActiveScratchpad, buildSystemPayload } from './lib/contextManager';
+import { 
+  isGoogleConnected, 
+  getTasks, 
+  getUpcomingCalendarEvents, 
+  listGmailMessages, 
+  searchContacts, 
+  searchKeepNotes 
+} from './lib/googleApi';
+import { getActiveThoughtSentence, parseThoughtSteps, extractThoughtsAndContent } from './utils/thoughtUtils';
 import { extractCanvases } from './utils/canvasUtils';
-import {
-  runDirectGeminiStream,
-  runDirectTitleGeneration,
-  runDirectMemoryExtraction,
-  runDirectMemoryMaintenance,
-} from './lib/geminiDirectClient';
+import { runDirectGeminiStream, runDirectMemoryExtraction, runDirectTitleGeneration } from './lib/geminiDirectClient';
+import { applyMemoryActions } from './lib/memoryProcessor';
+
+import { 
+  getDbConversations, setDbConversations,
+  getDbSettings, setDbSettings,
+  getDbFolders, setDbFolders,
+  getDbPortrait, setDbPortrait,
+  getDbWorldState, setDbWorldState,
+  getDbMemoryState, setDbMemoryState,
+  clearDbStorage, migrateFromLocalStorage
+} from './lib/db';
+
 import { Sidebar } from './components/Sidebar';
-import { ChatMessage } from './components/ChatMessage';
 import { MessageComposer } from './components/MessageComposer';
 import { SettingsModal } from './components/SettingsModal';
 import { WorldModal } from './components/WorldModal';
 import { MemoryModal } from './components/MemoryModal';
-import { RenameModal } from './components/RenameModal';
+import { ChatMessage } from './components/ChatMessage';
+import { ThinkingScratchpad } from './components/ThinkingScratchpad';
+import { CameraModal } from './components/CameraModal';
 import { DeleteModal } from './components/DeleteModal';
+import { RenameModal } from './components/RenameModal';
 import { PortraitViewerModal } from './components/PortraitViewerModal';
+import { ThoughtLogModal } from './components/ThoughtLogModal';
 import { ElaraPortrait } from './components/ElaraPortrait';
-import { DEFAULT_ELARA_PORTRAIT } from './constants/defaultPortrait';
-import {
-  getUpcomingCalendarEvents,
-  getTasks,
-  isGoogleConnected,
-  searchContacts,
-  searchKeepNotes,
-  readSheetValues,
-  listGmailMessages,
-} from './lib/googleApi';
-import {
-  Menu,
-  Sparkles,
-  Settings,
-  Download,
-  Plus,
-  Bot,
-  MessageSquare,
-  ChevronDown,
-  User,
-  Image as ImageIcon,
-  Globe,
-  BookOpen,
-} from 'lucide-react';
-
-// Helper for generating guaranteed unique IDs
-const generateUniqueId = (prefix: string) =>
-  `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
 export default function App() {
+  const [isLoaded, setIsLoaded] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [folders, setFolders] = useState<Folder[]>(loadFolders());
+  const [folders, setFolders] = useState<Folder[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [settings, setSettings] = useState<ElaraSettings>(loadSettings());
-  const [worldState, setWorldState] = useState<WorldState>(loadWorldState());
-  const [memoryState, setMemoryState] = useState<MemoryScratchpadState>(loadMemoryState());
-  const [customPortrait, setCustomPortrait] = useState<string | null>(loadCustomPortrait());
+  const [settings, setSettings] = useState<ElaraSettings>(DEFAULT_SETTINGS);
+  const [worldState, setWorldState] = useState<WorldState>(DEFAULT_WORLD_STATE);
+  const [memoryState, setMemoryState] = useState<MemoryScratchpadState>(DEFAULT_MEMORY_STATE);
+  const [customPortrait, setCustomPortrait] = useState<string | null>(null);
+
+  useEffect(() => {
+    migrateFromLocalStorage().then(async () => {
+      setFolders(await getDbFolders());
+      setSettings(await getDbSettings());
+      setWorldState(await getDbWorldState());
+      setMemoryState(await getDbMemoryState());
+      setCustomPortrait(await getDbPortrait());
+      
+      const loadedConvs = await getDbConversations();
+      if (loadedConvs.length > 0) {
+        setConversations(loadedConvs);
+        setActiveId(loadedConvs[0].id);
+      } else {
+        const initialConv: Conversation = {
+          id: generateUniqueId('conv'),
+          title: 'New Conversation',
+          messages: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        setConversations([initialConv]);
+        setActiveId(initialConv.id);
+      }
+      setIsLoaded(true);
+    });
+  }, []);
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -124,12 +108,12 @@ export default function App() {
 
   const handleUploadPortrait = (base64Img: string) => {
     setCustomPortrait(base64Img);
-    saveCustomPortrait(base64Img);
+    setDbPortrait(base64Img);
   };
 
   const handleRemovePortrait = () => {
     setCustomPortrait(null);
-    saveCustomPortrait(null);
+    setDbPortrait(null);
   };
 
   // Initialize theme class
@@ -141,33 +125,13 @@ export default function App() {
     }
   }, [theme]);
 
-  // Load conversations on mount
-  useEffect(() => {
-    const loaded = loadConversations();
-    if (loaded.length > 0) {
-      setConversations(loaded);
-      setActiveId(loaded[0].id);
-    } else {
-      // Create initial conversation
-      const initialConv: Conversation = {
-        id: generateUniqueId('conv'),
-        title: 'New Conversation',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        messages: [],
-      };
-      setConversations([initialConv]);
-      setActiveId(initialConv.id);
-      saveConversations([initialConv]);
-    }
-  }, []);
-
-  // Save conversations whenever they change
-  useEffect(() => {
-    if (conversations.length > 0) {
-      saveConversations(conversations);
-    }
-  }, [conversations]);
+  // Save data whenever it changes
+  useEffect(() => { if (isLoaded) setDbConversations(conversations); }, [conversations, isLoaded]);
+  useEffect(() => { if (isLoaded) setDbFolders(folders); }, [folders, isLoaded]);
+  useEffect(() => { if (isLoaded) setDbSettings(settings); }, [settings, isLoaded]);
+  useEffect(() => { if (isLoaded) setDbWorldState(worldState); }, [worldState, isLoaded]);
+  useEffect(() => { if (isLoaded) setDbMemoryState(memoryState); }, [memoryState, isLoaded]);
+  useEffect(() => { if (isLoaded) setDbPortrait(customPortrait); }, [customPortrait, isLoaded]);
 
   const activeConversation = conversations.find((c) => c.id === activeId) || null;
 
@@ -211,41 +175,41 @@ export default function App() {
     const newFolder: Folder = { id: generateUniqueId('folder'), name, isExpanded: true };
     const newFolders = [...folders, newFolder];
     setFolders(newFolders);
-    saveFolders(newFolders);
+    setDbFolders(newFolders);
   };
 
   const handleRenameFolder = (id: string, name: string) => {
     const newFolders = folders.map(f => f.id === id ? { ...f, name } : f);
     setFolders(newFolders);
-    saveFolders(newFolders);
+    setDbFolders(newFolders);
   };
 
   const handleDeleteFolder = (id: string) => {
     const newFolders = folders.filter(f => f.id !== id);
     setFolders(newFolders);
-    saveFolders(newFolders);
+    setDbFolders(newFolders);
     const updatedConvs = conversations.map(c => c.folderId === id ? { ...c, folderId: undefined } : c);
     setConversations(updatedConvs);
-    saveConversations(updatedConvs);
+    setDbConversations(updatedConvs);
   };
 
   const handleToggleFolder = (id: string) => {
     const newFolders = folders.map(f => f.id === id ? { ...f, isExpanded: !f.isExpanded } : f);
     setFolders(newFolders);
-    saveFolders(newFolders);
+    setDbFolders(newFolders);
   };
 
   const handleMoveToFolder = (conversationId: string, folderId: string | null) => {
     const updated = conversations.map(c => c.id === conversationId ? { ...c, folderId: folderId || undefined } : c);
     setConversations(updated);
-    saveConversations(updated);
+    setDbConversations(updated);
   };
 
   // Save Settings
   const handleSaveSettings = (newSettings: ElaraSettings) => {
     setSettings(newSettings);
     setTheme(newSettings.theme);
-    saveSettings(newSettings);
+    setDbSettings(newSettings);
   };
 
   // Toggle Theme
@@ -254,7 +218,7 @@ export default function App() {
     setTheme(nextTheme);
     const updatedSettings: ElaraSettings = { ...settings, theme: nextTheme };
     setSettings(updatedSettings);
-    saveSettings(updatedSettings);
+    setDbSettings(updatedSettings);
   };
 
   // Stop Streaming
@@ -702,7 +666,7 @@ export default function App() {
             if (actions && Array.isArray(actions) && actions.length > 0) {
               setMemoryState((prev) => {
                 const updated = applyMemoryActions(prev, actions, targetConvId);
-                saveMemoryState(updated);
+                setDbMemoryState(updated);
                 return updated;
               });
             }
@@ -723,7 +687,7 @@ export default function App() {
               if (data.actions && Array.isArray(data.actions) && data.actions.length > 0) {
                 setMemoryState((prev) => {
                   const updated = applyMemoryActions(prev, data.actions, targetConvId);
-                  saveMemoryState(updated);
+                  setDbMemoryState(updated);
                   return updated;
                 });
               }
@@ -972,14 +936,14 @@ export default function App() {
       if (activeId === deleteTargetId) {
         setActiveId(remaining.length > 0 ? remaining[0].id : null);
       }
-      saveConversations(remaining);
+      setDbConversations(remaining);
       setDeleteTargetId(null);
     }
   };
 
   // Clear All Data
   const handleClearAllData = () => {
-    clearAllStorageData();
+    clearDbStorage();
     const newConv: Conversation = {
       id: generateUniqueId('conv'),
       title: 'New Conversation',
@@ -1002,14 +966,16 @@ export default function App() {
     if (importedConvs.length > 0) {
       setConversations(importedConvs);
       setActiveId(importedConvs[0].id);
-      saveConversations(importedConvs);
+      setDbConversations(importedConvs);
     }
     if (importedSet) {
       const mergedSet = { ...settings, ...importedSet };
       setSettings(mergedSet);
-      saveSettings(mergedSet);
+      setDbSettings(mergedSet);
     }
   };
+
+  if (!isLoaded) return <div className="flex h-screen w-screen items-center justify-center bg-zinc-950 text-zinc-500 font-sans tracking-wide">Initializing memory core...</div>;
 
   const targetRenameConv = conversations.find((c) => c.id === renameTargetId);
   const targetDeleteConv = conversations.find((c) => c.id === deleteTargetId);
@@ -1301,7 +1267,7 @@ export default function App() {
         memoryState={memoryState}
         onSaveMemoryState={(newMem) => {
           setMemoryState(newMem);
-          saveMemoryState(newMem);
+          setDbMemoryState(newMem);
         }}
         onResetMemoryState={() => {
           const res = resetMemoryState();
@@ -1311,7 +1277,7 @@ export default function App() {
         onImportMemory={(jsonStr) => {
           const imp = importMemoryJSON(jsonStr);
           setMemoryState(imp);
-          saveMemoryState(imp);
+          setDbMemoryState(imp);
         }}
         userName={settings.userName || 'User'}
         apiKey={settings.apiKey}
@@ -1324,7 +1290,7 @@ export default function App() {
         worldState={worldState}
         onSaveWorldState={(newWS) => {
           setWorldState(newWS);
-          saveWorldState(newWS);
+          setDbWorldState(newWS);
         }}
         onResetWorldState={() => {
           const res = resetWorldState();
@@ -1334,7 +1300,7 @@ export default function App() {
         onImportWorldState={(jsonStr) => {
           const imp = importWorldStateJSON(jsonStr);
           setWorldState(imp);
-          saveWorldState(imp);
+          setDbWorldState(imp);
         }}
         userName={settings.userName || 'User'}
       />
