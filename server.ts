@@ -722,63 +722,52 @@ Formatting rules:
       }`;
 
       const ai = getGeminiClient();
-      const candidateModels = [
-        'gemini-2.5-flash',
-        'gemini-2.5-flash-lite',
-        'gemini-2.0-flash',
-        'gemini-3.7-flash',
-        'gemini-flash-latest',
-        'gemini-3.1-flash-lite',
-      ];
+      const targetModel = 'gemini-3.7-flash'; // High-speed, multimodal, flagship model for transcription
 
-      for (const modelToTry of candidateModels) {
-        try {
-          const response = await ai.models.generateContent({
-            model: modelToTry,
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  {
-                    inlineData: {
-                      mimeType: detectedMime,
-                      data: cleanBase64,
-                    },
+      try {
+        const response = await ai.models.generateContent({
+          model: targetModel,
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: detectedMime,
+                    data: cleanBase64,
                   },
-                  {
-                    text: prompt,
-                  },
-                ],
-              },
-            ],
-            config: {
-              temperature: 0.1,
-              maxOutputTokens: 1500,
-              safetySettings: [
-                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE },
+                },
+                {
+                  text: prompt,
+                },
               ],
             },
-          });
+          ],
+          config: {
+            temperature: 0.1,
+            maxOutputTokens: 1500,
+            safetySettings: [
+              { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+              { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+              { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+              { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+              { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE },
+            ],
+          },
+        });
 
-          let transcript = response.text?.trim() || '';
-          if (transcript.startsWith('```') && transcript.endsWith('```')) {
-            transcript = transcript.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
-          }
-          if (transcript === '[EMPTY]' || transcript.toLowerCase() === 'empty') {
-            transcript = '';
-          }
-          return res.json({ text: transcript, model: modelToTry });
-        } catch (subErr: any) {
-          console.warn(`Transcription attempt with ${modelToTry} notice (${subErr?.status || subErr?.message}):`, subErr?.message || subErr);
-          continue;
+        let transcript = response.text?.trim() || '';
+        if (transcript.startsWith('```') && transcript.endsWith('```')) {
+          transcript = transcript.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
         }
+        if (transcript === '[EMPTY]' || transcript.toLowerCase() === 'empty') {
+          transcript = '';
+        }
+        return res.json({ text: transcript, model: targetModel });
+      } catch (err: any) {
+        console.warn(`Transcription attempt with ${targetModel} notice (${err?.status || err?.message}):`, err?.message || err);
+        return res.json({ text: '', warning: 'Transcription unavailable for this audio segment.' });
       }
-
-      return res.json({ text: '', warning: 'Transcription unavailable for this audio segment.' });
     } catch (err: any) {
       console.error('Error in /api/audio/transcribe:', err);
       res.json({ text: '', error: err?.message || 'Speech transcription failed' });
@@ -1036,26 +1025,23 @@ Guidelines:
 2. Do NOT output raw JSON, code fences with raw data, or robotic metadata.
 3. Keep the tone conversational, concise, and focused.`;
 
-      const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3.7-flash', 'gemini-flash-latest'];
+      const targetModel = 'gemini-3.7-flash';
       let replyText = "I've received your message in Google Chat. Let me know what you need!";
 
-      for (const m of candidateModels) {
-        try {
-          const geminiRes = await ai.models.generateContent({
-            model: m,
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            config: {
-              temperature: 0.7,
-              maxOutputTokens: 1000,
-            },
-          });
-          if (geminiRes.text) {
-            replyText = geminiRes.text.trim();
-            break;
-          }
-        } catch (subErr) {
-          continue;
+      try {
+        const geminiRes = await ai.models.generateContent({
+          model: targetModel,
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          config: {
+            temperature: 0.7,
+            maxOutputTokens: 1000,
+          },
+        });
+        if (geminiRes.text) {
+          replyText = geminiRes.text.trim();
         }
+      } catch (err: any) {
+        console.warn(`Chat reply generation failed with ${targetModel}:`, err?.message || err);
       }
 
       // Check if we should attach an interactive card (e.g. task proposal or schedule sweep)

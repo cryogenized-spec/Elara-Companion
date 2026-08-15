@@ -1,11 +1,6 @@
-// src/hooks/useSpeechToText.ts - Robust Continuous Speech Recognition & Audio Visualizer Hook
+// src/hooks/useSpeechToText.ts - Robust Audio Recorder & Gemini Transcriber Hook
 import { useState, useRef, useEffect, useCallback } from 'react';
-import {
-  isAudioRecordingSupported,
-  isSpeechRecognitionSupported,
-  formatSpeechTranscript,
-  transcribeAudioBlob,
-} from '../lib/speechRecognition';
+import { transcribeAudioBlob } from '../lib/speechRecognition';
 
 export interface SpeechToTextOptions {
   lang?: string;
@@ -54,20 +49,16 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
   const [audioLevel, setAudioLevel] = useState(0);
   const [waveformBars, setWaveformBars] = useState<number[]>([0.15, 0.25, 0.18, 0.35, 0.22, 0.15, 0.28, 0.12]);
 
-  // Audio recording & Speech recognition references
+  // Audio recording references
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
-  const speechRecRef = useRef<any>(null);
-  const restartTimerRef = useRef<any>(null);
 
-  // Live state refs to prevent stale closures and unneeded re-triggers
+  // Live state refs
   const isListeningRef = useRef(false);
-  const recognizedTextRef = useRef('');
-  const finalTranscriptAccumulatorRef = useRef('');
   const activeMimeRef = useRef('audio/webm');
   const silenceStartRef = useRef<number | null>(null);
 
@@ -80,44 +71,21 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
   const onTranscriptChangeRef = useRef(onTranscriptChange);
   const onTranscriptDoneRef = useRef(onTranscriptDone);
 
-  useEffect(() => {
-    activeLangRef.current = lang;
-  }, [lang]);
+  useEffect(() => { activeLangRef.current = lang; }, [lang]);
+  useEffect(() => { autoCapitalizeRef.current = autoCapitalize; }, [autoCapitalize]);
+  useEffect(() => { autoSendRef.current = autoSendOnPause; }, [autoSendOnPause]);
+  useEffect(() => { pauseThresholdRef.current = pauseThresholdMs; }, [pauseThresholdMs]);
+  useEffect(() => { onAutoSendRef.current = onAutoSend; }, [onAutoSend]);
+  useEffect(() => { onTranscriptChangeRef.current = onTranscriptChange; }, [onTranscriptChange]);
+  useEffect(() => { onTranscriptDoneRef.current = onTranscriptDone; }, [onTranscriptDone]);
 
-  useEffect(() => {
-    autoCapitalizeRef.current = autoCapitalize;
-  }, [autoCapitalize]);
-
-  useEffect(() => {
-    autoSendRef.current = autoSendOnPause;
-  }, [autoSendOnPause]);
-
-  useEffect(() => {
-    pauseThresholdRef.current = pauseThresholdMs;
-  }, [pauseThresholdMs]);
-
-  useEffect(() => {
-    onAutoSendRef.current = onAutoSend;
-  }, [onAutoSend]);
-
-  useEffect(() => {
-    onTranscriptChangeRef.current = onTranscriptChange;
-  }, [onTranscriptChange]);
-
-  useEffect(() => {
-    onTranscriptDoneRef.current = onTranscriptDone;
-  }, [onTranscriptDone]);
-
-  // Stop audio visualizer nodes
   const stopAudioAnalyzer = useCallback(() => {
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = null;
     }
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      try {
-        audioContextRef.current.close();
-      } catch (_) {}
+      try { audioContextRef.current.close(); } catch (_) {}
       audioContextRef.current = null;
     }
     analyserRef.current = null;
@@ -125,20 +93,16 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
     setWaveformBars([0.15, 0.25, 0.18, 0.35, 0.22, 0.15, 0.28, 0.12]);
   }, []);
 
-  // Stop media stream tracks
   const stopMediaStream = useCallback(() => {
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => {
-        try {
-          track.stop();
-        } catch (_) {}
+        try { track.stop(); } catch (_) {}
       });
       mediaStreamRef.current = null;
     }
     stopAudioAnalyzer();
   }, [stopAudioAnalyzer]);
 
-  // Start real-time audio visualizer & optional silence detection
   const startAudioAnalyzer = useCallback((stream: MediaStream) => {
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -177,11 +141,10 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
         setAudioLevel(normalizedLevel);
         setWaveformBars(bars);
 
-        // Check for silence ONLY if auto-send is strictly enabled
         if (autoSendRef.current) {
           const isQuiet = normalizedLevel < 0.05;
           const now = Date.now();
-          if (isQuiet && recognizedTextRef.current.trim()) {
+          if (isQuiet) {
             if (!silenceStartRef.current) {
               silenceStartRef.current = now;
             } else if (now - silenceStartRef.current >= Math.max(2500, pauseThresholdRef.current)) {
@@ -203,12 +166,15 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
     }
   }, []);
 
-  // Format and commit final recognized transcript to callbacks
   const finalizeAndNotify = useCallback((rawText: string, triggerAutoSend = false) => {
     const cleanText = rawText.trim();
     if (!cleanText) return;
 
-    const formatted = autoCapitalizeRef.current ? formatSpeechTranscript(cleanText) : cleanText;
+    let formatted = cleanText;
+    if (autoCapitalizeRef.current) {
+       formatted = cleanText.charAt(0).toUpperCase() + cleanText.slice(1);
+    }
+    
     setTranscript(formatted);
     setInterimText('');
 
@@ -224,37 +190,12 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
     }
   }, []);
 
-  // Internal Stop Listening & Finalize
   const stopListeningInternal = useCallback((triggerAutoSend = false) => {
     if (!isListeningRef.current) return;
 
     isListeningRef.current = false;
     setIsListening(false);
 
-    if (restartTimerRef.current) {
-      clearTimeout(restartTimerRef.current);
-      restartTimerRef.current = null;
-    }
-
-    // Stop WebSpeech instance
-    if (speechRecRef.current) {
-      try {
-        speechRecRef.current.stop();
-      } catch (_) {}
-      speechRecRef.current = null;
-    }
-
-    const currentText = (recognizedTextRef.current || finalTranscriptAccumulatorRef.current || '').trim();
-
-    // If WebSpeech already captured the text in real-time, commit immediately!
-    if (currentText) {
-      stopMediaStream();
-      mediaRecorderRef.current = null;
-      finalizeAndNotify(currentText, triggerAutoSend);
-      return;
-    }
-
-    // Fallback: If no text was captured by WebSpeech, check MediaRecorder
     const recorder = mediaRecorderRef.current;
     if (!recorder) {
       stopMediaStream();
@@ -262,6 +203,7 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
     }
 
     setIsTranscribing(true);
+    setInterimText('Transcribing via Gemini...');
 
     recorder.onstop = async () => {
       stopMediaStream();
@@ -283,16 +225,11 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
             }
           }
         }
-
-        // If server transcription yielded nothing, check if any interim text was available
-        if (currentText) {
-          finalizeAndNotify(currentText, triggerAutoSend);
-        }
+        setInterimText('');
       } catch (err: any) {
         console.warn('Audio transcription notice:', err);
-        if (currentText) {
-          finalizeAndNotify(currentText, triggerAutoSend);
-        }
+        setError('Transcription failed.');
+        setInterimText('');
       } finally {
         setIsTranscribing(false);
       }
@@ -304,94 +241,19 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
       } else {
         stopMediaStream();
         setIsTranscribing(false);
+        setInterimText('');
       }
     } catch (_) {
       stopMediaStream();
       setIsTranscribing(false);
+      setInterimText('');
     }
   }, [finalizeAndNotify, stopMediaStream]);
 
-  // Setup WebSpeech recognition instance with continuous auto-restart
-  const setupSpeechRecognition = useCallback(() => {
-    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRec) return null;
-
-    try {
-      const rec = new SpeechRec();
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.maxAlternatives = 1;
-      rec.lang = activeLangRef.current || 'en-US';
-
-      rec.onresult = (event: any) => {
-        let interim = '';
-        let finalChunk = '';
-
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const transcriptPiece = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalChunk += ' ' + transcriptPiece;
-          } else {
-            interim += ' ' + transcriptPiece;
-          }
-        }
-
-        if (finalChunk.trim()) {
-          finalTranscriptAccumulatorRef.current = (
-            (finalTranscriptAccumulatorRef.current ? finalTranscriptAccumulatorRef.current + ' ' : '') +
-            finalChunk.trim()
-          ).trim();
-        }
-
-        const combined = (
-          (finalTranscriptAccumulatorRef.current ? finalTranscriptAccumulatorRef.current + ' ' : '') +
-          interim.trim()
-        ).trim();
-
-        recognizedTextRef.current = combined;
-        setInterimText(combined);
-
-        if (onTranscriptChangeRef.current && combined) {
-          onTranscriptChangeRef.current(combined);
-        }
-      };
-
-      rec.onerror = (err: any) => {
-        console.debug('Speech recognition auxiliary event:', err?.error);
-        if (err?.error === 'not-allowed' || err?.error === 'service-not-allowed') {
-          setError('Microphone permission not granted for speech recognition.');
-        }
-      };
-
-      // Continuous recording: If Android or Chrome fires onend while user is still recording, immediately restart!
-      rec.onend = () => {
-        if (isListeningRef.current) {
-          restartTimerRef.current = setTimeout(() => {
-            if (isListeningRef.current) {
-              try {
-                rec.start();
-              } catch (_) {
-                // Ignore already-started errors
-              }
-            }
-          }, 60);
-        }
-      };
-
-      return rec;
-    } catch (e) {
-      console.warn('SpeechRecognition initialization skipped:', e);
-      return null;
-    }
-  }, []);
-
-  // Start continuous audio recording
   const startListening = useCallback(async () => {
     setError(null);
     setTranscript('');
-    setInterimText('');
-    recognizedTextRef.current = '';
-    finalTranscriptAccumulatorRef.current = '';
+    setInterimText('Recording...');
     audioChunksRef.current = [];
 
     try {
@@ -399,7 +261,6 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
         throw new Error('Microphone access is not supported in this browser.');
       }
 
-      // Request microphone stream for visualizer and backup recorder
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -412,21 +273,8 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
       isListeningRef.current = true;
       setIsListening(true);
 
-      // Start real-time visualizer
       startAudioAnalyzer(stream);
 
-      // 1. Try WebSpeech recognition for zero-latency live streaming text
-      const rec = setupSpeechRecognition();
-      if (rec) {
-        speechRecRef.current = rec;
-        try {
-          rec.start();
-        } catch (recStartErr) {
-          console.warn('WebSpeech rec.start failed:', recStartErr);
-        }
-      }
-
-      // 2. Also start MediaRecorder as backup
       try {
         const mimeType = getBestMimeType();
         activeMimeRef.current = mimeType;
@@ -448,24 +296,10 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
       isListeningRef.current = false;
       setIsListening(false);
       stopMediaStream();
-
-      const errMsg = String(micErr?.message || micErr?.name || '');
-      if (
-        micErr?.name === 'NotAllowedError' ||
-        micErr?.name === 'PermissionDeniedError' ||
-        micErr?.name === 'SecurityError' ||
-        errMsg.toLowerCase().includes('permission') ||
-        errMsg.toLowerCase().includes('not allowed') ||
-        errMsg.toLowerCase().includes('denied')
-      ) {
-        setError('Microphone permission was denied. Please allow microphone access in your browser address bar/site settings.');
-      } else {
-        setError(micErr?.message || 'Could not access microphone.');
-      }
+      setError('Could not access microphone.');
     }
-  }, [setupSpeechRecognition, startAudioAnalyzer, stopMediaStream]);
+  }, [startAudioAnalyzer, stopMediaStream]);
 
-  // Public stop listening
   const stopListening = useCallback(() => {
     stopListeningInternal(false);
   }, [stopListeningInternal]);
@@ -473,24 +307,12 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
   const resetTranscript = useCallback(() => {
     setTranscript('');
     setInterimText('');
-    recognizedTextRef.current = '';
-    finalTranscriptAccumulatorRef.current = '';
     setError(null);
   }, []);
 
-  // Stable cleanup on unmount ONLY
   const stopListeningInternalRef = useRef(stopListeningInternal);
-  useEffect(() => {
-    stopListeningInternalRef.current = stopListeningInternal;
-  });
-
-  useEffect(() => {
-    return () => {
-      if (isListeningRef.current) {
-        stopListeningInternalRef.current(false);
-      }
-    };
-  }, []);
+  useEffect(() => { stopListeningInternalRef.current = stopListeningInternal; });
+  useEffect(() => { return () => { if (isListeningRef.current) { stopListeningInternalRef.current(false); } }; }, []);
 
   return {
     isListening,
@@ -500,7 +322,7 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
     error,
     audioLevel,
     waveformBars,
-    isSupported: isSpeechRecognitionSupported() || isAudioRecordingSupported(),
+    isSupported: typeof MediaRecorder !== 'undefined',
     startListening,
     stopListening,
     resetTranscript,

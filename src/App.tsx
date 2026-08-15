@@ -584,7 +584,17 @@ export default function App() {
               'Backend route not found. If hosting as a static GitHub Page, please enter your Gemini API Key in Settings.'
             );
           }
-          const errText = await response.text().catch(() => '');
+          let errText = await response.text().catch(() => '');
+          try {
+            // Try to parse JSON to extract clean message if possible
+            const jsonErr = JSON.parse(errText);
+            errText = jsonErr.error?.message || jsonErr.error || jsonErr.message || 'API request failed';
+          } catch {
+            // If it's HTML (gateway error), simplify it
+            if (errText.trim().startsWith('<') || errText.includes('<html>')) {
+               errText = `Service unavailable (HTTP ${response.status})`;
+            }
+          }
           throw new Error(errText || `Server returned HTTP ${response.status}`);
         }
 

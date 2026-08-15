@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Conversation } from '../types';
+import { Conversation, Folder } from '../types';
 import {
   Plus,
   MessageSquare,
@@ -11,19 +11,29 @@ import {
   Moon,
   Sparkles,
   X,
-  Download,
-  Upload,
+  Folder as FolderIcon,
+  FolderPlus,
+  ChevronDown,
+  ChevronRight,
+  FolderOpen,
+  MoveRight,
   Globe,
   BookOpen,
 } from 'lucide-react';
 
 interface SidebarProps {
   conversations: Conversation[];
+  folders?: Folder[];
   activeId: string | null;
   onSelectConversation: (id: string) => void;
   onNewConversation: () => void;
   onRenameConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
+  onCreateFolder?: (name: string) => void;
+  onRenameFolder?: (id: string, name: string) => void;
+  onDeleteFolder?: (id: string) => void;
+  onToggleFolder?: (id: string) => void;
+  onMoveToFolder?: (conversationId: string, folderId: string | null) => void;
   onOpenSettings: () => void;
   onOpenWorld?: () => void;
   onOpenMemory?: () => void;
@@ -35,11 +45,17 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({
   conversations,
+  folders = [],
   activeId,
   onSelectConversation,
   onNewConversation,
   onRenameConversation,
   onDeleteConversation,
+  onCreateFolder,
+  onRenameFolder,
+  onDeleteFolder,
+  onToggleFolder,
+  onMoveToFolder,
   onOpenSettings,
   onOpenWorld,
   onOpenMemory,
@@ -49,6 +65,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleTheme,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [editingFolderName, setEditingFolderName] = useState('');
+  const [movingConvId, setMovingConvId] = useState<string | null>(null);
 
   const filteredConversations = conversations.filter((c) => {
     if (!searchTerm.trim()) return true;
@@ -58,6 +79,116 @@ export const Sidebar: React.FC<SidebarProps> = ({
       c.messages.some((m) => m.content.toLowerCase().includes(query))
     );
   });
+
+  const handleCreateFolderSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newFolderName.trim() && onCreateFolder) {
+      onCreateFolder(newFolderName.trim());
+      setNewFolderName('');
+      setIsCreatingFolder(false);
+    }
+  };
+
+  const handleRenameFolderSubmit = (id: string) => {
+    if (editingFolderName.trim() && onRenameFolder) {
+      onRenameFolder(id, editingFolderName.trim());
+      setEditingFolderId(null);
+      setEditingFolderName('');
+    }
+  };
+
+  const rootConversations = filteredConversations.filter((c) => !c.folderId || !folders.some((f) => f.id === c.folderId));
+
+  const renderConversationItem = (conv: Conversation) => {
+    const isActive = conv.id === activeId;
+    return (
+      <div
+        key={conv.id}
+        onClick={() => {
+          onSelectConversation(conv.id);
+          onCloseMobile();
+        }}
+        className={`group relative flex items-center px-3 py-2 rounded-lg cursor-pointer transition-colors text-xs ${
+          isActive
+            ? 'bg-zinc-800/90 border border-zinc-700/60 text-zinc-100 font-medium'
+            : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'
+        }`}
+      >
+        <MessageSquare className={`w-3.5 h-3.5 mr-2.5 shrink-0 ${isActive ? 'text-sky-400' : 'text-zinc-500'}`} />
+        <span className="truncate flex-1 min-w-0">{conv.title || 'New Conversation'}</span>
+
+        {/* Actions on hover/active */}
+        <div className={`flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isActive ? 'opacity-100' : ''}`}>
+          {onMoveToFolder && folders.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMovingConvId(movingConvId === conv.id ? null : conv.id);
+                }}
+                className="p-1 rounded text-zinc-400 hover:text-sky-400 hover:bg-zinc-700/50"
+                title="Move to folder"
+              >
+                <MoveRight className="w-3 h-3" />
+              </button>
+
+              {movingConvId === conv.id && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute right-0 top-6 z-50 w-44 bg-zinc-900 border border-zinc-700 rounded-xl p-1.5 shadow-2xl space-y-1 text-xs"
+                >
+                  <div className="text-[10px] text-zinc-500 font-semibold px-2 py-1">Move To:</div>
+                  <button
+                    onClick={() => {
+                      onMoveToFolder(conv.id, null);
+                      setMovingConvId(null);
+                    }}
+                    className="w-full text-left px-2 py-1 rounded-lg hover:bg-zinc-800 text-zinc-300 text-xs truncate"
+                  >
+                    (No Folder)
+                  </button>
+                  {folders.map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => {
+                        onMoveToFolder(conv.id, f.id);
+                        setMovingConvId(null);
+                      }}
+                      className="w-full text-left px-2 py-1 rounded-lg hover:bg-zinc-800 text-zinc-300 text-xs truncate flex items-center gap-1.5"
+                    >
+                      <FolderIcon className="w-3 h-3 text-sky-400 shrink-0" />
+                      <span className="truncate">{f.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRenameConversation(conv.id);
+            }}
+            className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50"
+            title="Rename"
+          >
+            <Edit2 className="w-3 h-3" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteConversation(conv.id);
+            }}
+            className="p-1 rounded text-zinc-400 hover:text-red-400 hover:bg-zinc-700/50"
+            title="Delete"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -95,18 +226,60 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        {/* New Chat Button */}
-        <div className="p-4">
-          <button
-            onClick={() => {
-              onNewConversation();
-              onCloseMobile();
-            }}
-            className="w-full py-2.5 px-4 rounded-lg border border-zinc-700 bg-zinc-800/50 hover:bg-zinc-800 flex items-center justify-between transition-colors group text-zinc-100"
-          >
-            <span className="text-sm font-medium">New Conversation</span>
-            <Plus className="w-4 h-4 text-zinc-500 group-hover:text-sky-400 transition-colors" />
-          </button>
+        {/* Action Header: New Chat & New Folder */}
+        <div className="p-4 pb-2 space-y-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                onNewConversation();
+                onCloseMobile();
+              }}
+              className="flex-1 py-2.5 px-3 rounded-lg border border-zinc-700 bg-zinc-800/50 hover:bg-zinc-800 flex items-center justify-between transition-colors group text-zinc-100"
+            >
+              <span className="text-sm font-medium">New Chat</span>
+              <Plus className="w-4 h-4 text-zinc-500 group-hover:text-sky-400 transition-colors" />
+            </button>
+
+            {onCreateFolder && (
+              <button
+                onClick={() => setIsCreatingFolder(!isCreatingFolder)}
+                className="p-2.5 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-sky-400 transition-colors"
+                title="Create Folder"
+              >
+                <FolderPlus className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Inline Folder Creation */}
+          {isCreatingFolder && (
+            <form onSubmit={handleCreateFolderSubmit} className="p-2 rounded-xl bg-zinc-900 border border-zinc-700 space-y-2">
+              <input
+                type="text"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                placeholder="Folder name..."
+                autoFocus
+                className="w-full px-2.5 py-1 text-xs rounded bg-zinc-950 border border-zinc-800 text-zinc-200 focus:outline-none focus:border-sky-500"
+              />
+              <div className="flex items-center justify-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingFolder(false)}
+                  className="px-2 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!newFolderName.trim()}
+                  className="px-2.5 py-1 text-[11px] font-medium bg-sky-600 hover:bg-sky-500 text-white rounded disabled:opacity-50"
+                >
+                  Create
+                </button>
+              </div>
+            </form>
+          )}
         </div>
 
         {/* Search Bar */}
@@ -124,61 +297,115 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Section Label */}
-        <div className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider px-4 mt-2 mb-1">
-          Recent Activity
+        <div className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider px-4 mt-2 mb-1 flex items-center justify-between">
+          <span>Conversations</span>
+          <span className="text-[10px] font-mono text-zinc-600">{conversations.length}</span>
         </div>
 
-        {/* Conversations List */}
-        <div className="flex-1 overflow-y-auto px-3 space-y-1 custom-scrollbar">
-          {filteredConversations.length === 0 ? (
-            <div className="text-center py-8 px-4 text-xs text-zinc-500">
-              {searchTerm ? 'No conversations found.' : 'No conversations yet.'}
-            </div>
-          ) : (
-            filteredConversations.map((conv, idx) => {
-              const isActive = conv.id === activeId;
-              return (
-                <div
-                  key={`${conv.id || 'conv'}_${idx}`}
-                  onClick={() => {
-                    onSelectConversation(conv.id);
-                    onCloseMobile();
-                  }}
-                  className={`group relative flex items-center px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${
-                    isActive
-                      ? 'bg-zinc-800/80 border border-zinc-700/50 text-zinc-100 font-medium'
-                      : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200'
-                  }`}
-                >
-                  <MessageSquare className={`w-4 h-4 mr-3 shrink-0 ${isActive ? 'text-sky-400' : 'text-zinc-500'}`} />
-                  <span className="text-sm truncate flex-1 min-w-0">{conv.title || 'New Conversation'}</span>
+        {/* Conversations List with Folders */}
+        <div className="flex-1 overflow-y-auto px-3 space-y-1.5 custom-scrollbar">
+          {/* Render Folders */}
+          {folders.map((folder) => {
+            const folderConvs = filteredConversations.filter((c) => c.folderId === folder.id);
+            const isExpanded = folder.isExpanded !== false;
 
-                  {/* Actions on hover/active */}
-                  <div className={`flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isActive ? 'opacity-100' : ''}`}>
+            return (
+              <div key={folder.id} className="space-y-1 rounded-xl bg-zinc-900/30 border border-zinc-800/40 p-1">
+                {/* Folder Header */}
+                <div
+                  onClick={() => onToggleFolder && onToggleFolder(folder.id)}
+                  className="group flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-zinc-800/60 cursor-pointer text-xs text-zinc-300 transition-colors"
+                >
+                  <div className="flex items-center gap-1.5 truncate flex-1 min-w-0">
+                    {isExpanded ? (
+                      <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                    )}
+                    {isExpanded ? (
+                      <FolderOpen className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    ) : (
+                      <FolderIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    )}
+
+                    {editingFolderId === folder.id ? (
+                      <input
+                        type="text"
+                        value={editingFolderName}
+                        onChange={(e) => setEditingFolderName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleRenameFolderSubmit(folder.id);
+                          if (e.key === 'Escape') setEditingFolderId(null);
+                        }}
+                        onBlur={() => handleRenameFolderSubmit(folder.id)}
+                        autoFocus
+                        onClick={(e) => e.stopPropagation()}
+                        className="px-1 py-0.5 text-xs bg-zinc-950 border border-zinc-700 text-zinc-100 rounded focus:outline-none"
+                      />
+                    ) : (
+                      <span className="font-medium truncate">{folder.name}</span>
+                    )}
+                    <span className="text-[10px] text-zinc-500 font-mono">({folderConvs.length})</span>
+                  </div>
+
+                  {/* Folder Actions */}
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        onRenameConversation(conv.id);
+                        setEditingFolderId(folder.id);
+                        setEditingFolderName(folder.name);
                       }}
-                      className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50"
-                      title="Rename"
+                      className="p-1 text-zinc-500 hover:text-zinc-300"
+                      title="Rename Folder"
                     >
                       <Edit2 className="w-3 h-3" />
                     </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteConversation(conv.id);
-                      }}
-                      className="p-1 rounded text-zinc-400 hover:text-red-400 hover:bg-zinc-700/50"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
+                    {onDeleteFolder && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteFolder(folder.id);
+                        }}
+                        className="p-1 text-zinc-500 hover:text-red-400"
+                        title="Delete Folder"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 </div>
-              );
-            })
+
+                {/* Folder Children */}
+                {isExpanded && (
+                  <div className="pl-3 space-y-1 border-l border-zinc-800 ml-3">
+                    {folderConvs.length === 0 ? (
+                      <div className="text-[11px] text-zinc-600 px-2 py-1 italic">Empty folder</div>
+                    ) : (
+                      folderConvs.map((c) => renderConversationItem(c))
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Root / Unorganized Conversations */}
+          {rootConversations.length > 0 && (
+            <div className="space-y-1 pt-1">
+              {folders.length > 0 && (
+                <div className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider px-2 pt-2">
+                  Unassigned
+                </div>
+              )}
+              {rootConversations.map((c) => renderConversationItem(c))}
+            </div>
+          )}
+
+          {filteredConversations.length === 0 && folders.length === 0 && (
+            <div className="text-center py-8 px-4 text-xs text-zinc-500">
+              {searchTerm ? 'No conversations found.' : 'No conversations yet.'}
+            </div>
           )}
         </div>
 
@@ -232,3 +459,4 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </>
   );
 };
+

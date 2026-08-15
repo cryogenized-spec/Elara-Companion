@@ -131,6 +131,19 @@ export interface GmailMessageFull extends GmailMessageSummary {
   bodyHtml?: string;
 }
 
+async function parseGoogleApiError(res: Response, fallbackPrefix: string): Promise<string> {
+  const errText = await res.text().catch(() => '');
+  try {
+    const json = JSON.parse(errText);
+    return `${fallbackPrefix}: ${json.error?.message || json.error || 'Unknown error'}`;
+  } catch {
+    if (errText.trim().startsWith('<') || errText.includes('<html>')) {
+      return `${fallbackPrefix}: Service unavailable (HTTP ${res.status})`;
+    }
+    return `${fallbackPrefix}: ${errText || `HTTP ${res.status}`}`;
+  }
+}
+
 export async function listGmailMessages(query = '', maxResults = 10): Promise<{ messages: GmailMessageSummary[] }> {
   const token = await requestGoogleAuth();
 
@@ -146,8 +159,7 @@ export async function listGmailMessages(query = '', maxResults = 10): Promise<{ 
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to list Gmail messages: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to list Gmail messages'));
   }
 
   const data = await res.json();
@@ -210,8 +222,7 @@ export async function getGmailMessageDetails(messageId: string): Promise<GmailMe
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to fetch email details: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to fetch email details'));
   }
 
   const data = await res.json();
@@ -300,8 +311,7 @@ export async function createGmailDraft(to: string, subject: string, bodyText: st
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to create Gmail draft: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to create Gmail draft'));
   }
 
   const data = await res.json();
@@ -353,8 +363,7 @@ export async function sendGmailMessage(
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to send Gmail message: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to send Gmail message'));
   }
 
   const data = await res.json();
@@ -383,8 +392,7 @@ export async function createGoogleDoc(title: string, markdownContent: string): P
   });
 
   if (!createRes.ok) {
-    const err = await createRes.text();
-    throw new Error(`Failed to create Google Doc: ${err}`);
+    throw new Error(await parseGoogleApiError(createRes, 'Failed to create Google Doc'));
   }
   const doc = await createRes.json();
   const documentId = doc.documentId;
@@ -447,8 +455,7 @@ export async function getUpcomingCalendarEvents(maxResults = 10): Promise<{ item
   );
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to fetch calendar events: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to fetch calendar events'));
   }
 
   const data = await res.json();
@@ -492,8 +499,7 @@ export async function createCalendarEvent(
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to create calendar event: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to create calendar event'));
   }
 
   return res.json();
@@ -522,8 +528,7 @@ export async function getTaskLists(): Promise<{ items: { id: string; title: stri
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to fetch task lists: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to fetch task lists'));
   }
 
   const data = await res.json();
@@ -557,8 +562,7 @@ export async function getTasks(taskListId?: string): Promise<{ items: TaskItem[]
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to fetch tasks: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to fetch tasks'));
   }
 
   const data = await res.json();
@@ -603,8 +607,7 @@ export async function createTask(
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to create task: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to create task'));
   }
 
   return res.json();
@@ -640,8 +643,7 @@ export async function createGoogleSheet(title: string, headerRow?: string[]): Pr
   });
 
   if (!createRes.ok) {
-    const err = await createRes.text();
-    throw new Error(`Failed to create Google Sheet: ${err}`);
+    throw new Error(await parseGoogleApiError(createRes, 'Failed to create Google Sheet'));
   }
 
   const sheetData = await createRes.json();
@@ -673,8 +675,7 @@ export async function getSpreadsheetDetails(spreadsheetId: string): Promise<Shee
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to fetch spreadsheet details: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to fetch spreadsheet details'));
   }
 
   const data = await res.json();
@@ -700,8 +701,7 @@ export async function readSheetValues(spreadsheetId: string, range = 'A1:Z100'):
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to read sheet values: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to read sheet values'));
   }
 
   const data = await res.json();
@@ -733,8 +733,7 @@ export async function appendSheetRow(
   );
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to append row to Google Sheet: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to append row to Google Sheet'));
   }
 
   const data = await res.json();
@@ -776,8 +775,7 @@ export async function searchContacts(query: string, pageSize = 10): Promise<{ co
   );
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to search Google Contacts: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to search Google Contacts'));
   }
 
   const data = await res.json();
@@ -814,8 +812,7 @@ export async function listContacts(pageSize = 20): Promise<{ contacts: ContactPe
   );
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to list Google Contacts: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to list Google Contacts'));
   }
 
   const data = await res.json();
@@ -1140,8 +1137,7 @@ export async function listChatSpaces(pageSize = 30): Promise<{ spaces: ChatSpace
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to list Google Chat spaces: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to list Google Chat spaces'));
   }
 
   const data = await res.json();
@@ -1186,8 +1182,7 @@ export async function sendChatMessage(
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to send Google Chat message: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to send Google Chat message'));
   }
 
   const data = await res.json();
@@ -1229,8 +1224,7 @@ export async function sendChatCardMessage(
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to send Google Chat card message: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Failed to send Google Chat card message'));
   }
 
   const data = await res.json();
@@ -1260,8 +1254,7 @@ export async function postChatWebhook(
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Google Chat webhook post failed: ${err}`);
+    throw new Error(await parseGoogleApiError(res, 'Google Chat webhook post failed'));
   }
 
   try {
