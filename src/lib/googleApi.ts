@@ -17,7 +17,27 @@ const SCOPES = [
   'https://www.googleapis.com/auth/chat.spaces.readonly',
 ].join(' ');
 
-const CLIENT_ID = '988991302383-rj8vah445mk9r991k10pc4knk2omk2p4.apps.googleusercontent.com';
+const DEFAULT_CLIENT_ID = '988991302383-rj8vah445mk9r991k10pc4knk2omk2p4.apps.googleusercontent.com';
+
+export function getGoogleClientId(): string {
+  if (typeof window !== 'undefined') {
+    const custom = localStorage.getItem('elara_custom_google_client_id');
+    if (custom && custom.trim().length > 0) return custom.trim();
+  }
+  return import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_CLIENT_ID;
+}
+
+export function setCustomGoogleClientId(id: string | null) {
+  if (typeof window !== 'undefined') {
+    if (id && id.trim().length > 0) {
+      localStorage.setItem('elara_custom_google_client_id', id.trim());
+    } else {
+      localStorage.removeItem('elara_custom_google_client_id');
+    }
+  }
+  tokenClient = null;
+  initGoogleAuth();
+}
 
 let tokenClient: any = null;
 let accessToken = '';
@@ -31,10 +51,11 @@ export function isGoogleConnected(): boolean {
 }
 
 export function initGoogleAuth() {
-  if (typeof window !== 'undefined' && (window as any).google && !tokenClient) {
+  if (typeof window !== 'undefined' && (window as any).google) {
     try {
+      const activeClientId = getGoogleClientId();
       tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
+        client_id: activeClientId,
         scope: SCOPES,
         callback: (tokenResponse: any) => {
           if (tokenResponse.error !== undefined) {
