@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
-import { MemoryItem, MemoryCategory, MemoryImportance, MemoryConfidence } from '../types';
+import { Workspace, MemoryItem } from '../types';
+import { workspaceToolDeclarations, executeWorkspaceOperation, buildWorkspaceContextPrompt } from './workspaceTools';
 
 export interface DirectStreamParams {
   apiKey: string;
@@ -13,7 +14,16 @@ export interface DirectStreamParams {
   topP?: number;
   topK?: number;
   thinkingBudget?: number;
-  onChunk: (chunk: { text?: string; thoughtText?: string; finishReason?: string; safetyRatings?: any }) => void;
+  workspace?: Workspace;
+  onChunk: (chunk: {
+    text?: string;
+    thoughtText?: string;
+    finishReason?: string;
+    safetyRatings?: any;
+    toolCall?: any;
+    workspace?: Workspace;
+    artifactIds?: string[];
+  }) => void;
   signal?: AbortSignal;
 }
 
@@ -30,6 +40,7 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
     topP,
     topK,
     thinkingBudget,
+    workspace,
     onChunk,
     signal,
   } = params;
@@ -91,8 +102,9 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
     });
   }
 
-  // System instructions
-  let fullSystemInstruction = systemPrompt || '';
+  // System instructions with workspace context
+  const workspaceContext = buildWorkspaceContextPrompt(workspace);
+  let fullSystemInstruction = (systemPrompt || '') + '\n' + workspaceContext;
 
   const cleanModel = model.replace(/^models\//, '').trim() || 'gemini-3.7-flash';
 
@@ -131,64 +143,122 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
       try {
         config.tools = [
           {
-            functionDeclarations: [
-              {
-                name: 'generate_canvas',
-                description: 'Use this tool to generate long-form content, detailed plans, blueprints, scripts, outlines, documentation, or creative writing in an interactive Canvas Workspace for the user.',
-                parameters: {
-                  type: 'OBJECT',
-                  properties: {
-                    title: {
-                      type: 'STRING',
-                      description: 'A concise, descriptive title for the canvas.',
-                    },
-                    content: {
-                      type: 'STRING',
-                      description: 'The structured markdown or code content to be placed inside the canvas.',
-                    },
-                  },
-                  required: ['title', 'content'],
-                },
-              },
-            ],
+            functionDeclarations: workspaceToolDeclarations,
           },
         ];
 
-        const responseStream = await ai.models.generateContentStream({
-          model: cleanModel,
-          contents,
-          config,
-        });
+        let currentWorkspace: Workspace = workspace || {
+          id: 'default-workspace',
+          name: 'My Workspace',
+          artifacts: [],
+          activeArtifactId: null,
+        };
+        const touchedArtifactIds: string[] = [];
 
-        for await (const chunk of responseStream) {
+        let iteration = 0;
+        const MAX_ITERATIONS = 5;
+
+        while (iteration < MAX_ITERATIONS) {
           if (signal?.aborted) break;
+          iteration++;
 
-          const candidate = chunk.candidates?.[0];
-          const finishReason = candidate?.finishReason;
-          const safetyRatings = candidate?.safetyRatings;
+          const responseStream = await ai.models.generateContentStream({
+            model: cleanModel,
+            contents,
+            config,
+          });
 
-          const parts = candidate?.content?.parts;
-          if (parts && parts.length > 0) {
-            for (const part of parts) {
-              if ((part as any).thought) {
-                onChunk({ thoughtText: part.text });
-              } else if ((part as any).functionCall) {
-                const fc = (part as any).functionCall;
-                if (fc.name === 'generate_canvas') {
-                  const title = fc.args?.title || 'Canvas Workspace';
-                  const content = fc.args?.content || '';
-                  onChunk({ text: `\n<canvas title="${title}">\n${content}\n</canvas>\n`, finishReason, safetyRatings });
+          const functionCalls: any[] = [];
+          const modelParts: any[] = [];
+
+          for await (const chunk of responseStream) {
+            if (signal?.aborted) break;
+
+            const candidate = chunk.candidates?.[0];
+            const finishReason = candidate?.finishReason;
+            const safetyRatings = candidate?.safetyRatings;
+
+            const parts = candidate?.content?.parts;
+            if (parts && parts.length > 0) {
+              for (const part of parts) {
+                if ((part as any).thought) {
+                  onChunk({ thoughtText: part.text });
+                  modelParts.push(part);
+                } else if ((part as any).functionCall) {
+                  const fc = (part as any).functionCall;
+                  functionCalls.push(fc);
+                  modelParts.push(part);
+                } else if (part.text) {
+                  onChunk({ text: part.text, finishReason, safetyRatings });
+                  modelParts.push(part);
                 }
-              } else if (part.text) {
-                onChunk({ text: part.text, finishReason, safetyRatings });
               }
+            } else if (chunk.text) {
+              onChunk({ text: chunk.text, finishReason, safetyRatings });
+            } else if (finishReason) {
+              onChunk({ finishReason, safetyRatings });
             }
-          } else if (chunk.text) {
-            onChunk({ text: chunk.text, finishReason, safetyRatings });
-          } else if (finishReason) {
-            onChunk({ finishReason, safetyRatings });
           }
+
+          // If no function calls, turn complete
+          if (functionCalls.length === 0 || signal?.aborted) {
+            break;
+          }
+
+          contents.push({
+            role: 'model',
+            parts: modelParts.length > 0 ? modelParts : functionCalls.map((fc) => ({ functionCall: fc })),
+          });
+
+          const toolResponseParts: any[] = [];
+          for (const fc of functionCalls) {
+            const op = executeWorkspaceOperation(currentWorkspace, fc.name, fc.args);
+            currentWorkspace = op.updatedWorkspace;
+            if (op.createdArtifactId) {
+              touchedArtifactIds.push(op.createdArtifactId);
+            }
+            if (op.modifiedArtifactId) {
+              touchedArtifactIds.push(op.modifiedArtifactId);
+            }
+
+            if (fc.name === 'generate_canvas') {
+              const title = fc.args?.title || 'Canvas Workspace';
+              const content = fc.args?.content || '';
+              onChunk({ text: `\n<canvas title="${title}">\n${content}\n</canvas>\n` });
+            }
+
+            onChunk({
+              toolCall: {
+                name: fc.name,
+                args: fc.args,
+                result: op.result,
+                workspace: currentWorkspace,
+                createdArtifactId: op.createdArtifactId,
+                modifiedArtifactId: op.modifiedArtifactId,
+              },
+              workspace: currentWorkspace,
+              artifactIds: Array.from(new Set(touchedArtifactIds)),
+            });
+
+            toolResponseParts.push({
+              functionResponse: {
+                name: fc.name,
+                response: op.result,
+                id: fc.id,
+              },
+            });
+          }
+
+          contents.push({
+            role: 'tool',
+            parts: toolResponseParts,
+          });
         }
+
+        onChunk({
+          workspace: currentWorkspace,
+          artifactIds: Array.from(new Set(touchedArtifactIds)),
+        });
 
         resolve();
       } catch (err) {

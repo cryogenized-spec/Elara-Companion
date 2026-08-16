@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import { Message, CanvasData } from '../types';
+import { getArtifactById } from '../lib/workspaceStorage';
 import { CodeBlock } from './CodeBlock';
 import { ThinkingScratchpad } from './ThinkingScratchpad';
 import { Copy, Check, RefreshCw, Edit3, AlertCircle, AlertTriangle, Sparkles, User, X, Play, Sliders, Code, Mail, ExternalLink, FileText, ArrowRight } from 'lucide-react';
@@ -367,58 +368,87 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                   {message.content}
                 </ReactMarkdown>
 
-                  {/* Render extracted documents / canvases as persistent Workspace cards */}
-                  {message.canvases && message.canvases.length > 0 && (
-                    <div className="flex flex-col gap-2.5 mt-3 pt-3 border-t border-zinc-700/50">
-                      {message.canvases.map((canvas, idx) => (
-                        <div
-                          key={idx}
-                          className="group/card rounded-xl border border-emerald-500/30 bg-emerald-950/20 hover:bg-emerald-950/30 p-3.5 transition-all shadow-sm flex flex-col gap-2"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 text-[11px] font-semibold text-emerald-400">
-                              <FileText className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>Document</span>
+                  {/* Render persistent Workspace document cards */}
+                  {(() => {
+                    const renderedArtifactIds = new Set<string>();
+                    const documentCards: { id: string; name: string; type: string; isLegacyCanvas?: boolean; canvas?: CanvasData }[] = [];
+
+                    if (message.artifactIds && message.artifactIds.length > 0) {
+                      for (const artId of message.artifactIds) {
+                        const art = getArtifactById(artId);
+                        if (art && !renderedArtifactIds.has(art.id)) {
+                          renderedArtifactIds.add(art.id);
+                          documentCards.push({ id: art.id, name: art.name, type: art.type || 'markdown' });
+                        }
+                      }
+                    }
+
+                    if (message.canvases && message.canvases.length > 0) {
+                      for (const c of message.canvases) {
+                        if (c.artifactId && !renderedArtifactIds.has(c.artifactId)) {
+                          const art = getArtifactById(c.artifactId);
+                          renderedArtifactIds.add(c.artifactId);
+                          documentCards.push({ id: c.artifactId, name: art?.name || c.title, type: art?.type || 'markdown', canvas: c });
+                        } else if (!c.artifactId) {
+                          documentCards.push({ id: `legacy_${c.title}`, name: c.title, type: 'markdown', isLegacyCanvas: true, canvas: c });
+                        }
+                      }
+                    }
+
+                    if (documentCards.length === 0) return null;
+
+                    return (
+                      <div className="flex flex-col gap-2.5 mt-3 pt-3 border-t border-zinc-700/50">
+                        {documentCards.map((doc, idx) => (
+                          <div
+                            key={idx}
+                            className="group/card rounded-xl border border-emerald-500/30 bg-emerald-950/20 hover:bg-emerald-950/30 p-3.5 transition-all shadow-sm flex flex-col gap-2"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 text-[11px] font-semibold text-emerald-400">
+                                <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Document</span>
+                              </div>
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                {doc.type || 'Markdown'}
+                              </span>
                             </div>
-                            <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                              Markdown
-                            </span>
-                          </div>
 
-                          <div>
-                            <h4 className="text-sm font-semibold text-zinc-100 group-hover/card:text-emerald-300 transition-colors truncate">
-                              {canvas.title || 'Untitled Document'}
-                            </h4>
-                          </div>
+                            <div>
+                              <h4 className="text-sm font-semibold text-zinc-100 group-hover/card:text-emerald-300 transition-colors truncate">
+                                {doc.name || 'Untitled Document'}
+                              </h4>
+                            </div>
 
-                          <div className="pt-1.5 flex items-center justify-between gap-2">
-                            <button
-                              onClick={() => {
-                                if (canvas.artifactId && onOpenArtifact) {
-                                  onOpenArtifact(canvas.artifactId);
-                                } else if (onOpenCanvas) {
-                                  onOpenCanvas(canvas);
-                                }
-                              }}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md hover:shadow-emerald-600/20 transition-all cursor-pointer active:scale-95"
-                            >
-                              <span>Open in Workspace</span>
-                              <ArrowRight className="w-3.5 h-3.5" />
-                            </button>
-
-                            {!canvas.artifactId && onOpenCanvas && (
+                            <div className="pt-1.5 flex items-center justify-between gap-2">
                               <button
-                                onClick={() => onOpenCanvas(canvas)}
-                                className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                                onClick={() => {
+                                  if (!doc.isLegacyCanvas && onOpenArtifact) {
+                                    onOpenArtifact(doc.id);
+                                  } else if (doc.canvas && onOpenCanvas) {
+                                    onOpenCanvas(doc.canvas);
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md hover:shadow-emerald-600/20 transition-all cursor-pointer active:scale-95"
                               >
-                                View Legacy Canvas
+                                <span>Open in Workspace</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
                               </button>
-                            )}
+
+                              {doc.isLegacyCanvas && doc.canvas && onOpenCanvas && (
+                                <button
+                                  onClick={() => onOpenCanvas(doc.canvas!)}
+                                  className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                                >
+                                  View Legacy Canvas
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 

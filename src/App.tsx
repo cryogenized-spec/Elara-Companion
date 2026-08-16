@@ -55,7 +55,7 @@ import { PortraitViewerModal } from './components/PortraitViewerModal';
 import { ThoughtLogModal } from './components/ThoughtLogModal';
 import { ElaraPortrait } from './components/ElaraPortrait';
 import { WorkspaceView } from './components/WorkspaceView';
-import { saveAgentArtifact, setActiveArtifact } from './lib/workspaceStorage';
+import { saveAgentArtifact, setActiveArtifact, getWorkspace, saveWorkspace } from './lib/workspaceStorage';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'chat' | 'workspace'>('chat');
@@ -424,13 +424,34 @@ export default function App() {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
+    const streamArtifactIds: string[] = [];
+
     const handleChunkArrival = (chunk: {
       text?: string;
       thoughtText?: string;
       finishReason?: string;
       safetyRatings?: any;
+      toolCall?: any;
+      workspace?: any;
+      artifactIds?: string[];
     }) => {
       lastChunkTime = Date.now();
+
+      if (chunk.toolCall?.workspace) {
+        saveWorkspace(chunk.toolCall.workspace);
+      }
+      if (chunk.toolCall?.createdArtifactId) {
+        streamArtifactIds.push(chunk.toolCall.createdArtifactId);
+      }
+      if (chunk.toolCall?.modifiedArtifactId) {
+        streamArtifactIds.push(chunk.toolCall.modifiedArtifactId);
+      }
+      if (chunk.workspace) {
+        saveWorkspace(chunk.workspace);
+      }
+      if (chunk.artifactIds && Array.isArray(chunk.artifactIds)) {
+        streamArtifactIds.push(...chunk.artifactIds);
+      }
 
       if (chunk.finishReason === 'SAFETY') {
         console.warn('[Gemini Safety Cutoff Triggered]', {
@@ -465,6 +486,7 @@ export default function App() {
                     currentThoughtSentence: activeSentence,
                     thoughts: thoughtSteps,
                     thoughtDurationMs: Date.now() - assistantStartTime,
+                    artifactIds: Array.from(new Set([...(m.artifactIds || []), ...streamArtifactIds])),
                   }
                 : m
             );
@@ -479,7 +501,7 @@ export default function App() {
         accumulatedText += chunk.text;
       }
 
-      if (chunk.text || chunk.finishReason === 'SAFETY') {
+      if (chunk.text || chunk.finishReason === 'SAFETY' || chunk.toolCall || (chunk.artifactIds && chunk.artifactIds.length > 0)) {
         let { cleanContent, combinedThoughts, isInsideThoughtTag } =
           extractThoughtsAndContent(accumulatedText, streamedThoughts);
         const { cleanContent: finalCleanContent, canvases } = extractCanvases(cleanContent);
@@ -499,6 +521,7 @@ export default function App() {
                     ...m,
                     content: finalCleanContent,
                     canvases,
+                    artifactIds: Array.from(new Set([...(m.artifactIds || []), ...streamArtifactIds])),
                     isThinking: isThinking,
                     rawThoughts: combinedThoughts,
                     currentThoughtSentence: activeSentence,
@@ -532,6 +555,7 @@ export default function App() {
           topP: settings.topP,
           topK: settings.topK,
           thinkingBudget: settings.thinkingBudget,
+          workspace: getWorkspace(),
           onChunk: handleChunkArrival,
           signal: controller.signal,
         });
@@ -554,6 +578,7 @@ export default function App() {
               topP: settings.topP,
               topK: settings.topK,
               thinkingBudget: settings.thinkingBudget,
+              workspace: getWorkspace(),
             }),
           });
         } catch (fetchErr: any) {
@@ -615,6 +640,9 @@ export default function App() {
                     thoughtText: data.thoughtText,
                     finishReason: data.finishReason,
                     safetyRatings: data.safetyRatings,
+                    toolCall: data.toolCall,
+                    workspace: data.workspace,
+                    artifactIds: data.artifactIds,
                   });
 
                   if (data.done) {
@@ -656,6 +684,13 @@ export default function App() {
           })
         : [];
 
+      const combinedFinalArtifactIds = Array.from(
+        new Set([
+          ...streamArtifactIds,
+          ...persistedCanvases.map((pc) => pc.artifactId!).filter(Boolean),
+        ])
+      );
+
       setConversations((prev) =>
         prev.map((c) => {
           if (c.id !== targetConvId) return c;
@@ -665,7 +700,7 @@ export default function App() {
                   ...m,
                   content: finalCleanContent,
                   canvases: persistedCanvases,
-                  artifactIds: persistedCanvases.map((pc) => pc.artifactId!),
+                  artifactIds: combinedFinalArtifactIds,
                   isStreaming: false,
                   isThinking: false,
                   rawThoughts: combinedThoughts,

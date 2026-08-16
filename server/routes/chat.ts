@@ -1,5 +1,6 @@
 import express from "express";
 import { getGeminiClient, formatApiErrorDetails, normalizeModelName, parseDataUrl, HarmCategory, HarmBlockThreshold } from "../services/gemini";
+import { workspaceToolDeclarations, executeWorkspaceOperation, buildWorkspaceContextPrompt } from "../../src/lib/workspaceTools";
 
 export function setupChatRoutes(app: express.Express) {
 
@@ -19,6 +20,7 @@ export function setupChatRoutes(app: express.Express) {
       topP,
       topK,
       thinkingBudget,
+      workspace,
     } = req.body;
 
     const requestedModelStr = (typeof model === 'string' && model.trim()) ? model.trim() : (process.env.GEMINI_MODEL || 'gemini-3.7-flash');
@@ -104,8 +106,9 @@ export function setupChatRoutes(app: express.Express) {
         ],
       };
 
-      // Combine base persona system prompt and dynamic world context block
-      let combinedInstruction = systemPrompt || '';
+      // Combine base persona system prompt, dynamic workspace context, and creative framing
+      const workspaceContext = buildWorkspaceContextPrompt(workspace);
+      let combinedInstruction = (systemPrompt || '') + '\n' + workspaceContext;
       baseConfig.systemInstruction = creativeFramingPrefix + (combinedInstruction || '');
 
       if (typeof temperature === 'number') {
@@ -133,71 +136,132 @@ export function setupChatRoutes(app: express.Express) {
 
       config.tools = [
         {
-          functionDeclarations: [
-            {
-              name: 'generate_canvas',
-              description: 'Use this tool to generate long-form content, detailed plans, blueprints, scripts, outlines, documentation, or creative writing in an interactive Canvas Workspace for the user.',
-              parameters: {
-                type: 'OBJECT',
-                properties: {
-                  title: {
-                    type: 'STRING',
-                    description: 'A concise, descriptive title for the canvas.',
-                  },
-                  content: {
-                    type: 'STRING',
-                    description: 'The structured markdown or code content to be placed inside the canvas.',
-                  },
-                },
-                required: ['title', 'content'],
-              },
-            },
-          ],
+          functionDeclarations: workspaceToolDeclarations,
         },
       ];
 
-      const responseStream = await ai.models.generateContentStream({
-        model: selectedModel,
-        contents,
-        config,
-      });
+      let currentWorkspace = workspace || {
+        id: 'default-workspace',
+        name: 'My Workspace',
+        artifacts: [],
+        activeArtifactId: null,
+      };
+      const touchedArtifactIds: string[] = [];
 
-      for await (const chunk of responseStream) {
-        const candidate = chunk.candidates?.[0];
-        const finishReason = candidate?.finishReason;
-        const safetyRatings = candidate?.safetyRatings;
+      let iteration = 0;
+      const MAX_ITERATIONS = 5;
 
-        if (finishReason === 'SAFETY') {
-          console.warn('Gemini stream candidate finished due to SAFETY:', {
-            finishReason,
-            safetyRatings,
+      while (iteration < MAX_ITERATIONS) {
+        iteration++;
+        const responseStream = await ai.models.generateContentStream({
+          model: selectedModel,
+          contents,
+          config,
+        });
+
+        const functionCalls: any[] = [];
+        const modelParts: any[] = [];
+
+        for await (const chunk of responseStream) {
+          const candidate = chunk.candidates?.[0];
+          const finishReason = candidate?.finishReason;
+          const safetyRatings = candidate?.safetyRatings;
+
+          if (finishReason === 'SAFETY') {
+            console.warn('Gemini stream candidate finished due to SAFETY:', {
+              finishReason,
+              safetyRatings,
+            });
+          }
+
+          const parts = candidate?.content?.parts;
+          if (parts && parts.length > 0) {
+            for (const part of parts) {
+              if ((part as any).thought) {
+                res.write(`data: ${JSON.stringify({ thoughtText: part.text })}\n\n`);
+                modelParts.push(part);
+              } else if ((part as any).functionCall) {
+                const fc = (part as any).functionCall;
+                functionCalls.push(fc);
+                modelParts.push(part);
+              } else if (part.text) {
+                res.write(`data: ${JSON.stringify({ text: part.text, finishReason, safetyRatings })}\n\n`);
+                modelParts.push(part);
+              }
+            }
+          } else if (chunk.text) {
+            res.write(`data: ${JSON.stringify({ text: chunk.text, finishReason, safetyRatings })}\n\n`);
+          } else if (finishReason) {
+            res.write(`data: ${JSON.stringify({ finishReason, safetyRatings })}\n\n`);
+          }
+        }
+
+        // If no function calls made by the model, streaming complete
+        if (functionCalls.length === 0) {
+          break;
+        }
+
+        // Add the model's function-call turn to conversation contents
+        contents.push({
+          role: 'model',
+          parts: modelParts.length > 0 ? modelParts : functionCalls.map((fc) => ({ functionCall: fc })),
+        });
+
+        // Execute each tool and return structured JSON result
+        const toolResponseParts: any[] = [];
+        for (const fc of functionCalls) {
+          const op = executeWorkspaceOperation(currentWorkspace, fc.name, fc.args);
+          currentWorkspace = op.updatedWorkspace;
+          if (op.createdArtifactId) {
+            touchedArtifactIds.push(op.createdArtifactId);
+          }
+          if (op.modifiedArtifactId) {
+            touchedArtifactIds.push(op.modifiedArtifactId);
+          }
+
+          // Legacy generate_canvas bridge
+          if (fc.name === 'generate_canvas') {
+            const title = fc.args?.title || 'Canvas Workspace';
+            const content = fc.args?.content || '';
+            res.write(`data: ${JSON.stringify({ text: `\n<canvas title="${title}">\n${content}\n</canvas>\n` })}\n\n`);
+          }
+
+          // Stream tool event to client
+          res.write(
+            `data: ${JSON.stringify({
+              toolCall: {
+                name: fc.name,
+                args: fc.args,
+                result: op.result,
+                workspace: currentWorkspace,
+                createdArtifactId: op.createdArtifactId,
+                modifiedArtifactId: op.modifiedArtifactId,
+              },
+            })}\n\n`
+          );
+
+          toolResponseParts.push({
+            functionResponse: {
+              name: fc.name,
+              response: op.result,
+              id: fc.id,
+            },
           });
         }
 
-        const parts = candidate?.content?.parts;
-        if (parts && parts.length > 0) {
-          for (const part of parts) {
-            if ((part as any).thought) {
-              res.write(`data: ${JSON.stringify({ thoughtText: part.text })}\n\n`);
-            } else if ((part as any).functionCall) {
-              const fc = (part as any).functionCall;
-              if (fc.name === 'generate_canvas') {
-                const title = fc.args?.title || 'Canvas Workspace';
-                const content = fc.args?.content || '';
-                res.write(`data: ${JSON.stringify({ text: `\n<canvas title="${title}">\n${content}\n</canvas>\n`, finishReason, safetyRatings })}\n\n`);
-              }
-            } else if (part.text) {
-              res.write(`data: ${JSON.stringify({ text: part.text, finishReason, safetyRatings })}\n\n`);
-            }
-          }
-        } else if (chunk.text) {
-          res.write(`data: ${JSON.stringify({ text: chunk.text, finishReason, safetyRatings })}\n\n`);
-        } else if (finishReason) {
-          res.write(`data: ${JSON.stringify({ finishReason, safetyRatings })}\n\n`);
-        }
+        contents.push({
+          role: 'tool',
+          parts: toolResponseParts,
+        });
       }
 
-      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({
+          done: true,
+          workspace: currentWorkspace,
+          artifactIds: Array.from(new Set(touchedArtifactIds)),
+        })}\n\n`
+      );
       return res.end();
     } catch (err: any) {
       console.error(`Error in /api/chat/stream on model [${selectedModel}]:`, err);
