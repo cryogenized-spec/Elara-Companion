@@ -53,6 +53,8 @@ import {
   Save,
   HelpCircle,
   Info,
+  Edit3,
+  Clock,
 } from 'lucide-react';
 import {
   getUpcomingCalendarEvents,
@@ -60,9 +62,15 @@ import {
   requestGoogleAuth,
   isGoogleConnected,
   createGoogleDoc,
+  editGoogleDoc,
+  getGoogleDoc,
+  searchGoogleDriveDocs,
+  GoogleDocSummary,
   searchContacts,
   searchKeepNotes,
   createKeepNote,
+  updateKeepNote,
+  getKeepNote,
   deleteKeepNote,
   listKeepNotes,
   createGoogleSheet,
@@ -196,6 +204,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [newKeepTitle, setNewKeepTitle] = useState('');
   const [newKeepContent, setNewKeepContent] = useState('');
   const [keepSearchQuery, setKeepSearchQuery] = useState('');
+  const [editingKeepId, setEditingKeepId] = useState<string | null>(null);
+  const [editingKeepTitle, setEditingKeepTitle] = useState('');
+  const [editingKeepContent, setEditingKeepContent] = useState('');
+  const [keepActionNotice, setKeepActionNotice] = useState<string | null>(null);
+
+  // Google Drive Docs State & Browser
+  const [driveDocsList, setDriveDocsList] = useState<GoogleDocSummary[]>([]);
+  const [isDriveDocsLoading, setIsDriveDocsLoading] = useState(false);
+  const [driveDocsError, setDriveDocsError] = useState<string | null>(null);
+  const [driveDocsQuery, setDriveDocsQuery] = useState('');
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [selectedDocData, setSelectedDocData] = useState<{ documentId: string; title: string; content: string; url: string } | null>(null);
+  const [isLoadingDocContent, setIsLoadingDocContent] = useState(false);
+  const [docAppendText, setDocAppendText] = useState('');
+  const [isUpdatingDoc, setIsUpdatingDoc] = useState(false);
+  const [docUpdateNotice, setDocUpdateNotice] = useState<string | null>(null);
 
   // Gmail Inbox & Messaging State
   const [isGmailSyncing, setIsGmailSyncing] = useState(false);
@@ -392,10 +416,107 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  const handleStartEditKeepNote = (note: KeepNoteItem) => {
+    setEditingKeepId(note.id);
+    setEditingKeepTitle(note.title);
+    setEditingKeepContent(note.content);
+    setKeepActionNotice(null);
+  };
+
+  const handleSaveEditKeepNote = async () => {
+    if (!editingKeepId) return;
+    try {
+      const updated = await updateKeepNote(editingKeepId, {
+        title: editingKeepTitle.trim() || 'Untitled Note',
+        content: editingKeepContent.trim(),
+      });
+      if (updated) {
+        setKeepNotesList((prev) => prev.map((n) => (n.id === editingKeepId ? updated : n)));
+        setKeepActionNotice('✓ Note updated successfully!');
+        setTimeout(() => setKeepActionNotice(null), 3000);
+      }
+      setEditingKeepId(null);
+      setEditingKeepTitle('');
+      setEditingKeepContent('');
+    } catch (err: any) {
+      console.warn('Failed to update keep note:', err);
+      setKeepActionNotice('❌ Error: ' + (err.message || 'Failed to update note'));
+    }
+  };
+
+  const handleExportKeepNoteToDocs = async (note: KeepNoteItem) => {
+    try {
+      setKeepActionNotice(`Exporting "${note.title}" to Google Docs...`);
+      const res = await createGoogleDoc(`[Keep Note] ${note.title}`, note.content);
+      await updateKeepNote(note.id, { url: res.url });
+      setKeepNotesList((prev) =>
+        prev.map((n) => (n.id === note.id ? { ...n, url: res.url } : n))
+      );
+      setKeepActionNotice(`✓ Exported to Google Docs!`);
+      window.open(res.url, '_blank');
+      setTimeout(() => setKeepActionNotice(null), 4000);
+    } catch (err: any) {
+      console.warn('Failed to export note to docs:', err);
+      setKeepActionNotice('❌ Export error: ' + (err.message || 'Failed to export note'));
+    }
+  };
+
+  // Google Drive Docs Handlers
+  const handleSearchDriveDocs = async (query = '') => {
+    setIsDriveDocsLoading(true);
+    setDriveDocsError(null);
+    try {
+      const res = await searchGoogleDriveDocs(query, 12);
+      setDriveDocsList(res.docs);
+      setIsGoogleAuthed(true);
+    } catch (err: any) {
+      setDriveDocsError(err.message || 'Failed to load Google Docs from Drive');
+    } finally {
+      setIsDriveDocsLoading(false);
+    }
+  };
+
+  const handleSelectAndReadDoc = async (documentId: string) => {
+    setSelectedDocId(documentId);
+    setIsLoadingDocContent(true);
+    setDocUpdateNotice(null);
+    try {
+      const doc = await getGoogleDoc(documentId);
+      setSelectedDocData(doc);
+    } catch (err: any) {
+      console.warn('Failed to read doc:', err);
+      setDocUpdateNotice('❌ Error reading document: ' + (err.message || 'Failed to load doc'));
+    } finally {
+      setIsLoadingDocContent(false);
+    }
+  };
+
+  const handleAppendOrEditDoc = async (mode: 'append' | 'replace' = 'append') => {
+    if (!selectedDocId || !docAppendText.trim()) return;
+    setIsUpdatingDoc(true);
+    setDocUpdateNotice(null);
+    try {
+      await editGoogleDoc(selectedDocId, docAppendText.trim(), mode);
+      setDocUpdateNotice(`✓ Successfully ${mode === 'append' ? 'appended to' : 'updated'} document!`);
+      setDocAppendText('');
+      // Reload updated content
+      const updatedDoc = await getGoogleDoc(selectedDocId);
+      setSelectedDocData(updatedDoc);
+      setTimeout(() => setDocUpdateNotice(null), 4000);
+    } catch (err: any) {
+      console.warn('Failed to update doc:', err);
+      setDocUpdateNotice('❌ Error updating doc: ' + (err.message || 'Failed to update document'));
+    } finally {
+      setIsUpdatingDoc(false);
+    }
+  };
+
   const handleDeleteKeepNoteItem = async (id: string) => {
     try {
       await deleteKeepNote(id);
       setKeepNotesList((prev) => prev.filter((n) => n.id !== id));
+      setKeepActionNotice('✓ Note removed from archive');
+      setTimeout(() => setKeepActionNotice(null), 2500);
     } catch (err) {
       console.warn('Failed to delete keep note:', err);
     }
@@ -1932,26 +2053,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
               </div>
 
-              {/* 3. Google Docs Export */}
-              <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-4 sm:p-5 space-y-3">
+              {/* 3. Google Docs & Document Workspace */}
+              <div className="bg-zinc-900/50 border border-zinc-800/80 rounded-2xl p-4 sm:p-5 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5">
                     <FileText className="w-4 h-4 text-amber-400" />
                     <div>
-                      <h4 className="text-xs font-semibold text-zinc-200">Google Docs</h4>
-                      <p className="text-[11px] text-zinc-400">Export companion instructions & prompt state to Google Docs</p>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-semibold text-zinc-200">Google Docs & Document Workspace</h4>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-950/60 text-amber-300 border border-amber-800/40">
+                          Direct Read & Edit
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400">Search, read, edit, and export documents directly to Google Docs</p>
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleManualDocsExport}
-                    disabled={isDocsExporting}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-600/90 hover:bg-amber-500 text-white text-xs font-medium transition-all shadow-sm disabled:opacity-50"
-                  >
-                    <Download className={`w-3.5 h-3.5 ${isDocsExporting ? 'animate-spin' : ''}`} />
-                    <span>{isDocsExporting ? 'Exporting...' : 'Export to Docs'}</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSearchDriveDocs(driveDocsQuery)}
+                      disabled={isDriveDocsLoading}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-all shadow-sm"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isDriveDocsLoading ? 'animate-spin' : ''}`} />
+                      <span>Search Drive</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleManualDocsExport}
+                      disabled={isDocsExporting}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-600/90 hover:bg-amber-500 text-white text-xs font-medium transition-all shadow-sm disabled:opacity-50"
+                    >
+                      <Download className={`w-3.5 h-3.5 ${isDocsExporting ? 'animate-spin' : ''}`} />
+                      <span>{isDocsExporting ? 'Exporting...' : 'Export State to Doc'}</span>
+                    </button>
+                  </div>
                 </div>
 
                 {docsExportError && (
@@ -1978,6 +2115,151 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </a>
                   </div>
                 )}
+
+                {/* Drive Docs Browser */}
+                <div className="space-y-3 pt-2 border-t border-zinc-800/60">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Search Google Drive Docs (e.g., 'Meeting Notes', 'Specs')..."
+                      value={driveDocsQuery}
+                      onChange={(e) => setDriveDocsQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSearchDriveDocs(driveDocsQuery);
+                      }}
+                      className="w-full px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSearchDriveDocs(driveDocsQuery)}
+                      disabled={isDriveDocsLoading}
+                      className="px-3.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium shrink-0 transition-colors"
+                    >
+                      Find
+                    </button>
+                  </div>
+
+                  {driveDocsError && (
+                    <div className="p-2.5 rounded-xl bg-red-950/40 border border-red-800/50 text-xs text-red-300">
+                      {driveDocsError}
+                    </div>
+                  )}
+
+                  {driveDocsList.length > 0 && (
+                    <div className="max-h-44 overflow-y-auto space-y-1.5 custom-scrollbar pr-1">
+                      {driveDocsList.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className={`p-2.5 rounded-xl border text-xs flex items-center justify-between gap-3 transition-colors ${
+                            selectedDocId === doc.id
+                              ? 'bg-amber-950/30 border-amber-700/60'
+                              : 'bg-zinc-950/60 border-zinc-800/80 hover:border-zinc-700'
+                          }`}
+                        >
+                          <div className="truncate flex-1">
+                            <p className="font-semibold text-zinc-200 truncate">{doc.title}</p>
+                            <span className="text-[10px] text-zinc-500 font-mono">
+                              Modified: {new Date(doc.modifiedTime).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleSelectAndReadDoc(doc.id)}
+                              className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-300 text-[11px] font-medium transition-colors"
+                            >
+                              {selectedDocId === doc.id && isLoadingDocContent ? 'Loading...' : 'View & Edit'}
+                            </button>
+                            <a
+                              href={doc.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="p-1 rounded text-zinc-400 hover:text-zinc-200 transition-colors"
+                              title="Open in Google Docs"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Selected Doc Editor Panel */}
+                  {selectedDocData && (
+                    <div className="p-3.5 rounded-xl bg-zinc-950/80 border border-amber-900/40 space-y-3 text-xs">
+                      <div className="flex items-center justify-between gap-2 border-b border-zinc-800/80 pb-2">
+                        <div className="flex items-center gap-2 truncate">
+                          <FileText className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span className="font-semibold text-zinc-100 truncate">{selectedDocData.title}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <a
+                            href={selectedDocData.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] text-sky-400 hover:underline inline-flex items-center gap-1"
+                          >
+                            <span>Open Docs</span>
+                            <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedDocId(null);
+                              setSelectedDocData(null);
+                            }}
+                            className="text-zinc-500 hover:text-zinc-300 text-[11px]"
+                          >
+                            Close
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Content Preview */}
+                      <div className="max-h-36 overflow-y-auto p-2.5 rounded-lg bg-zinc-900/90 border border-zinc-800 text-[11px] text-zinc-300 font-mono whitespace-pre-wrap">
+                        {selectedDocData.content || '(Empty document)'}
+                      </div>
+
+                      {/* Append / Edit Form */}
+                      <div className="space-y-2">
+                        <textarea
+                          placeholder="Type text to append to this Google Doc..."
+                          rows={2}
+                          value={docAppendText}
+                          onChange={(e) => setDocAppendText(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-amber-500 font-mono resize-y"
+                        />
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleAppendOrEditDoc('append')}
+                              disabled={isUpdatingDoc || !docAppendText.trim()}
+                              className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium transition-colors disabled:opacity-50"
+                            >
+                              {isUpdatingDoc ? 'Updating...' : '+ Append Text to Doc'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleAppendOrEditDoc('replace')}
+                              disabled={isUpdatingDoc || !docAppendText.trim()}
+                              className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium transition-colors disabled:opacity-50"
+                              title="Replaces entire document body with this text"
+                            >
+                              Replace Entire Content
+                            </button>
+                          </div>
+                          {docUpdateNotice && (
+                            <span className="text-[11px] font-medium text-amber-300">
+                              {docUpdateNotice}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* 4. Google Sheets (Structured Data Logging) */}
@@ -2109,10 +2391,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <div className="flex items-center gap-2">
                         <h4 className="text-xs font-semibold text-zinc-200">Google Keep & Reference Archive</h4>
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-950/60 text-amber-300 border border-amber-800/40">
-                          Active Sync
+                          Active Sync & Notes
                         </span>
                       </div>
-                      <p className="text-[11px] text-zinc-400">Passive reference notes, research specs & archival quotes</p>
+                      <p className="text-[11px] text-zinc-400">Search, create, edit, and organize reference notes and archival quotes</p>
                     </div>
                   </div>
 
@@ -2128,6 +2410,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {keepActionNotice && (
+                  <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-800/50 text-xs text-amber-300">
+                    {keepActionNotice}
+                  </div>
+                )}
 
                 {/* Search & Filter */}
                 <div className="flex items-center gap-2">
@@ -2171,47 +2459,108 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
 
                 {keepNotesList.length > 0 && (
-                  <div className="max-h-56 overflow-y-auto space-y-2 custom-scrollbar pr-1 pt-1">
+                  <div className="max-h-60 overflow-y-auto space-y-2.5 custom-scrollbar pr-1 pt-1">
                     {keepNotesList.map((n) => (
                       <div
                         key={n.id}
-                        className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800/80 text-xs space-y-1.5 group"
+                        className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800/80 text-xs space-y-2 group"
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 truncate">
-                            <span className="font-semibold text-amber-300 truncate">{n.title}</span>
-                            {n.tags && n.tags.map((tag) => (
-                              <span key={tag} className="px-1.5 py-0.5 rounded text-[9px] bg-zinc-900 text-zinc-400 border border-zinc-800">
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            {n.url && (
-                              <a
-                                href={n.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-[10px] text-amber-400 hover:underline flex items-center gap-1"
+                        {editingKeepId === n.id ? (
+                          <div className="space-y-2">
+                            <input
+                              type="text"
+                              value={editingKeepTitle}
+                              onChange={(e) => setEditingKeepTitle(e.target.value)}
+                              className="w-full px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-zinc-100 font-semibold focus:outline-none focus:border-amber-500"
+                            />
+                            <textarea
+                              rows={3}
+                              value={editingKeepContent}
+                              onChange={(e) => setEditingKeepContent(e.target.value)}
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs text-zinc-200 focus:outline-none focus:border-amber-500 resize-y font-mono"
+                            />
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={handleSaveEditKeepNote}
+                                className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium transition-colors"
                               >
-                                <span>Doc Link</span>
-                                <ExternalLink className="w-2.5 h-2.5" />
-                              </a>
-                            )}
-                            <span className="text-[10px] text-zinc-500 font-mono">
-                              {new Date(n.updatedAt).toLocaleDateString()}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteKeepNoteItem(n.id)}
-                              className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-red-950/30 transition-colors"
-                              title="Delete note"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
+                                Save Changes
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingKeepId(null)}
+                                className="px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                        <p className="text-zinc-300 text-[11px] whitespace-pre-wrap">{n.content}</p>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 truncate">
+                                <span className="font-semibold text-amber-300 truncate">{n.title}</span>
+                                {n.tags && n.tags.map((tag) => (
+                                  <span key={tag} className="px-1.5 py-0.5 rounded text-[9px] bg-zinc-900 text-zinc-400 border border-zinc-800">
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {n.url && (
+                                  <a
+                                    href={n.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-[10px] text-amber-400 hover:underline flex items-center gap-1"
+                                    title="Open Google Doc mirror"
+                                  >
+                                    <span>Doc Link</span>
+                                    <ExternalLink className="w-2.5 h-2.5" />
+                                  </a>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleExportKeepNoteToDocs(n)}
+                                  className="p-1 rounded text-zinc-400 hover:text-amber-300 hover:bg-zinc-900 transition-colors"
+                                  title="Export this note to a new Google Doc"
+                                >
+                                  <FileText className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditKeepNote(n)}
+                                  className="p-1 rounded text-zinc-400 hover:text-amber-300 hover:bg-zinc-900 transition-colors"
+                                  title="Edit note"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(`${n.title}\n\n${n.content}`);
+                                    setKeepActionNotice(`✓ Copied "${n.title}" to clipboard`);
+                                    setTimeout(() => setKeepActionNotice(null), 2500);
+                                  }}
+                                  className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 transition-colors"
+                                  title="Copy note text"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteKeepNoteItem(n.id)}
+                                  className="p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-red-950/30 transition-colors"
+                                  title="Delete note"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                            <p className="text-zinc-300 text-[11px] whitespace-pre-wrap">{n.content}</p>
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -2798,6 +3147,83 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <span className="text-emerald-300">{proactivePushStatus}</span>
                     </div>
                   )}
+                </div>
+
+                {/* Sub-Card F: GitHub Actions Scheduled Cron & External Triggers */}
+                <div className="space-y-3 pt-3 border-t border-zinc-800/80">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-purple-400" />
+                      <span className="text-xs font-semibold text-zinc-200">
+                        Automated Cron Triggers (GitHub Actions & Webhook Sweeps)
+                      </span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-purple-950/70 text-purple-300 border border-purple-800/50">
+                      Background Automation
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-zinc-400 leading-relaxed">
+                    Trigger Elara's morning schedule sweeps and proactive Google Chat updates automatically using a free <b>GitHub Actions cron workflow</b> or an external ping.
+                  </p>
+
+                  <div className="p-3.5 rounded-xl bg-zinc-950/80 border border-zinc-800 space-y-3 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-zinc-200 text-xs">1. Ready-to-use GitHub Actions Workflow</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const yamlContent = `name: Elara Google Chat Daily Sweep
+on:
+  schedule:
+    # Runs at 08:00 UTC every weekday (Mon-Fri)
+    - cron: '0 8 * * 1-5'
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Elara Morning Schedule Sweep
+        run: |
+          curl -X POST "\${{ secrets.APP_URL }}/api/chat/proactive" \\
+            -H "Content-Type: application/json" \\
+            -d '{"type": "morning_sweep"}'
+`;
+                          navigator.clipboard.writeText(yamlContent);
+                          setProactivePushStatus('✓ Copied .github/workflows/elara-chat-cron.yml to clipboard!');
+                          setTimeout(() => setProactivePushStatus(null), 3000);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-purple-300 text-[11px] font-medium flex items-center gap-1.5 transition-colors"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>Copy Workflow YAML</span>
+                      </button>
+                    </div>
+
+                    <pre className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-300 font-mono overflow-x-auto">
+{`# File: .github/workflows/elara-chat-cron.yml
+name: Elara Google Chat Daily Sweep
+on:
+  schedule:
+    - cron: '0 8 * * 1-5'  # 8:00 AM UTC Mon-Fri
+  workflow_dispatch:
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Proactive Sweep
+        run: |
+          curl -X POST "\${{ secrets.APP_URL }}/api/chat/proactive" \\
+            -H "Content-Type: application/json" \\
+            -d '{"type": "morning_sweep"}'`}
+                    </pre>
+
+                    <div className="space-y-1 text-[11px] text-zinc-400">
+                      <p><b className="text-zinc-300">Quick Setup:</b> In your GitHub Repository, add a secret named <code className="text-purple-300">APP_URL</code> pointing to your deployed applet domain (or Cloud Run URL), and commit this file to <code className="text-purple-300">.github/workflows/</code>.</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

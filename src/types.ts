@@ -27,6 +27,8 @@ export interface Message {
   currentThoughtSentence?: string;
   thoughtDurationMs?: number;
   canvases?: CanvasData[];
+  toolCalls?: { name: string; args: any; id?: string }[];
+  toolResponses?: { name: string; response: any; id?: string }[];
 }
 
 export interface Folder {
@@ -294,6 +296,22 @@ export const AVAILABLE_MODELS: GeminiModelOption[] = [
 ];
 
 
+
+export interface WorkspaceArtifact {
+  id: string;
+  name: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+  type: string;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  artifacts: WorkspaceArtifact[];
+  activeArtifactId: string | null;
+}
 
 export interface PersonaSnapshot {
   id: string;

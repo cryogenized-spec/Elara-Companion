@@ -399,8 +399,17 @@ export async function sendGmailMessage(
 }
 
 // ----------------------------------------------------
-// Google Docs API
+// Google Docs & Drive API
 // ----------------------------------------------------
+
+export interface GoogleDocSummary {
+  id: string;
+  name: string;
+  title: string;
+  modifiedTime?: string;
+  webViewLink?: string;
+  url?: string;
+}
 
 export async function createGoogleDoc(title: string, markdownContent: string): Promise<{ documentId: string; url: string }> {
   const token = await requestGoogleAuth();
@@ -450,6 +459,170 @@ export async function createGoogleDoc(title: string, markdownContent: string): P
     documentId,
     url: `https://docs.google.com/document/d/${documentId}/edit`,
   };
+}
+
+export async function getGoogleDoc(documentId: string): Promise<{ documentId: string; title: string; content: string; url: string }> {
+  const token = await requestGoogleAuth();
+
+  const res = await fetch(`https://docs.googleapis.com/v1/documents/${documentId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseGoogleApiError(res, `Failed to retrieve Google Doc (${documentId})`));
+  }
+
+  const doc = await res.json();
+  let extractedText = '';
+
+  const bodyContent = doc.body?.content || [];
+  for (const element of bodyContent) {
+    if (element.paragraph?.elements) {
+      for (const elem of element.paragraph.elements) {
+        if (elem.textRun?.content) {
+          extractedText += elem.textRun.content;
+        }
+      }
+    } else if (element.table) {
+      // Extract text from table cells if present
+      for (const row of element.table.tableRows || []) {
+        for (const cell of row.tableCells || []) {
+          for (const cellContent of cell.content || []) {
+            if (cellContent.paragraph?.elements) {
+              for (const elem of cellContent.paragraph.elements) {
+                if (elem.textRun?.content) {
+                  extractedText += elem.textRun.content;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    documentId: doc.documentId,
+    title: doc.title || 'Untitled Document',
+    content: extractedText.trim(),
+    url: `https://docs.google.com/document/d/${doc.documentId}/edit`,
+  };
+}
+
+export async function editGoogleDoc(
+  documentId: string,
+  newText: string,
+  mode: 'append' | 'replace' | 'prepend' = 'append'
+): Promise<{ documentId: string; url: string; success: boolean }> {
+  const token = await requestGoogleAuth();
+
+  let requests: any[] = [];
+
+  if (mode === 'append') {
+    requests = [
+      {
+        insertText: {
+          endOfSegmentLocation: {},
+          text: '\n\n' + newText,
+        },
+      },
+    ];
+  } else if (mode === 'prepend') {
+    requests = [
+      {
+        insertText: {
+          location: { index: 1 },
+          text: newText + '\n\n',
+        },
+      },
+    ];
+  } else if (mode === 'replace') {
+    // Read doc to get exact length for deletion
+    const existing = await getGoogleDoc(documentId);
+    // Fetch document structure to inspect full character length
+    const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${documentId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (docRes.ok) {
+      const fullDoc = await docRes.json();
+      const contentList = fullDoc.body?.content || [];
+      const lastElement = contentList[contentList.length - 1];
+      const endIndex = (lastElement?.endIndex || 2) - 1;
+
+      if (endIndex > 1) {
+        requests.push({
+          deleteContentRange: {
+            range: {
+              startIndex: 1,
+              endIndex: endIndex,
+            },
+          },
+        });
+      }
+    }
+    requests.push({
+      insertText: {
+        location: { index: 1 },
+        text: newText,
+      },
+    });
+  }
+
+  const updateRes = await fetch(`https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ requests }),
+  });
+
+  if (!updateRes.ok) {
+    throw new Error(await parseGoogleApiError(updateRes, 'Failed to update Google Doc'));
+  }
+
+  return {
+    documentId,
+    url: `https://docs.google.com/document/d/${documentId}/edit`,
+    success: true,
+  };
+}
+
+export async function searchGoogleDriveDocs(query: string = '', maxResults = 10): Promise<{ docs: GoogleDocSummary[] }> {
+  const token = await requestGoogleAuth();
+
+  let q = "mimeType = 'application/vnd.google-apps.document' and trashed = false";
+  if (query && query.trim()) {
+    // Sanitize query to avoid breaking Drive search syntax
+    const cleanQ = query.replace(/['\\]/g, '');
+    q += ` and name contains '${cleanQ}'`;
+  }
+
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&pageSize=${maxResults}&fields=files(id,name,modifiedTime,webViewLink)&orderBy=modifiedTime desc`;
+
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseGoogleApiError(res, 'Failed to search Google Drive documents'));
+  }
+
+  const data = await res.json();
+  const files: GoogleDocSummary[] = (data.files || []).map((f: any) => ({
+    id: f.id,
+    name: f.name || 'Untitled Doc',
+    title: f.name || 'Untitled Doc',
+    modifiedTime: f.modifiedTime,
+    webViewLink: f.webViewLink || `https://docs.google.com/document/d/${f.id}/edit`,
+    url: f.webViewLink || `https://docs.google.com/document/d/${f.id}/edit`,
+  }));
+
+  return { docs: files };
 }
 
 // ----------------------------------------------------
@@ -954,11 +1127,26 @@ export async function updateKeepNote(id: string, updates: Partial<KeepNoteItem>)
   return updated;
 }
 
+export async function getKeepNote(idOrTitle: string): Promise<KeepNoteItem | null> {
+  const notes = loadLocalKeepArchive();
+  const lower = idOrTitle.toLowerCase().trim();
+  const found = notes.find((n) => n.id === idOrTitle || n.title.toLowerCase() === lower || n.title.toLowerCase().includes(lower));
+  return found || null;
+}
+
 export async function deleteKeepNote(id: string): Promise<boolean> {
   const current = loadLocalKeepArchive();
   const filtered = current.filter((n) => n.id !== id);
   saveLocalKeepArchive(filtered);
   return true;
+}
+
+export async function copyCanvasToKeep(title: string, content: string, tags: string[] = ['Canvas']): Promise<KeepNoteItem> {
+  return createKeepNote(title || 'Canvas Note', content, tags);
+}
+
+export async function copyCanvasToGoogledocs(title: string, content: string): Promise<{ documentId: string; url: string }> {
+  return createGoogleDoc(title || 'Canvas Document', content);
 }
 
 // ----------------------------------------------------

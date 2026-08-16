@@ -17,7 +17,14 @@ import {
   getUpcomingCalendarEvents, 
   listGmailMessages, 
   searchContacts, 
-  searchKeepNotes 
+  searchKeepNotes,
+  createKeepNote,
+  updateKeepNote,
+  getKeepNote,
+  createGoogleDoc,
+  editGoogleDoc,
+  getGoogleDoc,
+  searchGoogleDriveDocs
 } from './lib/googleApi';
 import { getActiveThoughtSentence, parseThoughtSteps, extractThoughtsAndContent } from './utils/thoughtUtils';
 import { extractCanvases } from './utils/canvasUtils';
@@ -47,8 +54,11 @@ import { RenameModal } from './components/RenameModal';
 import { PortraitViewerModal } from './components/PortraitViewerModal';
 import { ThoughtLogModal } from './components/ThoughtLogModal';
 import { ElaraPortrait } from './components/ElaraPortrait';
+import { WorkspaceView } from './components/WorkspaceView';
+import { executeWorkspaceOperation } from './lib/workspaceOperations';
 
 export default function App() {
+  const [currentView, setCurrentView] = useState<'chat' | 'workspace'>('chat');
   const [isLoaded, setIsLoaded] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -57,6 +67,12 @@ export default function App() {
   const [worldState, setWorldState] = useState<WorldState>(DEFAULT_WORLD_STATE);
   const [memoryState, setMemoryState] = useState<MemoryScratchpadState>(DEFAULT_MEMORY_STATE);
   const [customPortrait, setCustomPortrait] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleOpenWorkspace = () => setCurrentView('workspace');
+    window.addEventListener('open-workspace-view', handleOpenWorkspace);
+    return () => window.removeEventListener('open-workspace-view', handleOpenWorkspace);
+  }, []);
 
   useEffect(() => {
     migrateFromLocalStorage().then(async () => {
@@ -301,22 +317,40 @@ export default function App() {
 
     // Background Google Workspace Autonomous Sync Detection
     let backgroundWorkspaceContext = '';
+    
+    // Inject Canvas / Workspace context
+    const ws = getWorkspace();
+    if (ws.artifacts.length > 0) {
+      let wsCtx = `\n\n[LOCAL WORKSPACE CONTEXT]\nYou have access to the user's local workspace artifacts via the provided function calling tools. Use them to create, read, update, or delete artifacts.\nIMPORTANT RULE: When you create or update an artifact, DO NOT output the entire document content in your chat response. Instead, keep your chat response brief (e.g. "I've created the SOP in the workspace. You can open it from the artifact card.") and rely on the workspace tool to store the content.\n`;
+      wsCtx += `Available artifacts (ID - Name):\n`;
+      ws.artifacts.forEach(a => {
+        wsCtx += ` - ${a.id} : "${a.name}" (${a.type})\n`;
+      });
+      if (ws.activeArtifactId) {
+        const active = ws.artifacts.find(a => a.id === ws.activeArtifactId);
+        if (active) {
+          wsCtx += `\nCurrently ACTIVE artifact in the user's view:\nID: ${active.id}\nName: ${active.name}\nType: ${active.type}\nContent:\n` + active.content.slice(0, 3000) + (active.content.length > 3000 ? '\n...[truncated]' : '') + `\n`;
+        }
+      }
+      backgroundWorkspaceContext += wsCtx;
+    }
     const lowerMsg = messageText.toLowerCase();
     const isCalendarQuery = /(calendar|schedule|agenda|upcoming event|meeting|appointment)/i.test(lowerMsg);
     const isTasksQuery = /(task|todo|to-do|action item|checklist)/i.test(lowerMsg);
     const isEmailQuery = /(email|gmail|inbox|unread|messages|check my mail|send an email|draft an email)/i.test(lowerMsg);
     const isContactsQuery = /(contact|email address|phone number|look up|who is|find contact)/i.test(lowerMsg);
-    const isKeepQuery = /(keep note|archive note|reference quote|archived quote|saved note)/i.test(lowerMsg);
+    const isKeepQuery = /(keep note|archive note|reference quote|archived quote|saved note|save to keep|take a note|save note)/i.test(lowerMsg);
+    const isDocsQuery = /(google doc|google docs|drive doc|document|read doc|search docs|edit doc|append to doc|update doc|create doc|draft doc)/i.test(lowerMsg);
     const isExplicitSync = /(sync|refresh|fetch|check|pull)/i.test(lowerMsg);
 
-    if (isCalendarQuery || isTasksQuery || isEmailQuery || isContactsQuery || isKeepQuery || isExplicitSync) {
+    if (isCalendarQuery || isTasksQuery || isEmailQuery || isContactsQuery || isKeepQuery || isDocsQuery || isExplicitSync) {
       if (isGoogleConnected()) {
         try {
-          if (isTasksQuery || (isExplicitSync && !isCalendarQuery && !isEmailQuery && !isContactsQuery && !isKeepQuery)) {
+          if (isTasksQuery || (isExplicitSync && !isCalendarQuery && !isEmailQuery && !isContactsQuery && !isKeepQuery && !isDocsQuery)) {
             const taskData = await getTasks();
             backgroundWorkspaceContext += `\n\n[AUTONOMOUS BACKGROUND TOOL SYNC - GOOGLE TASKS]:\nList: "${taskData.listTitle}" (${taskData.items.length} tasks found):\n${JSON.stringify(taskData.items, null, 2)}\nInstruction: You have successfully synced the user's tasks in the background. Review and present this information naturally to the user in your warm companion persona. Do NOT output raw JSON or code tags.`;
           }
-          if (isCalendarQuery || (isExplicitSync && !isTasksQuery && !isEmailQuery && !isContactsQuery && !isKeepQuery)) {
+          if (isCalendarQuery || (isExplicitSync && !isTasksQuery && !isEmailQuery && !isContactsQuery && !isKeepQuery && !isDocsQuery)) {
             const calData = await getUpcomingCalendarEvents(10);
             backgroundWorkspaceContext += `\n\n[AUTONOMOUS BACKGROUND TOOL SYNC - GOOGLE CALENDAR]:\nUpcoming Events (${calData.items.length} events found):\n${JSON.stringify(calData.items, null, 2)}\nInstruction: You have successfully synced the user's calendar in the background. Review and present this information naturally to the user in your warm companion persona. Do NOT output raw JSON or code tags.`;
           }
@@ -330,14 +364,18 @@ export default function App() {
           }
           if (isKeepQuery) {
             const keepData = await searchKeepNotes('');
-            backgroundWorkspaceContext += `\n\n[AUTONOMOUS BACKGROUND TOOL SYNC - KEEP / ARCHIVE NOTES]:\nArchived Notes (${keepData.notes.length} found):\n${JSON.stringify(keepData.notes.slice(0, 15), null, 2)}\nInstruction: These are passive reference notes and archival quotes.`;
+            backgroundWorkspaceContext += `\n\n[AUTONOMOUS BACKGROUND TOOL SYNC - GOOGLE KEEP / ARCHIVE NOTES]:\nArchived Notes (${keepData.notes.length} found):\n${JSON.stringify(keepData.notes.slice(0, 15), null, 2)}\nInstruction: You have full access to the user's Google Keep archive. You can reference, search, or offer to update/create notes seamlessly. If user asked to save or edit a note, acknowledge that you've processed it or propose the updated note structure.`;
+          }
+          if (isDocsQuery) {
+            const driveDocs = await searchGoogleDriveDocs('', 10);
+            backgroundWorkspaceContext += `\n\n[AUTONOMOUS BACKGROUND TOOL SYNC - GOOGLE DOCS]:\nRecent Google Docs (${driveDocs.docs.length} found):\n${JSON.stringify(driveDocs.docs, null, 2)}\nInstruction: You have direct Google Docs capabilities to create documents, search existing docs, read content, and make edits (append, prepend, or replace). Respond naturally and confirm any document operations gracefully.`;
           }
         } catch (syncErr: any) {
           console.warn('Background workspace sync error:', syncErr);
           backgroundWorkspaceContext += `\n\n[AUTONOMOUS BACKGROUND TOOL SYNC NOTICE]: ${syncErr.message || 'Unable to complete background sync'}. Inform the user gently that Google Workspace sync encountered an issue, or ask them to re-authorize in Settings under the Google Workspace tab.`;
         }
-      } else if (isExplicitSync || (isTasksQuery && /(my tasks|check tasks|show tasks|list tasks)/i.test(lowerMsg)) || (isCalendarQuery && /(my calendar|my schedule|what'?s on my)/i.test(lowerMsg)) || (isEmailQuery && /(my email|my emails|my inbox|check email|unread email)/i.test(lowerMsg)) || (isContactsQuery && /(my contacts|find contact|look up contact)/i.test(lowerMsg))) {
-        backgroundWorkspaceContext += `\n\n[WORKSPACE STATUS]: Google Workspace is not currently connected. If the user is asking for their live emails, calendar, tasks, contacts, or sheets, let them know in character that they can connect their Google account in Settings under the Google Workspace tab.`;
+      } else if (isExplicitSync || (isTasksQuery && /(my tasks|check tasks|show tasks|list tasks)/i.test(lowerMsg)) || (isCalendarQuery && /(my calendar|my schedule|what'?s on my)/i.test(lowerMsg)) || (isEmailQuery && /(my email|my emails|my inbox|check email|unread email)/i.test(lowerMsg)) || (isContactsQuery && /(my contacts|find contact|look up contact)/i.test(lowerMsg)) || (isDocsQuery && /(my docs|my documents|list docs|search docs)/i.test(lowerMsg))) {
+        backgroundWorkspaceContext += `\n\n[WORKSPACE STATUS]: Google Workspace is not currently connected. If the user is asking for their live emails, calendar, tasks, contacts, keep notes, or google docs, let them know in character that they can connect their Google account in Settings under the Google Workspace tab.`;
       }
     }
 
@@ -373,10 +411,13 @@ export default function App() {
       : [];
 
     let accumulatedText = '';
+    let accumulatedToolCalls: any[] = [];
     let streamedThoughts = '';
 
     let lastChunkTime = Date.now();
     let isDone = false;
+    let shouldContinue = false;
+    let nextHistory: any[] = [];
 
     // Watchdog interval to catch stalled background processes on mobile
     const WATCHDOG_TIMEOUT_MS = 20000;
@@ -407,6 +448,7 @@ export default function App() {
       thoughtText?: string;
       finishReason?: string;
       safetyRatings?: any;
+      toolCall?: { name: string; args: any };
     }) => {
       lastChunkTime = Date.now();
 
@@ -452,6 +494,11 @@ export default function App() {
         scrollToBottom();
       }
 
+      // Handle tool calls
+      if (chunk.toolCall) {
+        accumulatedToolCalls.push(chunk.toolCall);
+      }
+      
       // Handle content text chunks
       if (chunk.text) {
         accumulatedText += chunk.text;
@@ -753,8 +800,14 @@ export default function App() {
       isDone = true;
       clearInterval(watchdogInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      setIsStreaming(false);
+      if (!shouldContinue) {
+        setIsStreaming(false);
+      }
       abortControllerRef.current = null;
+    }
+    
+    if (shouldContinue) {
+      streamAssistantResponse(targetConvId, '', nextHistory, undefined);
     }
   };
 
@@ -987,8 +1040,14 @@ export default function App() {
         conversations={conversations}
         folders={folders}
         activeId={activeId}
-        onSelectConversation={(id) => setActiveId(id)}
-        onNewConversation={handleNewConversation}
+        onSelectConversation={(id) => {
+          setActiveId(id);
+          setCurrentView('chat');
+        }}
+        onNewConversation={() => {
+          handleNewConversation();
+          setCurrentView('chat');
+        }}
         onRenameConversation={(id) => setRenameTargetId(id)}
         onDeleteConversation={(id) => setDeleteTargetId(id)}
         onCreateFolder={handleCreateFolder}
@@ -999,6 +1058,7 @@ export default function App() {
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenWorld={() => setWorldModalOpen(true)}
         onOpenMemory={() => setMemoryModalOpen(true)}
+        onOpenWorkspace={() => setCurrentView('workspace')}
         isOpen={sidebarOpen}
         onCloseMobile={() => setSidebarOpen(false)}
 
@@ -1008,8 +1068,10 @@ export default function App() {
 
       {/* Main Workspace (Chat + Portrait Side Panel) */}
       <div className="flex-1 flex h-full min-w-0 bg-[#0a0a0a] relative overflow-hidden">
-        {/* Main Chat Interface */}
-        <main className="flex-1 flex flex-col h-full min-w-0 bg-[#0a0a0a] relative">
+        {currentView === 'chat' ? (
+          <>
+            {/* Main Chat Interface */}
+            <main className="flex-1 flex flex-col h-full min-w-0 bg-[#0a0a0a] relative">
           {/* Custom Chat Backdrop Background Overlay */}
           {settings.backdropImage && (
             <div
@@ -1258,6 +1320,10 @@ export default function App() {
             </div>
           </div>
         </aside>
+          </>
+        ) : (
+          <WorkspaceView />
+        )}
       </div>
 
       {/* Modals */}

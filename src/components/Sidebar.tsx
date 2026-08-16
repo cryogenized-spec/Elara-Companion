@@ -37,6 +37,7 @@ interface SidebarProps {
   onOpenSettings: () => void;
   onOpenWorld?: () => void;
   onOpenMemory?: () => void;
+  onOpenWorkspace: () => void;
   isOpen: boolean;
   onCloseMobile: () => void;
   theme: 'dark' | 'light';
@@ -59,6 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenSettings,
   onOpenWorld,
   onOpenMemory,
+  onOpenWorkspace,
   isOpen,
   onCloseMobile,
   theme,
@@ -436,6 +438,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span>World State & Life</span>
             </button>
           )}
+
+          <button
+            onClick={() => {
+              onOpenWorkspace();
+              onCloseMobile();
+            }}
+            className="w-full flex items-center px-3 py-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/40 rounded-lg transition-colors text-sm font-medium border border-emerald-800/40"
+          >
+            <BookOpen className="w-4 h-4 mr-2.5 text-emerald-400" />
+            <span>Workspace & Artifacts</span>
+          </button>
 
           <div className="flex items-center gap-2">
             <button
