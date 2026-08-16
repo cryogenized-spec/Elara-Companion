@@ -10,6 +10,7 @@ export interface ThoughtStep {
 export interface CanvasData {
   title: string;
   content: string;
+  artifactId?: string;
 }
 
 export interface Message {
@@ -27,6 +28,7 @@ export interface Message {
   currentThoughtSentence?: string;
   thoughtDurationMs?: number;
   canvases?: CanvasData[];
+  artifactIds?: string[];
 }
 
 export interface Folder {

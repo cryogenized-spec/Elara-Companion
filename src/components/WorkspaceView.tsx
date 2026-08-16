@@ -1,10 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Workspace, WorkspaceArtifact } from '../types';
-import { getWorkspace, createArtifact, updateArtifact, deleteArtifact } from '../lib/workspaceStorage';
-import { Plus, FileText, Trash2, Edit2, X, Check, Eye, Code, ChevronDown, FileType2 } from 'lucide-react';
+import { getWorkspace, saveWorkspace, createArtifact, updateArtifact, deleteArtifact, setActiveArtifact } from '../lib/workspaceStorage';
+import { Plus, FileText, Trash2, Edit2, X, Check, Eye, Code, ChevronDown, FileType2, ArrowLeft, Menu } from 'lucide-react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
-export const WorkspaceView: React.FC = () => {
+interface WorkspaceViewProps {
+  activeArtifactId?: string | null;
+  onSelectArtifact?: (id: string) => void;
+  onBackToChat?: () => void;
+  onOpenSidebar?: () => void;
+}
+
+export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
+  activeArtifactId: propActiveArtifactId,
+  onSelectArtifact,
+  onBackToChat,
+  onOpenSidebar,
+}) => {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -15,68 +27,101 @@ export const WorkspaceView: React.FC = () => {
   // Local state for fast typing without re-rendering the whole workspace object
   const [localContent, setLocalContent] = useState<string>('');
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const localContentRef = useRef(localContent);
+  localContentRef.current = localContent;
+  const activeArtifactRef = useRef<WorkspaceArtifact | null>(null);
 
+  // Load and synchronize workspace
   useEffect(() => {
     const ws = getWorkspace();
-    setWorkspace(ws);
-    
-    // Set initial content if there's an active artifact
-    if (ws.activeArtifactId) {
-      const active = ws.artifacts.find(a => a.id === ws.activeArtifactId);
-      if (active) setLocalContent(active.content);
+    let targetId = propActiveArtifactId || ws.activeArtifactId;
+
+    if (propActiveArtifactId && ws.artifacts.some((a) => a.id === propActiveArtifactId)) {
+      ws.activeArtifactId = propActiveArtifactId;
+      saveWorkspace(ws);
+      targetId = propActiveArtifactId;
     }
+
+    setWorkspace(ws);
+
+    if (targetId) {
+      const active = ws.artifacts.find((a) => a.id === targetId);
+      if (active) {
+        setLocalContent(active.content);
+        activeArtifactRef.current = active;
+      }
+    }
+  }, [propActiveArtifactId]);
+
+  // Flush any pending unsaved changes on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      if (activeArtifactRef.current && localContentRef.current !== activeArtifactRef.current.content) {
+        const ws = getWorkspace();
+        updateArtifact(ws, activeArtifactRef.current.id, { content: localContentRef.current });
+      }
+    };
   }, []);
 
   if (!workspace) return null;
 
-  const activeArtifact = workspace.artifacts.find(a => a.id === workspace.activeArtifactId);
+  const activeArtifact = workspace.artifacts.find((a) => a.id === workspace.activeArtifactId) || null;
+  activeArtifactRef.current = activeArtifact;
 
   const handleCreate = (type: 'text' | 'markdown' = 'text') => {
-    let newWorkspace: Workspace | null = null;
-    setWorkspace(prev => {
-      if (!prev) return prev;
-      newWorkspace = createArtifact(prev, type === 'markdown' ? 'Untitled.md' : 'Untitled', type);
-      return newWorkspace;
-    });
+    // Flush current active if needed
+    if (activeArtifact && localContent !== activeArtifact.content) {
+      updateArtifact(workspace, activeArtifact.id, { content: localContent });
+    }
+
+    const updated = createArtifact(workspace, type === 'markdown' ? 'Untitled.md' : 'Untitled', type);
+    setWorkspace(updated);
     setLocalContent('');
     setShowNewMenu(false);
     setPreviewMode(false);
+    if (onSelectArtifact && updated.activeArtifactId) {
+      onSelectArtifact(updated.activeArtifactId);
+    }
   };
 
   const handleSelect = (id: string) => {
-    setWorkspace(prev => {
-      if (!prev) return prev;
-      
-      let currentWs = prev;
-      if (prev.activeArtifactId && localContent !== prev.artifacts.find(a => a.id === prev.activeArtifactId)?.content) {
-         currentWs = updateArtifact(prev, prev.activeArtifactId, { content: localContent });
-      }
-      
-      return { ...currentWs, activeArtifactId: id };
-    });
-    
-    // We get the target artifact content from the current workspace object to update local view
-    const newlyActive = workspace.artifacts.find(a => a.id === id);
+    // Flush current before switching
+    let currentWs = workspace;
+    if (activeArtifact && localContent !== activeArtifact.content) {
+      currentWs = updateArtifact(workspace, activeArtifact.id, { content: localContent });
+    }
+
+    const updated = setActiveArtifact(id);
+    setWorkspace(updated);
+
+    const newlyActive = updated.artifacts.find((a) => a.id === id);
     setLocalContent(newlyActive?.content || '');
     setEditingId(null);
     setDeleteConfirmId(null);
+
+    if (onSelectArtifact) {
+      onSelectArtifact(id);
+    }
   };
 
   const handleDelete = (id: string) => {
     let becameEmpty = false;
     let newActiveContent = '';
-    
-    setWorkspace(prev => {
-      if (!prev) return prev;
-      const updated = deleteArtifact(prev, id);
-      if (id === prev.activeArtifactId) {
-         becameEmpty = true;
-         const newActive = updated.artifacts.find(a => a.id === updated.activeArtifactId);
-         newActiveContent = newActive?.content || '';
+
+    const updated = deleteArtifact(workspace, id);
+    if (id === workspace.activeArtifactId) {
+      becameEmpty = true;
+      const newActive = updated.artifacts.find((a) => a.id === updated.activeArtifactId);
+      newActiveContent = newActive?.content || '';
+      if (onSelectArtifact) {
+        onSelectArtifact(updated.activeArtifactId || '');
       }
-      return updated;
-    });
-    
+    }
+    setWorkspace(updated);
+
     if (becameEmpty) {
       setLocalContent(newActiveContent);
     }
@@ -85,7 +130,8 @@ export const WorkspaceView: React.FC = () => {
 
   const handleRenameSubmit = (id: string) => {
     if (editName.trim()) {
-      setWorkspace(prev => prev ? updateArtifact(prev, id, { name: editName.trim() }) : prev);
+      const updated = updateArtifact(workspace, id, { name: editName.trim() });
+      setWorkspace(updated);
     }
     setEditingId(null);
   };
@@ -98,13 +144,13 @@ export const WorkspaceView: React.FC = () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
-      
+
       debounceTimerRef.current = setTimeout(() => {
-        setWorkspace(prev => {
+        setWorkspace((prev) => {
           if (!prev) return prev;
           return updateArtifact(prev, activeArtifact.id, { content: newContent });
         });
-      }, 500);
+      }, 400);
     }
   };
 
@@ -234,35 +280,55 @@ export const WorkspaceView: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
         {activeArtifact ? (
           <>
-            <div className="h-16 border-b border-zinc-800 flex items-center justify-between px-6 shrink-0 bg-[#0a0a0a]/80 backdrop-blur-md">
-              <div className="flex items-center gap-3">
+            <div className="h-16 border-b border-zinc-800 flex items-center justify-between px-4 sm:px-6 shrink-0 bg-[#0a0a0a]/80 backdrop-blur-md gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                {onOpenSidebar && (
+                  <button
+                    onClick={onOpenSidebar}
+                    className="md:hidden p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors shrink-0"
+                    title="Open Navigation"
+                  >
+                    <Menu className="w-4 h-4" />
+                  </button>
+                )}
+                {onBackToChat && (
+                  <button
+                    onClick={onBackToChat}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-medium border border-zinc-800 transition-colors shrink-0 mr-1"
+                    title="Return to Chat Conversation"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5 text-sky-400" />
+                    <span className="hidden sm:inline">Return to Chat</span>
+                    <span className="sm:hidden">Chat</span>
+                  </button>
+                )}
                 <div className="p-1.5 rounded-lg bg-emerald-950/70 border border-emerald-500/30 text-emerald-400 shrink-0">
                   {activeArtifact.type === 'markdown' ? <FileType2 className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                 </div>
-                <h2 className="text-sm font-semibold text-zinc-100 tracking-tight">{activeArtifact.name}</h2>
+                <h2 className="text-sm font-semibold text-zinc-100 tracking-tight truncate">{activeArtifact.name}</h2>
               </div>
               
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                 {activeArtifact.type === 'markdown' && (
                   <div className="flex items-center bg-zinc-900/50 rounded-lg p-0.5 border border-zinc-800">
                     <button
                       onClick={() => setPreviewMode(false)}
-                      className={`px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${!previewMode ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+                      className={`px-2.5 sm:px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${!previewMode ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
                     >
                       <Code className="w-3.5 h-3.5" />
-                      Edit
+                      <span>Edit</span>
                     </button>
                     <button
                       onClick={() => setPreviewMode(true)}
-                      className={`px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${previewMode ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+                      className={`px-2.5 sm:px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${previewMode ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
                     >
                       <Eye className="w-3.5 h-3.5" />
-                      Preview
+                      <span>Preview</span>
                     </button>
                   </div>
                 )}
-                <div className="flex items-center gap-3 text-[10px] font-mono border-l border-zinc-800 pl-4">
-                  <span className="text-zinc-500 px-2 py-0.5 rounded border border-zinc-800 bg-zinc-900/50">
+                <div className="flex items-center gap-3 text-[10px] font-mono border-l border-zinc-800 pl-3 sm:pl-4">
+                  <span className="text-zinc-500 px-2 py-0.5 rounded border border-zinc-800 bg-zinc-900/50 hidden sm:inline-block">
                     {localContent.trim() ? localContent.trim().split(/\s+/).length : 0} words
                   </span>
                   <span className="text-zinc-500">
@@ -280,24 +346,34 @@ export const WorkspaceView: React.FC = () => {
                   value={localContent}
                   onChange={handleContentChange}
                   placeholder="Start typing..."
-                  className="w-full h-full bg-transparent text-zinc-300 text-sm resize-none outline-none custom-scrollbar leading-relaxed"
+                  className="w-full h-full bg-transparent text-zinc-300 text-sm resize-none outline-none custom-scrollbar leading-relaxed font-mono"
                   spellCheck="false"
                 />
               )}
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 space-y-4">
+          <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 space-y-4 p-4">
             <div className="w-16 h-16 rounded-2xl bg-zinc-900/50 border border-zinc-800 flex items-center justify-center text-zinc-600 shadow-inner">
               <FileText className="w-8 h-8" />
             </div>
             <div className="text-sm">Select or create an artifact to begin</div>
-            <button 
-              onClick={() => handleCreate('markdown')}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded-lg transition-colors shadow-sm"
-            >
-              Create New Artifact
-            </button>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => handleCreate('markdown')}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded-lg transition-colors shadow-sm"
+              >
+                Create New Artifact
+              </button>
+              {onBackToChat && (
+                <button
+                  onClick={onBackToChat}
+                  className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-medium rounded-lg border border-zinc-800 transition-colors"
+                >
+                  Return to Chat
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>

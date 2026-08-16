@@ -5,7 +5,7 @@ import remarkBreaks from 'remark-breaks';
 import { Message, CanvasData } from '../types';
 import { CodeBlock } from './CodeBlock';
 import { ThinkingScratchpad } from './ThinkingScratchpad';
-import { Copy, Check, RefreshCw, Edit3, AlertCircle, AlertTriangle, Sparkles, User, X, Play, Sliders, Code, Mail, ExternalLink } from 'lucide-react';
+import { Copy, Check, RefreshCw, Edit3, AlertCircle, AlertTriangle, Sparkles, User, X, Play, Sliders, Code, Mail, ExternalLink, FileText, ArrowRight } from 'lucide-react';
 
 interface EmailDraftButtonProps {
   url: string;
@@ -47,6 +47,7 @@ interface ChatMessageProps {
   onCompleteResponse?: () => void;
   onOpenSettings?: () => void;
   onOpenCanvas?: (canvas: CanvasData) => void;
+  onOpenArtifact?: (artifactId: string) => void;
 }
 
 export const getAssistantBackgroundClasses = (bgStyle?: string) => {
@@ -103,6 +104,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   onCompleteResponse,
   onOpenSettings,
   onOpenCanvas,
+  onOpenArtifact,
 }) => {
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -365,23 +367,55 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                   {message.content}
                 </ReactMarkdown>
 
-                  {/* Render extracted canvases as interactive buttons */}
+                  {/* Render extracted documents / canvases as persistent Workspace cards */}
                   {message.canvases && message.canvases.length > 0 && (
-                    <div className="flex flex-col gap-2 mt-2 border-t border-zinc-700/50 pt-3">
+                    <div className="flex flex-col gap-2.5 mt-3 pt-3 border-t border-zinc-700/50">
                       {message.canvases.map((canvas, idx) => (
-                        <button
+                        <div
                           key={idx}
-                          onClick={() => onOpenCanvas && onOpenCanvas(canvas)}
-                          className="flex items-center gap-3 p-3 rounded-xl bg-sky-950/40 hover:bg-sky-900/60 border border-sky-500/30 text-sky-100 transition-colors text-left"
+                          className="group/card rounded-xl border border-emerald-500/30 bg-emerald-950/20 hover:bg-emerald-950/30 p-3.5 transition-all shadow-sm flex flex-col gap-2"
                         >
-                          <div className="w-8 h-8 rounded-lg bg-sky-900/80 flex items-center justify-center shrink-0">
-                            <Code className="w-4 h-4 text-sky-400" />
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 text-[11px] font-semibold text-emerald-400">
+                              <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Document</span>
+                            </div>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              Markdown
+                            </span>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="text-sm font-semibold truncate">{canvas.title || 'Interactive Canvas'}</h4>
-                            <p className="text-xs text-sky-300/80 mt-0.5 truncate">Click to view and copy output</p>
+
+                          <div>
+                            <h4 className="text-sm font-semibold text-zinc-100 group-hover/card:text-emerald-300 transition-colors truncate">
+                              {canvas.title || 'Untitled Document'}
+                            </h4>
                           </div>
-                        </button>
+
+                          <div className="pt-1.5 flex items-center justify-between gap-2">
+                            <button
+                              onClick={() => {
+                                if (canvas.artifactId && onOpenArtifact) {
+                                  onOpenArtifact(canvas.artifactId);
+                                } else if (onOpenCanvas) {
+                                  onOpenCanvas(canvas);
+                                }
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md hover:shadow-emerald-600/20 transition-all cursor-pointer active:scale-95"
+                            >
+                              <span>Open in Workspace</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+
+                            {!canvas.artifactId && onOpenCanvas && (
+                              <button
+                                onClick={() => onOpenCanvas(canvas)}
+                                className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                              >
+                                View Legacy Canvas
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   )}

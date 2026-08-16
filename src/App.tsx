@@ -55,6 +55,7 @@ import { PortraitViewerModal } from './components/PortraitViewerModal';
 import { ThoughtLogModal } from './components/ThoughtLogModal';
 import { ElaraPortrait } from './components/ElaraPortrait';
 import { WorkspaceView } from './components/WorkspaceView';
+import { saveAgentArtifact, setActiveArtifact } from './lib/workspaceStorage';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'chat' | 'workspace'>('chat');
@@ -101,12 +102,19 @@ export default function App() {
   const [memoryModalOpen, setMemoryModalOpen] = useState(false);
   const [viewerModalOpen, setViewerModalOpen] = useState(false);
   const [activeCanvas, setActiveCanvas] = useState<CanvasData | null>(null);
+  const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null);
   const portraitFileInputRef = useRef<HTMLInputElement>(null);
 
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   const [theme, setTheme] = useState<'dark' | 'light'>(settings.theme || 'dark');
+
+  const handleOpenArtifact = (artifactId: string) => {
+    setActiveArtifact(artifactId);
+    setActiveArtifactId(artifactId);
+    setCurrentView('workspace');
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -637,6 +645,17 @@ export default function App() {
       const { cleanContent: finalCleanContent, canvases } = extractCanvases(cleanContent);
       const finalSteps = parseThoughtSteps(combinedThoughts);
 
+      // TRANSITIONAL BRIDGE: Persist agent-generated canvases to WorkspaceArtifact
+      const persistedCanvases = canvases && canvases.length > 0
+        ? canvases.map((c) => {
+            const artifact = saveAgentArtifact(c.title || 'Canvas Document', c.content, 'markdown', c.artifactId);
+            return {
+              ...c,
+              artifactId: artifact.id,
+            };
+          })
+        : [];
+
       setConversations((prev) =>
         prev.map((c) => {
           if (c.id !== targetConvId) return c;
@@ -645,7 +664,8 @@ export default function App() {
               ? {
                   ...m,
                   content: finalCleanContent,
-                  canvases,
+                  canvases: persistedCanvases,
+                  artifactIds: persistedCanvases.map((pc) => pc.artifactId!),
                   isStreaming: false,
                   isThinking: false,
                   rawThoughts: combinedThoughts,
@@ -1214,6 +1234,7 @@ export default function App() {
                             onCompleteResponse={handleCompleteResponse}
                             onOpenSettings={() => setSettingsOpen(true)}
                             onOpenCanvas={(canvas) => setActiveCanvas(canvas)}
+                            onOpenArtifact={handleOpenArtifact}
                           />
                         );
                       });
@@ -1283,7 +1304,12 @@ export default function App() {
         </aside>
           </>
         ) : (
-          <WorkspaceView />
+          <WorkspaceView
+            activeArtifactId={activeArtifactId}
+            onSelectArtifact={(id) => setActiveArtifactId(id)}
+            onBackToChat={() => setCurrentView('chat')}
+            onOpenSidebar={() => setSidebarOpen(true)}
+          />
         )}
       </div>
 
