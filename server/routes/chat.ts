@@ -50,22 +50,10 @@ export function setupChatRoutes(app: express.Express) {
                 });
               }
             }
-            if (msg.toolCalls && msg.toolCalls.length > 0) {
-              for (const tc of msg.toolCalls) {
-                parts.push({ functionCall: { name: tc.name, args: tc.args } });
-              }
-            }
-            if (msg.toolResponses && msg.toolResponses.length > 0) {
-              for (const tr of msg.toolResponses) {
-                parts.push({ functionResponse: { name: tr.name, response: tr.response } });
-              }
-            }
             if (msg.content) {
               parts.push({ text: msg.content });
-            } else if (parts.length === 0 || (parts.length === 1 && parts[0].inlineData)) {
-              if (parts.length > 0) {
-                parts.push({ text: '[Attached image]' });
-              }
+            } else if (parts.length > 0) {
+              parts.push({ text: '[Attached image]' });
             }
             if (parts.length > 0) {
               contents.push({
@@ -147,75 +135,25 @@ export function setupChatRoutes(app: express.Express) {
         {
           functionDeclarations: [
             {
-              name: 'create_artifact',
-              description: 'Create a new artifact in the workspace. Returns the new artifact ID.',
+              name: 'generate_canvas',
+              description: 'Use this tool to generate long-form content, detailed plans, blueprints, scripts, outlines, documentation, or creative writing in an interactive Canvas Workspace for the user.',
               parameters: {
                 type: 'OBJECT',
                 properties: {
-                  name: { type: 'STRING' },
-                  type: { type: 'STRING', enum: ['text', 'markdown'] },
-                  content: { type: 'STRING' }
+                  title: {
+                    type: 'STRING',
+                    description: 'A concise, descriptive title for the canvas.',
+                  },
+                  content: {
+                    type: 'STRING',
+                    description: 'The structured markdown or code content to be placed inside the canvas.',
+                  },
                 },
-                required: ['name', 'type', 'content']
-              }
+                required: ['title', 'content'],
+              },
             },
-            {
-              name: 'update_artifact',
-              description: 'Update the content of an existing artifact. You must read it first if you need to preserve existing content.',
-              parameters: {
-                type: 'OBJECT',
-                properties: {
-                  artifact_id: { type: 'STRING' },
-                  content: { type: 'STRING' }
-                },
-                required: ['artifact_id', 'content']
-              }
-            },
-            {
-              name: 'read_artifact',
-              description: 'Read the current content of an existing artifact.',
-              parameters: {
-                type: 'OBJECT',
-                properties: {
-                  artifact_id: { type: 'STRING' }
-                },
-                required: ['artifact_id']
-              }
-            },
-            {
-              name: 'list_artifacts',
-              description: 'List all available artifacts in the workspace.',
-              parameters: {
-                type: 'OBJECT',
-                properties: {},
-                required: []
-              }
-            },
-            {
-              name: 'rename_artifact',
-              description: 'Rename an existing artifact.',
-              parameters: {
-                type: 'OBJECT',
-                properties: {
-                  artifact_id: { type: 'STRING' },
-                  name: { type: 'STRING' }
-                },
-                required: ['artifact_id', 'name']
-              }
-            },
-            {
-              name: 'delete_artifact',
-              description: 'Delete an existing artifact.',
-              parameters: {
-                type: 'OBJECT',
-                properties: {
-                  artifact_id: { type: 'STRING' }
-                },
-                required: ['artifact_id']
-              }
-            }
-          ]
-        }
+          ],
+        },
       ];
 
       const responseStream = await ai.models.generateContentStream({
@@ -243,7 +181,11 @@ export function setupChatRoutes(app: express.Express) {
               res.write(`data: ${JSON.stringify({ thoughtText: part.text })}\n\n`);
             } else if ((part as any).functionCall) {
               const fc = (part as any).functionCall;
-              res.write(`data: ${JSON.stringify({ toolCall: { name: fc.name, args: fc.args }, finishReason, safetyRatings })}\n\n`);
+              if (fc.name === 'generate_canvas') {
+                const title = fc.args?.title || 'Canvas Workspace';
+                const content = fc.args?.content || '';
+                res.write(`data: ${JSON.stringify({ text: `\n<canvas title="${title}">\n${content}\n</canvas>\n`, finishReason, safetyRatings })}\n\n`);
+              }
             } else if (part.text) {
               res.write(`data: ${JSON.stringify({ text: part.text, finishReason, safetyRatings })}\n\n`);
             }

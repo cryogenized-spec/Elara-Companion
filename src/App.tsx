@@ -55,7 +55,6 @@ import { PortraitViewerModal } from './components/PortraitViewerModal';
 import { ThoughtLogModal } from './components/ThoughtLogModal';
 import { ElaraPortrait } from './components/ElaraPortrait';
 import { WorkspaceView } from './components/WorkspaceView';
-import { executeWorkspaceOperation } from './lib/workspaceOperations';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'chat' | 'workspace'>('chat');
@@ -67,12 +66,6 @@ export default function App() {
   const [worldState, setWorldState] = useState<WorldState>(DEFAULT_WORLD_STATE);
   const [memoryState, setMemoryState] = useState<MemoryScratchpadState>(DEFAULT_MEMORY_STATE);
   const [customPortrait, setCustomPortrait] = useState<string | null>(null);
-
-  useEffect(() => {
-    const handleOpenWorkspace = () => setCurrentView('workspace');
-    window.addEventListener('open-workspace-view', handleOpenWorkspace);
-    return () => window.removeEventListener('open-workspace-view', handleOpenWorkspace);
-  }, []);
 
   useEffect(() => {
     migrateFromLocalStorage().then(async () => {
@@ -317,23 +310,6 @@ export default function App() {
 
     // Background Google Workspace Autonomous Sync Detection
     let backgroundWorkspaceContext = '';
-    
-    // Inject Canvas / Workspace context
-    const ws = getWorkspace();
-    if (ws.artifacts.length > 0) {
-      let wsCtx = `\n\n[LOCAL WORKSPACE CONTEXT]\nYou have access to the user's local workspace artifacts via the provided function calling tools. Use them to create, read, update, or delete artifacts.\nIMPORTANT RULE: When you create or update an artifact, DO NOT output the entire document content in your chat response. Instead, keep your chat response brief (e.g. "I've created the SOP in the workspace. You can open it from the artifact card.") and rely on the workspace tool to store the content.\n`;
-      wsCtx += `Available artifacts (ID - Name):\n`;
-      ws.artifacts.forEach(a => {
-        wsCtx += ` - ${a.id} : "${a.name}" (${a.type})\n`;
-      });
-      if (ws.activeArtifactId) {
-        const active = ws.artifacts.find(a => a.id === ws.activeArtifactId);
-        if (active) {
-          wsCtx += `\nCurrently ACTIVE artifact in the user's view:\nID: ${active.id}\nName: ${active.name}\nType: ${active.type}\nContent:\n` + active.content.slice(0, 3000) + (active.content.length > 3000 ? '\n...[truncated]' : '') + `\n`;
-        }
-      }
-      backgroundWorkspaceContext += wsCtx;
-    }
     const lowerMsg = messageText.toLowerCase();
     const isCalendarQuery = /(calendar|schedule|agenda|upcoming event|meeting|appointment)/i.test(lowerMsg);
     const isTasksQuery = /(task|todo|to-do|action item|checklist)/i.test(lowerMsg);
@@ -411,13 +387,10 @@ export default function App() {
       : [];
 
     let accumulatedText = '';
-    let accumulatedToolCalls: any[] = [];
     let streamedThoughts = '';
 
     let lastChunkTime = Date.now();
     let isDone = false;
-    let shouldContinue = false;
-    let nextHistory: any[] = [];
 
     // Watchdog interval to catch stalled background processes on mobile
     const WATCHDOG_TIMEOUT_MS = 20000;
@@ -448,7 +421,6 @@ export default function App() {
       thoughtText?: string;
       finishReason?: string;
       safetyRatings?: any;
-      toolCall?: { name: string; args: any };
     }) => {
       lastChunkTime = Date.now();
 
@@ -494,11 +466,6 @@ export default function App() {
         scrollToBottom();
       }
 
-      // Handle tool calls
-      if (chunk.toolCall) {
-        accumulatedToolCalls.push(chunk.toolCall);
-      }
-      
       // Handle content text chunks
       if (chunk.text) {
         accumulatedText += chunk.text;
@@ -800,14 +767,8 @@ export default function App() {
       isDone = true;
       clearInterval(watchdogInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (!shouldContinue) {
-        setIsStreaming(false);
-      }
+      setIsStreaming(false);
       abortControllerRef.current = null;
-    }
-    
-    if (shouldContinue) {
-      streamAssistantResponse(targetConvId, '', nextHistory, undefined);
     }
   };
 

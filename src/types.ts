@@ -27,8 +27,6 @@ export interface Message {
   currentThoughtSentence?: string;
   thoughtDurationMs?: number;
   canvases?: CanvasData[];
-  toolCalls?: { name: string; args: any; id?: string }[];
-  toolResponses?: { name: string; response: any; id?: string }[];
 }
 
 export interface Folder {

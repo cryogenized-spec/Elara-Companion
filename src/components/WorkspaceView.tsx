@@ -17,20 +17,14 @@ export const WorkspaceView: React.FC = () => {
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    const loadWorkspace = () => {
-      const ws = getWorkspace();
-      setWorkspace(ws);
-      
-      if (ws.activeArtifactId) {
-        const active = ws.artifacts.find(a => a.id === ws.activeArtifactId);
-        if (active) setLocalContent(active.content);
-      }
-    };
+    const ws = getWorkspace();
+    setWorkspace(ws);
     
-    loadWorkspace();
-    
-    window.addEventListener('workspace-updated', loadWorkspace);
-    return () => window.removeEventListener('workspace-updated', loadWorkspace);
+    // Set initial content if there's an active artifact
+    if (ws.activeArtifactId) {
+      const active = ws.artifacts.find(a => a.id === ws.activeArtifactId);
+      if (active) setLocalContent(active.content);
+    }
   }, []);
 
   if (!workspace) return null;
