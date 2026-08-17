@@ -156,7 +156,11 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
   };
 
   const [syncing, setSyncing] = useState(false);
-  const handleSyncAction = async (action: 'refresh_google_doc' | 'sync_to_google_doc' | 'sync_from_google_doc') => {
+  const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, action: 'push'|'pull', message: string, title: string} | null>(null);
+  const [diffModal, setDiffModal] = useState<{isOpen: boolean, diffs: {type: string, value: string}[]} | null>(null);
+  const [linkModal, setLinkModal] = useState<{isOpen: boolean, linkUrl: string, linkMode: 'local_to_google'|'google_to_local'|'compare_only'} | null>(null);
+
+  const handleSyncAction = async (action: 'refresh_google_doc' | 'sync_to_google_doc' | 'sync_from_google_doc', force = false) => {
     if (!activeArtifact || !workspace) return;
     setSyncing(true);
     
@@ -171,7 +175,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
       const result = await executeAnyWorkspaceTool(
         wsToUse,
         action, 
-        { artifactId: activeArtifact.id, force: true }, 
+        { artifactId: activeArtifact.id, force }, 
         undefined
       );
       
@@ -184,12 +188,71 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
         }
       }
       if (!result.result.success) {
-        alert('Sync Error: ' + result.result.error);
+        if (result.result.requiresResolution) {
+           // We just let the UI update to show conflict controls based on the status
+           // since refresh or the failed attempt updates the status anyway.
+           alert(`Sync rejected: ${result.result.error}\nPlease use the conflict resolution controls.`);
+        } else {
+           alert('Sync Error: ' + result.result.error);
+        }
       }
     } catch (e) {
       alert('Error during sync: ' + (e as Error).message);
     } finally {
       setSyncing(false);
+      setConfirmModal(null);
+    }
+  };
+
+  const handleCompare = async () => {
+    if (!activeArtifact || !workspace) return;
+    setSyncing(true);
+    try {
+      const result = await executeAnyWorkspaceTool(workspace, 'compare_artifact_with_google_doc', { artifactId: activeArtifact.id });
+      if (result.result.success && result.result.diff) {
+        setDiffModal({ isOpen: true, diffs: result.result.diff });
+      } else {
+        alert('Failed to compare: ' + result.result.error);
+      }
+    } catch (e) {
+      alert('Error comparing: ' + (e as Error).message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleLinkGoogleDoc = async () => {
+    if (!activeArtifact || !workspace || !linkModal || !linkModal.linkUrl.trim()) return;
+    setSyncing(true);
+    try {
+      let wsToUse = workspace;
+      if (localContent !== activeArtifact.content) {
+        wsToUse = updateArtifact(workspace, activeArtifact.id, { content: localContent });
+        setWorkspace(wsToUse);
+      }
+
+      const result = await executeAnyWorkspaceTool(wsToUse, 'link_google_doc', { 
+        artifactId: activeArtifact.id, 
+        documentId: linkModal.linkUrl.trim(),
+        initialSyncMode: linkModal.linkMode
+      });
+
+      if (result.updatedWorkspace) {
+        setWorkspace(result.updatedWorkspace);
+        saveWorkspace(result.updatedWorkspace);
+        const updatedArt = result.updatedWorkspace.artifacts.find(a => a.id === activeArtifact.id);
+        if (updatedArt) {
+          setLocalContent(updatedArt.content);
+        }
+      }
+      if (!result.result.success) {
+        alert('Link Error: ' + result.result.error);
+      }
+    } catch (e) {
+      alert('Error linking: ' + (e as Error).message);
+    } finally {
+      setSyncing(false);
+      setLinkModal(null);
     }
   };
 
@@ -362,7 +425,21 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
               </div>
               
               <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-                {activeArtifact.provider === 'google_docs' && (
+                {(!activeArtifact.provider || activeArtifact.provider === 'local') && (
+                  <button onClick={() => setLinkModal({isOpen: true, linkUrl: '', linkMode: 'compare_only'})} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900/50 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors">
+                    Link Google Doc
+                  </button>
+                )}
+                {activeArtifact.provider === 'google_docs' && (activeArtifact.syncStatus === 'conflict' || activeArtifact.syncStatus === 'linked') ? (
+                  <div className="flex items-center gap-2 bg-zinc-900/50 rounded-lg p-0.5 border border-zinc-800">
+                    <span className="px-2 text-[10px] uppercase tracking-wider font-bold text-amber-500 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3 h-3" /> {activeArtifact.syncStatus === 'conflict' ? 'Conflict' : 'Unsynced'}
+                    </span>
+                    <button onClick={handleCompare} disabled={syncing} className="px-2 py-1 text-xs font-medium rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors">Compare</button>
+                    <button onClick={() => setConfirmModal({isOpen: true, action: 'push', title: 'Keep Local', message: 'Replace the Google Doc with the local version?'})} disabled={syncing} className="px-2 py-1 text-xs font-medium rounded-md text-emerald-400 hover:text-emerald-300 hover:bg-emerald-900/20 transition-colors">Keep Local</button>
+                    <button onClick={() => setConfirmModal({isOpen: true, action: 'pull', title: 'Keep Google', message: 'Replace the local Workspace document with the Google version?'})} disabled={syncing} className="px-2 py-1 text-xs font-medium rounded-md text-blue-400 hover:text-blue-300 hover:bg-blue-900/20 transition-colors">Keep Google</button>
+                  </div>
+                ) : activeArtifact.provider === 'google_docs' ? (
                   <div className="flex items-center gap-2 bg-zinc-900/50 rounded-lg p-0.5 border border-zinc-800">
                     <button
                       onClick={() => handleSyncAction('refresh_google_doc')}
@@ -372,18 +449,18 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
                     </button>
-                    {activeArtifact.syncStatus === 'local_ahead' || activeArtifact.syncStatus === 'conflict' ? (
+                    {activeArtifact.syncStatus === 'local_ahead' ? (
                       <button
                         onClick={() => handleSyncAction('sync_to_google_doc')}
                         disabled={syncing}
                         className="px-2 py-1 text-xs font-medium rounded-md text-emerald-400 hover:text-emerald-300 hover:bg-emerald-900/20 flex items-center gap-1.5 transition-colors"
-                        title="Sync local changes up to Google Docs"
+                        title="Push local changes up to Google Docs"
                       >
                         <UploadCloud className="w-3.5 h-3.5" />
                         <span className="hidden sm:inline">Push</span>
                       </button>
                     ) : null}
-                    {activeArtifact.syncStatus === 'remote_ahead' || activeArtifact.syncStatus === 'conflict' ? (
+                    {activeArtifact.syncStatus === 'remote_ahead' ? (
                       <button
                         onClick={() => handleSyncAction('sync_from_google_doc')}
                         disabled={syncing}
@@ -394,12 +471,6 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                         <span className="hidden sm:inline">Pull</span>
                       </button>
                     ) : null}
-                    {activeArtifact.syncStatus === 'conflict' && (
-                      <div className="px-2 py-1 flex items-center gap-1.5 text-amber-500">
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        <span className="text-[10px] uppercase tracking-wider font-bold hidden sm:inline">Conflict</span>
-                      </div>
-                    )}
                     {activeArtifact.syncStatus === 'synchronized' && (
                       <div className="px-2 py-1 flex items-center gap-1.5 text-emerald-500">
                         <Check className="w-3.5 h-3.5" />
@@ -407,7 +478,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                       </div>
                     )}
                   </div>
-                )}
+                ) : null}
                 {activeArtifact.url && (
                   <a
                     href={activeArtifact.url}
@@ -488,6 +559,115 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
           </div>
         )}
       </div>
+      {/* Modals */}
+      {confirmModal && confirmModal.isOpen && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl w-full max-w-md shadow-2xl flex flex-col gap-4">
+            <h3 className="text-lg font-semibold text-zinc-100">{confirmModal.title}</h3>
+            <p className="text-sm text-zinc-400">{confirmModal.message}</p>
+            <div className="flex justify-end gap-3 mt-4">
+              <button onClick={() => setConfirmModal(null)} className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors">Cancel</button>
+              <button 
+                onClick={() => {
+                  if (confirmModal.action === 'push') handleSyncAction('sync_to_google_doc', true);
+                  if (confirmModal.action === 'pull') handleSyncAction('sync_from_google_doc', true);
+                }} 
+                className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors ${confirmModal.action === 'push' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-blue-600 hover:bg-blue-500'}`}
+              >
+                Confirm Replace
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {linkModal && linkModal.isOpen && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl w-full max-w-lg shadow-2xl flex flex-col gap-5">
+            <h3 className="text-lg font-semibold text-zinc-100">Link Google Doc</h3>
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Google Doc URL or ID</label>
+              <input 
+                type="text" 
+                value={linkModal.linkUrl} 
+                onChange={(e) => setLinkModal({...linkModal, linkUrl: e.target.value})}
+                placeholder="https://docs.google.com/document/d/..."
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-emerald-500/50"
+              />
+            </div>
+            <div className="flex flex-col gap-3">
+              <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Initial Synchronization</label>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-start gap-3 p-3 rounded-lg border border-zinc-800 bg-zinc-950/50 cursor-pointer hover:border-zinc-700 transition-colors">
+                  <input type="radio" name="linkMode" value="compare_only" checked={linkModal.linkMode === 'compare_only'} onChange={() => setLinkModal({...linkModal, linkMode: 'compare_only'})} className="mt-1" />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-zinc-200">Compare Only (Safest)</span>
+                    <span className="text-xs text-zinc-500">Do not overwrite either side. Just establish the link.</span>
+                  </div>
+                </label>
+                <label className="flex items-start gap-3 p-3 rounded-lg border border-zinc-800 bg-zinc-950/50 cursor-pointer hover:border-emerald-700/50 transition-colors">
+                  <input type="radio" name="linkMode" value="local_to_google" checked={linkModal.linkMode === 'local_to_google'} onChange={() => setLinkModal({...linkModal, linkMode: 'local_to_google'})} className="mt-1" />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-emerald-400">Use Local as Starting Version</span>
+                    <span className="text-xs text-zinc-500">Overwrites the Google Doc with local content.</span>
+                  </div>
+                </label>
+                <label className="flex items-start gap-3 p-3 rounded-lg border border-zinc-800 bg-zinc-950/50 cursor-pointer hover:border-blue-700/50 transition-colors">
+                  <input type="radio" name="linkMode" value="google_to_local" checked={linkModal.linkMode === 'google_to_local'} onChange={() => setLinkModal({...linkModal, linkMode: 'google_to_local'})} className="mt-1" />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-blue-400">Use Google as Starting Version</span>
+                    <span className="text-xs text-zinc-500">Overwrites local Workspace with Google Doc content.</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-2">
+              <button onClick={() => setLinkModal(null)} className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors">Cancel</button>
+              <button 
+                onClick={handleLinkGoogleDoc} 
+                disabled={!linkModal.linkUrl.trim()}
+                className="px-4 py-2 text-sm font-medium text-white bg-zinc-100 hover:bg-white text-zinc-900 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Link Document
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {diffModal && diffModal.isOpen && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl">
+            <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/50 rounded-t-xl">
+              <h3 className="text-sm font-medium text-zinc-200">Difference Comparison</h3>
+              <button onClick={() => setDiffModal(null)} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-200 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 bg-[#0a0a0a] font-mono text-xs leading-relaxed custom-scrollbar">
+              {diffModal.diffs.map((d, i) => (
+                <div key={i} className={`whitespace-pre-wrap px-2 py-0.5 rounded-sm ${
+                  d.type === 'local_added' ? 'text-emerald-400 bg-emerald-900/20' : 
+                  d.type === 'remote_removed' ? 'text-red-400 bg-red-900/20 line-through opacity-70' : 
+                  'text-zinc-500'
+                }`}>
+                  <span className="select-none inline-block w-4 opacity-50 mr-2 border-r border-zinc-800">{
+                    d.type === 'local_added' ? '+' : d.type === 'remote_removed' ? '-' : ' '
+                  }</span>
+                  {d.value}
+                </div>
+              ))}
+            </div>
+            <div className="p-4 border-t border-zinc-800 flex justify-between items-center bg-zinc-950/50 rounded-b-xl">
+               <div className="flex gap-4 text-[10px] uppercase font-bold tracking-wider">
+                  <span className="text-emerald-500">+ Local</span>
+                  <span className="text-red-500">- Remote</span>
+               </div>
+              <button onClick={() => setDiffModal(null)} className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
