@@ -1,10 +1,25 @@
 import { Workspace, WorkspaceArtifact } from '../types';
+import {
+  createGoogleDoc,
+  getGoogleDoc,
+  editGoogleDoc,
+  listGoogleDriveFiles,
+  searchGoogleDriveFiles,
+  readGoogleDriveFile,
+  createKeepNote,
+  getKeepNote,
+  updateKeepNote,
+  isGoogleConnected,
+} from './googleApi';
 
 export const workspaceToolDeclarations = [
+  // ==========================================
+  // 1. LOCAL WORKSPACE TOOLS (Canonical Documents)
+  // ==========================================
   {
     name: 'create_artifact',
     description:
-      'Create a new persistent document in the Workspace. Use this tool when the user asks to create, draft, write, or generate a new document, SOP, guide, script, plan, checklist, or template. Supported types: "markdown", "text".',
+      'Create a new persistent document in the user\'s local Workspace. Use this tool when the user asks to create, draft, write, or generate a new document, SOP, guide, script, plan, checklist, or template. Supported types: "markdown", "text".',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -42,7 +57,7 @@ export const workspaceToolDeclarations = [
   {
     name: 'update_artifact',
     description:
-      'Update the content of an existing Workspace document. Use this tool when the user asks to add sections, edit, modify, append to, or revise an existing document. Do NOT call create_artifact when modifying an existing document.',
+      'Update the content of an existing local Workspace document. Use this tool when the user asks to add sections, edit, modify, append to, or revise an existing document. Do NOT call create_artifact when modifying an existing document.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -61,7 +76,7 @@ export const workspaceToolDeclarations = [
   {
     name: 'list_artifacts',
     description:
-      'List all documents currently available in the Workspace, returning their artifactId, name, type, and updatedAt timestamp.',
+      'List all documents currently available in the local Workspace, returning their artifactId, name, type, provider, and updatedAt timestamp.',
     parameters: {
       type: 'OBJECT',
       properties: {},
@@ -69,7 +84,7 @@ export const workspaceToolDeclarations = [
   },
   {
     name: 'rename_artifact',
-    description: 'Rename an existing Workspace document without altering its ID or content.',
+    description: 'Rename an existing local Workspace document without altering its ID or content.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -85,6 +100,202 @@ export const workspaceToolDeclarations = [
       required: ['artifactId', 'name'],
     },
   },
+
+  // ==========================================
+  // 2. GOOGLE DRIVE TOOLS (External Cloud Storage)
+  // ==========================================
+  {
+    name: 'list_google_drive_files',
+    description:
+      'List recent files and documents located in the user\'s Google Drive account.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        pageSize: {
+          type: 'INTEGER',
+          description: 'Maximum number of files to return (defaults to 10).',
+        },
+        query: {
+          type: 'STRING',
+          description: 'Optional filter query string for file names.',
+        },
+      },
+    },
+  },
+  {
+    name: 'search_google_drive',
+    description:
+      'Search for files or documents in the user\'s Google Drive matching a keyword, title, or query.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        query: {
+          type: 'STRING',
+          description: 'The search query or keyword to find in Google Drive.',
+        },
+        pageSize: {
+          type: 'INTEGER',
+          description: 'Maximum number of results to return (defaults to 10).',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'read_google_drive_file',
+    description:
+      'Read metadata and text content from a Google Drive file or document by its fileId.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        fileId: {
+          type: 'STRING',
+          description: 'The Google Drive file ID to read.',
+        },
+      },
+      required: ['fileId'],
+    },
+  },
+
+  // ==========================================
+  // 3. GOOGLE DOCS TOOLS (External Google Documents)
+  // ==========================================
+  {
+    name: 'create_google_doc',
+    description:
+      'Create a new Google Document in the user\'s Google Drive / Google Docs. Use this when the user explicitly asks to create a Google Doc or export content to Google Docs.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        title: {
+          type: 'STRING',
+          description: 'The title of the new Google Doc.',
+        },
+        content: {
+          type: 'STRING',
+          description: 'The text or markdown content for the new Google Doc.',
+        },
+        associateWithArtifactId: {
+          type: 'STRING',
+          description: 'Optional local Workspace artifactId to link with this external Google Doc.',
+        },
+      },
+      required: ['title', 'content'],
+    },
+  },
+  {
+    name: 'read_google_doc',
+    description:
+      'Retrieve the title, full text content, and URL of an existing Google Document by its documentId.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        documentId: {
+          type: 'STRING',
+          description: 'The unique Google Docs documentId.',
+        },
+      },
+      required: ['documentId'],
+    },
+  },
+  {
+    name: 'update_google_doc',
+    description:
+      'Update or append text content to an existing Google Document. Modes: "append" (default), "replace", "prepend".',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        documentId: {
+          type: 'STRING',
+          description: 'The unique Google Docs documentId.',
+        },
+        content: {
+          type: 'STRING',
+          description: 'The text to append, prepend, or replace in the Google Doc.',
+        },
+        mode: {
+          type: 'STRING',
+          description: 'Edit mode: "append", "replace", or "prepend". Defaults to "append".',
+        },
+      },
+      required: ['documentId', 'content'],
+    },
+  },
+
+  // ==========================================
+  // 4. GOOGLE KEEP / REFERENCE ARCHIVE TOOLS
+  // ==========================================
+  {
+    name: 'create_keep_note',
+    description:
+      'Create a quick reference note in the user\'s Keep reference archive (and mirror to Google Docs if authenticated).',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        title: {
+          type: 'STRING',
+          description: 'The title of the quick note.',
+        },
+        content: {
+          type: 'STRING',
+          description: 'The body content of the note.',
+        },
+        tags: {
+          type: 'ARRAY',
+          items: { type: 'STRING' },
+          description: 'Optional categorization tags (e.g. ["urgent", "idea"]).',
+        },
+      },
+      required: ['title', 'content'],
+    },
+  },
+  {
+    name: 'read_keep_note',
+    description:
+      'Read a note from the Keep reference archive by its ID or title.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        noteId: {
+          type: 'STRING',
+          description: 'The ID or title of the Keep note to read.',
+        },
+      },
+      required: ['noteId'],
+    },
+  },
+  {
+    name: 'update_keep_note',
+    description:
+      'Update an existing note in the Keep reference archive.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        noteId: {
+          type: 'STRING',
+          description: 'The ID of the note to update.',
+        },
+        title: {
+          type: 'STRING',
+          description: 'Optional updated title.',
+        },
+        content: {
+          type: 'STRING',
+          description: 'Optional updated content.',
+        },
+        tags: {
+          type: 'ARRAY',
+          items: { type: 'STRING' },
+          description: 'Optional updated tags.',
+        },
+      },
+      required: ['noteId'],
+    },
+  },
+
+  // ==========================================
+  // 5. LEGACY COMPATIBILITY BRIDGE
+  // ==========================================
   {
     name: 'generate_canvas',
     description: 'Legacy tool to generate long-form content or interactive canvases in the workspace.',
@@ -110,6 +321,7 @@ export interface WorkspaceOperationResult {
   updatedWorkspace: Workspace;
   createdArtifactId?: string;
   modifiedArtifactId?: string;
+  externalDocUrl?: string;
 }
 
 export function executeWorkspaceOperation(
@@ -131,7 +343,7 @@ export function executeWorkspaceOperation(
       const rawName = typeof safeArgs.name === 'string' ? safeArgs.name.trim() : '';
       if (!rawName) {
         return {
-          result: { success: false, error: 'Document name is required and cannot be empty.' },
+          result: { success: false, provider: 'local', error: 'Document name is required and cannot be empty.' },
           updatedWorkspace: currentWs,
         };
       }
@@ -146,6 +358,7 @@ export function executeWorkspaceOperation(
         name: rawName,
         content,
         type,
+        provider: 'local',
         createdAt: now,
         updatedAt: now,
       };
@@ -159,6 +372,7 @@ export function executeWorkspaceOperation(
       return {
         result: {
           success: true,
+          provider: 'local',
           artifactId,
           name: newArtifact.name,
           type: newArtifact.type,
@@ -173,19 +387,18 @@ export function executeWorkspaceOperation(
       const artifactId = typeof safeArgs.artifactId === 'string' ? safeArgs.artifactId.trim() : '';
       if (!artifactId) {
         return {
-          result: { success: false, error: 'artifactId parameter is required.' },
+          result: { success: false, provider: 'local', error: 'artifactId parameter is required.' },
           updatedWorkspace: currentWs,
         };
       }
 
-      // Try exact ID match first, fallback to exact case-insensitive name match
       const artifact = currentWs.artifacts.find(
         (a) => a.id === artifactId || a.name.toLowerCase() === artifactId.toLowerCase()
       );
 
       if (!artifact) {
         return {
-          result: { success: false, error: `Artifact not found with ID or name: "${artifactId}".` },
+          result: { success: false, provider: 'local', error: `Artifact not found with ID or name: "${artifactId}".` },
           updatedWorkspace: currentWs,
         };
       }
@@ -193,10 +406,13 @@ export function executeWorkspaceOperation(
       return {
         result: {
           success: true,
+          provider: artifact.provider || 'local',
           artifactId: artifact.id,
           name: artifact.name,
           type: artifact.type,
           content: artifact.content,
+          url: artifact.url,
+          externalId: artifact.externalId,
           updatedAt: artifact.updatedAt,
         },
         updatedWorkspace: currentWs,
@@ -207,19 +423,18 @@ export function executeWorkspaceOperation(
       const artifactId = typeof safeArgs.artifactId === 'string' ? safeArgs.artifactId.trim() : '';
       if (!artifactId) {
         return {
-          result: { success: false, error: 'artifactId parameter is required.' },
+          result: { success: false, provider: 'local', error: 'artifactId parameter is required.' },
           updatedWorkspace: currentWs,
         };
       }
 
       if (typeof safeArgs.content !== 'string') {
         return {
-          result: { success: false, error: 'content parameter is required.' },
+          result: { success: false, provider: 'local', error: 'content parameter is required.' },
           updatedWorkspace: currentWs,
         };
       }
 
-      // Stale content protection: verify artifact exists
       const targetIndex = currentWs.artifacts.findIndex(
         (a) => a.id === artifactId || a.name.toLowerCase() === artifactId.toLowerCase()
       );
@@ -228,6 +443,7 @@ export function executeWorkspaceOperation(
         return {
           result: {
             success: false,
+            provider: 'local',
             error: `Artifact with ID "${artifactId}" not found or no longer exists. Update aborted.`,
           },
           updatedWorkspace: currentWs,
@@ -254,6 +470,7 @@ export function executeWorkspaceOperation(
       return {
         result: {
           success: true,
+          provider: updatedArtifact.provider || 'local',
           artifactId: updatedArtifact.id,
           updatedAt: updatedArtifact.updatedAt,
         },
@@ -267,12 +484,16 @@ export function executeWorkspaceOperation(
         artifactId: a.id,
         name: a.name,
         type: a.type,
+        provider: a.provider || 'local',
+        externalId: a.externalId,
+        url: a.url,
         updatedAt: new Date(a.updatedAt).toISOString(),
       }));
 
       return {
         result: {
           success: true,
+          provider: 'local',
           artifacts: summaryList,
           count: summaryList.length,
         },
@@ -286,14 +507,14 @@ export function executeWorkspaceOperation(
 
       if (!artifactId) {
         return {
-          result: { success: false, error: 'artifactId parameter is required.' },
+          result: { success: false, provider: 'local', error: 'artifactId parameter is required.' },
           updatedWorkspace: currentWs,
         };
       }
 
       if (!newName) {
         return {
-          result: { success: false, error: 'name parameter is required and cannot be empty.' },
+          result: { success: false, provider: 'local', error: 'name parameter is required and cannot be empty.' },
           updatedWorkspace: currentWs,
         };
       }
@@ -304,7 +525,7 @@ export function executeWorkspaceOperation(
 
       if (targetIndex === -1) {
         return {
-          result: { success: false, error: `Artifact with ID "${artifactId}" not found.` },
+          result: { success: false, provider: 'local', error: `Artifact with ID "${artifactId}" not found.` },
           updatedWorkspace: currentWs,
         };
       }
@@ -329,6 +550,7 @@ export function executeWorkspaceOperation(
       return {
         result: {
           success: true,
+          provider: renamed.provider || 'local',
           artifactId: renamed.id,
           name: renamed.name,
           updatedAt: renamed.updatedAt,
@@ -350,6 +572,7 @@ export function executeWorkspaceOperation(
         name: rawTitle,
         content,
         type: 'markdown',
+        provider: 'local',
         createdAt: now,
         updatedAt: now,
       };
@@ -363,6 +586,7 @@ export function executeWorkspaceOperation(
       return {
         result: {
           success: true,
+          provider: 'local',
           artifactId,
           name: newArtifact.name,
           type: 'markdown',
@@ -375,39 +599,367 @@ export function executeWorkspaceOperation(
 
     default:
       return {
-        result: { success: false, error: `Unknown tool: ${toolName}` },
+        result: { success: false, error: `Unknown local workspace tool: ${toolName}` },
         updatedWorkspace: currentWs,
       };
   }
 }
 
-export function buildWorkspaceContextPrompt(workspace?: Workspace | null): string {
+/**
+ * Asynchronous executor for Google Docs, Google Drive, and Keep operations.
+ */
+export async function executeGoogleOperation(
+  toolName: string,
+  args: any,
+  passedToken?: string,
+  workspace?: Workspace
+): Promise<WorkspaceOperationResult> {
+  const currentWs: Workspace = {
+    id: workspace?.id || 'default-workspace',
+    name: workspace?.name || 'My Workspace',
+    artifacts: Array.isArray(workspace?.artifacts) ? [...workspace.artifacts] : [],
+    activeArtifactId: workspace?.activeArtifactId || null,
+  };
+
+  const safeArgs = args && typeof args === 'object' ? args : {};
+
+  try {
+    switch (toolName) {
+      // ----------------------------------------
+      // Google Docs Tools
+      // ----------------------------------------
+      case 'create_google_doc': {
+        const title = typeof safeArgs.title === 'string' ? safeArgs.title.trim() : 'Elara Document';
+        const content = typeof safeArgs.content === 'string' ? safeArgs.content : String(safeArgs.content || '');
+        const targetArtifactId = typeof safeArgs.associateWithArtifactId === 'string' ? safeArgs.associateWithArtifactId.trim() : '';
+
+        const docRes = await createGoogleDoc(title, content, passedToken);
+
+        let updatedWs = currentWs;
+        let modifiedId: string | undefined;
+
+        // If targetArtifactId specified, associate external Google Doc ID & URL with local WorkspaceArtifact
+        if (targetArtifactId) {
+          const idx = updatedWs.artifacts.findIndex((a) => a.id === targetArtifactId);
+          if (idx !== -1) {
+            const updatedArt: WorkspaceArtifact = {
+              ...updatedWs.artifacts[idx],
+              provider: 'google_docs',
+              externalId: docRes.documentId,
+              url: docRes.url,
+              updatedAt: Date.now(),
+            };
+            const copy = [...updatedWs.artifacts];
+            copy[idx] = updatedArt;
+            updatedWs = { ...updatedWs, artifacts: copy };
+            modifiedId = updatedArt.id;
+          }
+        }
+
+        return {
+          result: {
+            success: true,
+            provider: 'google_docs',
+            documentId: docRes.documentId,
+            title: docRes.title,
+            url: docRes.url,
+            message: `Successfully created Google Doc "${docRes.title}".`,
+          },
+          updatedWorkspace: updatedWs,
+          modifiedArtifactId: modifiedId,
+          externalDocUrl: docRes.url,
+        };
+      }
+
+      case 'read_google_doc': {
+        const documentId = typeof safeArgs.documentId === 'string' ? safeArgs.documentId.trim() : '';
+        if (!documentId) {
+          return {
+            result: { success: false, provider: 'google_docs', error: 'documentId parameter is required.' },
+            updatedWorkspace: currentWs,
+          };
+        }
+
+        const doc = await getGoogleDoc(documentId, passedToken);
+        return {
+          result: {
+            success: true,
+            provider: 'google_docs',
+            documentId: doc.documentId,
+            title: doc.title,
+            content: doc.content,
+            url: doc.url,
+          },
+          updatedWorkspace: currentWs,
+        };
+      }
+
+      case 'update_google_doc': {
+        const documentId = typeof safeArgs.documentId === 'string' ? safeArgs.documentId.trim() : '';
+        const content = typeof safeArgs.content === 'string' ? safeArgs.content : '';
+        const mode = (safeArgs.mode === 'replace' || safeArgs.mode === 'prepend') ? safeArgs.mode : 'append';
+
+        if (!documentId) {
+          return {
+            result: { success: false, provider: 'google_docs', error: 'documentId parameter is required.' },
+            updatedWorkspace: currentWs,
+          };
+        }
+
+        const editRes = await editGoogleDoc(documentId, content, mode, passedToken);
+        return {
+          result: {
+            success: true,
+            provider: 'google_docs',
+            documentId: editRes.documentId,
+            url: editRes.url,
+            mode,
+            message: `Successfully updated Google Doc (${mode} mode).`,
+          },
+          updatedWorkspace: currentWs,
+          externalDocUrl: editRes.url,
+        };
+      }
+
+      // ----------------------------------------
+      // Google Drive Tools
+      // ----------------------------------------
+      case 'list_google_drive_files': {
+        const pageSize = typeof safeArgs.pageSize === 'number' && safeArgs.pageSize > 0 ? safeArgs.pageSize : 10;
+        const query = typeof safeArgs.query === 'string' ? safeArgs.query.trim() : '';
+        const driveData = await listGoogleDriveFiles(pageSize, query, passedToken);
+
+        return {
+          result: {
+            success: true,
+            provider: 'google_drive',
+            files: driveData.files,
+            count: driveData.files.length,
+          },
+          updatedWorkspace: currentWs,
+        };
+      }
+
+      case 'search_google_drive': {
+        const query = typeof safeArgs.query === 'string' ? safeArgs.query.trim() : '';
+        const pageSize = typeof safeArgs.pageSize === 'number' && safeArgs.pageSize > 0 ? safeArgs.pageSize : 10;
+
+        if (!query) {
+          return {
+            result: { success: false, provider: 'google_drive', error: 'query parameter is required.' },
+            updatedWorkspace: currentWs,
+          };
+        }
+
+        const driveData = await searchGoogleDriveFiles(query, pageSize, passedToken);
+        return {
+          result: {
+            success: true,
+            provider: 'google_drive',
+            query,
+            files: driveData.files,
+            count: driveData.files.length,
+          },
+          updatedWorkspace: currentWs,
+        };
+      }
+
+      case 'read_google_drive_file': {
+        const fileId = typeof safeArgs.fileId === 'string' ? safeArgs.fileId.trim() : '';
+        if (!fileId) {
+          return {
+            result: { success: false, provider: 'google_drive', error: 'fileId parameter is required.' },
+            updatedWorkspace: currentWs,
+          };
+        }
+
+        const file = await readGoogleDriveFile(fileId, passedToken);
+        return {
+          result: {
+            success: true,
+            provider: 'google_drive',
+            id: file.id,
+            name: file.name,
+            mimeType: file.mimeType,
+            content: file.content,
+            url: file.webViewLink,
+          },
+          updatedWorkspace: currentWs,
+        };
+      }
+
+      // ----------------------------------------
+      // Google Keep / Archive Notes Tools
+      // ----------------------------------------
+      case 'create_keep_note': {
+        const title = typeof safeArgs.title === 'string' ? safeArgs.title.trim() : 'Untitled Note';
+        const content = typeof safeArgs.content === 'string' ? safeArgs.content : '';
+        const tags = Array.isArray(safeArgs.tags) ? safeArgs.tags.map(String) : [];
+
+        const note = await createKeepNote(title, content, tags);
+        return {
+          result: {
+            success: true,
+            provider: 'google_keep',
+            noteId: note.id,
+            title: note.title,
+            tags: note.tags,
+            url: note.url,
+            message: 'Quick note saved to Keep archive' + (note.url ? ' and mirrored to Google Docs.' : '.'),
+          },
+          updatedWorkspace: currentWs,
+        };
+      }
+
+      case 'read_keep_note': {
+        const noteId = typeof safeArgs.noteId === 'string' ? safeArgs.noteId.trim() : '';
+        if (!noteId) {
+          return {
+            result: { success: false, provider: 'google_keep', error: 'noteId parameter is required.' },
+            updatedWorkspace: currentWs,
+          };
+        }
+
+        const note = await getKeepNote(noteId);
+        if (!note) {
+          return {
+            result: { success: false, provider: 'google_keep', error: `Note not found in Keep archive for ID/title: "${noteId}".` },
+            updatedWorkspace: currentWs,
+          };
+        }
+
+        return {
+          result: {
+            success: true,
+            provider: 'google_keep',
+            note,
+          },
+          updatedWorkspace: currentWs,
+        };
+      }
+
+      case 'update_keep_note': {
+        const noteId = typeof safeArgs.noteId === 'string' ? safeArgs.noteId.trim() : '';
+        if (!noteId) {
+          return {
+            result: { success: false, provider: 'google_keep', error: 'noteId parameter is required.' },
+            updatedWorkspace: currentWs,
+          };
+        }
+
+        const updates: any = {};
+        if (typeof safeArgs.title === 'string') updates.title = safeArgs.title;
+        if (typeof safeArgs.content === 'string') updates.content = safeArgs.content;
+        if (Array.isArray(safeArgs.tags)) updates.tags = safeArgs.tags.map(String);
+
+        const updatedNote = await updateKeepNote(noteId, updates);
+        if (!updatedNote) {
+          return {
+            result: { success: false, provider: 'google_keep', error: `Note not found with ID "${noteId}".` },
+            updatedWorkspace: currentWs,
+          };
+        }
+
+        return {
+          result: {
+            success: true,
+            provider: 'google_keep',
+            note: updatedNote,
+          },
+          updatedWorkspace: currentWs,
+        };
+      }
+
+      default:
+        return {
+          result: { success: false, error: `Unknown tool: ${toolName}` },
+          updatedWorkspace: currentWs,
+        };
+    }
+  } catch (err: any) {
+    const errorMsg = err?.message || String(err || 'Unknown Google operation failure');
+    const isAuthErr = errorMsg.includes('401') || errorMsg.includes('auth') || errorMsg.includes('sign in') || errorMsg.includes('token');
+
+    return {
+      result: {
+        success: false,
+        error: isAuthErr
+          ? 'Google Workspace authorization required. Please connect your Google account in Settings to use Google Drive and Google Docs.'
+          : `Google operation failed: ${errorMsg}`,
+      },
+      updatedWorkspace: currentWs,
+    };
+  }
+}
+
+/**
+ * Unified tool executor routing to local workspace operations or Google operations.
+ */
+export async function executeAnyWorkspaceTool(
+  workspace: Workspace,
+  toolName: string,
+  args: any,
+  passedToken?: string
+): Promise<WorkspaceOperationResult> {
+  const localTools = [
+    'create_artifact',
+    'read_artifact',
+    'update_artifact',
+    'list_artifacts',
+    'rename_artifact',
+    'generate_canvas',
+  ];
+
+  if (localTools.includes(toolName)) {
+    return executeWorkspaceOperation(workspace, toolName, args);
+  }
+
+  return executeGoogleOperation(toolName, args, passedToken, workspace);
+}
+
+export function buildWorkspaceContextPrompt(workspace?: Workspace | null, googleConnected = false): string {
+  let prompt = `\n[DOCUMENT SYSTEMS ARCHITECTURE & INSTRUCTIONS]\n`;
+  prompt += `Elara has two distinct document layers:\n`;
+  prompt += `1. **Local Persistent Workspace** (Canonical Local Storage):
+- Tools: \`create_artifact\`, \`read_artifact\`, \`update_artifact\`, \`list_artifacts\`, \`rename_artifact\`
+- Use by default whenever the user asks to create, draft, edit, review, or organize documents, SOPs, checklists, scripts, or plans without specifying Google.
+- All documents created with \`create_artifact\` are permanently saved in the user's Workspace.
+
+2. **Google Workspace Cloud Provider** (External Cloud Integration):
+- Google Docs: \`create_google_doc\`, \`read_google_doc\`, \`update_google_doc\`
+- Google Drive: \`list_google_drive_files\`, \`search_google_drive\`, \`read_google_drive_file\`
+- Google Keep Archive: \`create_keep_note\`, \`read_keep_note\`, \`update_keep_note\`
+- Use Google tools ONLY when the user explicitly requests Google Docs, Google Drive, or Google Keep operations.
+- Google Docs and Drive are external providers and do NOT replace the canonical local WorkspaceArtifact unless explicitly linked.
+- Google Authentication Status: ${googleConnected || isGoogleConnected() ? 'CONNECTED' : 'NOT CONNECTED (will prompt if called)'}\n\n`;
+
   if (!workspace || !Array.isArray(workspace.artifacts) || workspace.artifacts.length === 0) {
-    return `\n[WORKSPACE STATUS]\nThe user's Workspace is currently empty. You can use create_artifact to create new persistent documents for the user.\n`;
+    prompt += `[WORKSPACE STATUS]\nThe user's local Workspace is currently empty.\n`;
+    return prompt;
   }
 
   const active = workspace.activeArtifactId
     ? workspace.artifacts.find((a) => a.id === workspace.activeArtifactId)
     : null;
 
-  let prompt = `\n[CURRENT WORKSPACE STATE]\n`;
+  prompt += `[CURRENT WORKSPACE STATE]\n`;
   if (active) {
-    prompt += `Active Document Currently Open in Workspace:\n- Title: "${active.name}" (ID: ${active.id}, Type: ${active.type}, Last updated: ${new Date(active.updatedAt).toISOString()})\n`;
+    prompt += `Active Document Currently Open in Workspace:\n- Title: "${active.name}" (ID: ${active.id}, Type: ${active.type}, Provider: ${active.provider || 'local'}${active.url ? `, External URL: ${active.url}` : ''})\n`;
   } else {
     prompt += `No document is currently active.\n`;
   }
 
   prompt += `\nAll Available Documents in Workspace (${workspace.artifacts.length}):\n`;
   for (const art of workspace.artifacts) {
-    prompt += `- "${art.name}" (ID: ${art.id}, Type: ${art.type})\n`;
+    prompt += `- "${art.name}" (ID: ${art.id}, Type: ${art.type}, Provider: ${art.provider || 'local'})\n`;
   }
 
-  prompt += `\nInstructions for Workspace Tools:
-1. To create a new document/SOP/guide, call create_artifact.
-2. To add to, edit, or modify an existing document, first read it via read_artifact if needed, then call update_artifact with the complete modified document content. Never call create_artifact to modify an existing document.
-3. When the user says "this document", "the document", or refers to an open document, prioritize the Active Document.
-4. When ambiguous between similarly named documents and the target cannot be determined, call list_artifacts or ask the user for clarification rather than guessing.
-5. To rename a document, call rename_artifact.
+  prompt += `\nExecution Rules:
+1. To draft a new document/SOP/guide, call \`create_artifact\`.
+2. To modify an existing local document, first inspect it via \`read_artifact\` if needed, then call \`update_artifact\` with the full revised content. Never call \`create_artifact\` to update an existing document.
+3. When the user says "this document" or refers to an open file, target the Active Document.
+4. To export or create a file in Google Docs, call \`create_google_doc\`.
+5. To search or read existing files from the user's Google Drive, call \`search_google_drive\` or \`read_google_drive_file\`.
 `;
 
   return prompt;

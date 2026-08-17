@@ -1,6 +1,6 @@
 import express from "express";
 import { getGeminiClient, formatApiErrorDetails, normalizeModelName, parseDataUrl, HarmCategory, HarmBlockThreshold } from "../services/gemini";
-import { workspaceToolDeclarations, executeWorkspaceOperation, buildWorkspaceContextPrompt } from "../../src/lib/workspaceTools";
+import { workspaceToolDeclarations, executeAnyWorkspaceTool, buildWorkspaceContextPrompt } from "../../src/lib/workspaceTools";
 
 export function setupChatRoutes(app: express.Express) {
 
@@ -21,6 +21,7 @@ export function setupChatRoutes(app: express.Express) {
       topK,
       thinkingBudget,
       workspace,
+      googleToken,
     } = req.body;
 
     const requestedModelStr = (typeof model === 'string' && model.trim()) ? model.trim() : (process.env.GEMINI_MODEL || 'gemini-3.7-flash');
@@ -107,7 +108,7 @@ export function setupChatRoutes(app: express.Express) {
       };
 
       // Combine base persona system prompt, dynamic workspace context, and creative framing
-      const workspaceContext = buildWorkspaceContextPrompt(workspace);
+      const workspaceContext = buildWorkspaceContextPrompt(workspace, Boolean(googleToken));
       let combinedInstruction = (systemPrompt || '') + '\n' + workspaceContext;
       baseConfig.systemInstruction = creativeFramingPrefix + (combinedInstruction || '');
 
@@ -210,7 +211,7 @@ export function setupChatRoutes(app: express.Express) {
         // Execute each tool and return structured JSON result
         const toolResponseParts: any[] = [];
         for (const fc of functionCalls) {
-          const op = executeWorkspaceOperation(currentWorkspace, fc.name, fc.args);
+          const op = await executeAnyWorkspaceTool(currentWorkspace, fc.name, fc.args, googleToken);
           currentWorkspace = op.updatedWorkspace;
           if (op.createdArtifactId) {
             touchedArtifactIds.push(op.createdArtifactId);
@@ -236,6 +237,7 @@ export function setupChatRoutes(app: express.Express) {
                 workspace: currentWorkspace,
                 createdArtifactId: op.createdArtifactId,
                 modifiedArtifactId: op.modifiedArtifactId,
+                externalDocUrl: op.externalDocUrl,
               },
             })}\n\n`
           );

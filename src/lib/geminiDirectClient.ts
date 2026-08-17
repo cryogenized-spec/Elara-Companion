@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { Workspace, MemoryItem } from '../types';
-import { workspaceToolDeclarations, executeWorkspaceOperation, buildWorkspaceContextPrompt } from './workspaceTools';
+import { workspaceToolDeclarations, executeAnyWorkspaceTool, buildWorkspaceContextPrompt } from './workspaceTools';
 
 export interface DirectStreamParams {
   apiKey: string;
@@ -15,6 +15,7 @@ export interface DirectStreamParams {
   topK?: number;
   thinkingBudget?: number;
   workspace?: Workspace;
+  googleToken?: string;
   onChunk: (chunk: {
     text?: string;
     thoughtText?: string;
@@ -41,6 +42,7 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
     topK,
     thinkingBudget,
     workspace,
+    googleToken,
     onChunk,
     signal,
   } = params;
@@ -103,7 +105,7 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
   }
 
   // System instructions with workspace context
-  const workspaceContext = buildWorkspaceContextPrompt(workspace);
+  const workspaceContext = buildWorkspaceContextPrompt(workspace, Boolean(googleToken));
   let fullSystemInstruction = (systemPrompt || '') + '\n' + workspaceContext;
 
   const cleanModel = model.replace(/^models\//, '').trim() || 'gemini-3.7-flash';
@@ -212,7 +214,7 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
 
           const toolResponseParts: any[] = [];
           for (const fc of functionCalls) {
-            const op = executeWorkspaceOperation(currentWorkspace, fc.name, fc.args);
+            const op = await executeAnyWorkspaceTool(currentWorkspace, fc.name, fc.args, googleToken);
             currentWorkspace = op.updatedWorkspace;
             if (op.createdArtifactId) {
               touchedArtifactIds.push(op.createdArtifactId);
@@ -235,6 +237,7 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
                 workspace: currentWorkspace,
                 createdArtifactId: op.createdArtifactId,
                 modifiedArtifactId: op.modifiedArtifactId,
+                externalDocUrl: op.externalDocUrl,
               },
               workspace: currentWorkspace,
               artifactIds: Array.from(new Set(touchedArtifactIds)),

@@ -371,14 +371,20 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                   {/* Render persistent Workspace document cards */}
                   {(() => {
                     const renderedArtifactIds = new Set<string>();
-                    const documentCards: { id: string; name: string; type: string; isLegacyCanvas?: boolean; canvas?: CanvasData }[] = [];
+                    const documentCards: { id: string; name: string; type: string; provider?: string; url?: string; isLegacyCanvas?: boolean; canvas?: CanvasData }[] = [];
 
                     if (message.artifactIds && message.artifactIds.length > 0) {
                       for (const artId of message.artifactIds) {
                         const art = getArtifactById(artId);
                         if (art && !renderedArtifactIds.has(art.id)) {
                           renderedArtifactIds.add(art.id);
-                          documentCards.push({ id: art.id, name: art.name, type: art.type || 'markdown' });
+                          documentCards.push({
+                            id: art.id,
+                            name: art.name,
+                            type: art.type || 'markdown',
+                            provider: art.provider || 'local',
+                            url: art.url,
+                          });
                         }
                       }
                     }
@@ -388,9 +394,23 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                         if (c.artifactId && !renderedArtifactIds.has(c.artifactId)) {
                           const art = getArtifactById(c.artifactId);
                           renderedArtifactIds.add(c.artifactId);
-                          documentCards.push({ id: c.artifactId, name: art?.name || c.title, type: art?.type || 'markdown', canvas: c });
+                          documentCards.push({
+                            id: c.artifactId,
+                            name: art?.name || c.title,
+                            type: art?.type || 'markdown',
+                            provider: art?.provider || 'local',
+                            url: art?.url,
+                            canvas: c,
+                          });
                         } else if (!c.artifactId) {
-                          documentCards.push({ id: `legacy_${c.title}`, name: c.title, type: 'markdown', isLegacyCanvas: true, canvas: c });
+                          documentCards.push({
+                            id: `legacy_${c.title}`,
+                            name: c.title,
+                            type: 'markdown',
+                            provider: 'local',
+                            isLegacyCanvas: true,
+                            canvas: c,
+                          });
                         }
                       }
                     }
@@ -402,38 +422,77 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                         {documentCards.map((doc, idx) => (
                           <div
                             key={idx}
-                            className="group/card rounded-xl border border-emerald-500/30 bg-emerald-950/20 hover:bg-emerald-950/30 p-3.5 transition-all shadow-sm flex flex-col gap-2"
+                            className={`group/card rounded-xl border p-3.5 transition-all shadow-sm flex flex-col gap-2 ${
+                              doc.provider === 'google_docs'
+                                ? 'border-blue-500/30 bg-blue-950/20 hover:bg-blue-950/30'
+                                : 'border-emerald-500/30 bg-emerald-950/20 hover:bg-emerald-950/30'
+                            }`}
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2 text-[11px] font-semibold text-emerald-400">
-                                <FileText className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>Document</span>
+                              <div
+                                className={`flex items-center gap-2 text-[11px] font-semibold ${
+                                  doc.provider === 'google_docs' ? 'text-blue-400' : 'text-emerald-400'
+                                }`}
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>{doc.provider === 'google_docs' ? 'Google Doc' : 'Workspace Document'}</span>
                               </div>
-                              <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                {doc.type || 'Markdown'}
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider border ${
+                                  doc.provider === 'google_docs'
+                                    ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                }`}
+                              >
+                                {doc.provider === 'google_docs' ? 'Google Cloud' : (doc.type || 'Markdown')}
                               </span>
                             </div>
 
                             <div>
-                              <h4 className="text-sm font-semibold text-zinc-100 group-hover/card:text-emerald-300 transition-colors truncate">
+                              <h4
+                                className={`text-sm font-semibold text-zinc-100 transition-colors truncate ${
+                                  doc.provider === 'google_docs'
+                                    ? 'group-hover/card:text-blue-300'
+                                    : 'group-hover/card:text-emerald-300'
+                                }`}
+                              >
                                 {doc.name || 'Untitled Document'}
                               </h4>
                             </div>
 
-                            <div className="pt-1.5 flex items-center justify-between gap-2">
-                              <button
-                                onClick={() => {
-                                  if (!doc.isLegacyCanvas && onOpenArtifact) {
-                                    onOpenArtifact(doc.id);
-                                  } else if (doc.canvas && onOpenCanvas) {
-                                    onOpenCanvas(doc.canvas);
-                                  }
-                                }}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md hover:shadow-emerald-600/20 transition-all cursor-pointer active:scale-95"
-                              >
-                                <span>Open in Workspace</span>
-                                <ArrowRight className="w-3.5 h-3.5" />
-                              </button>
+                            <div className="pt-1.5 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    if (!doc.isLegacyCanvas && onOpenArtifact) {
+                                      onOpenArtifact(doc.id);
+                                    } else if (doc.canvas && onOpenCanvas) {
+                                      onOpenCanvas(doc.canvas);
+                                    }
+                                  }}
+                                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-xs font-semibold shadow-md transition-all cursor-pointer active:scale-95 ${
+                                    doc.provider === 'google_docs'
+                                      ? 'bg-blue-600 hover:bg-blue-500 hover:shadow-blue-600/20'
+                                      : 'bg-emerald-600 hover:bg-emerald-500 hover:shadow-emerald-600/20'
+                                  }`}
+                                >
+                                  <span>Open in Workspace</span>
+                                  <ArrowRight className="w-3.5 h-3.5" />
+                                </button>
+
+                                {doc.url && (
+                                  <a
+                                    href={doc.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-900/40 hover:bg-blue-800/60 border border-blue-500/30 text-blue-200 hover:text-white text-xs font-medium transition-colors no-underline"
+                                    title="Open in Google Docs"
+                                  >
+                                    <span>Google Docs</span>
+                                    <ExternalLink className="w-3 h-3 text-blue-300" />
+                                  </a>
+                                )}
+                              </div>
 
                               {doc.isLegacyCanvas && doc.canvas && onOpenCanvas && (
                                 <button

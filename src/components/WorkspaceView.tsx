@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Workspace, WorkspaceArtifact } from '../types';
 import { getWorkspace, saveWorkspace, createArtifact, updateArtifact, deleteArtifact, setActiveArtifact } from '../lib/workspaceStorage';
-import { Plus, FileText, Trash2, Edit2, X, Check, Eye, Code, ChevronDown, FileType2, ArrowLeft, Menu } from 'lucide-react';
+import { Plus, FileText, Trash2, Edit2, X, Check, Eye, Code, ChevronDown, FileType2, ArrowLeft, Menu, ExternalLink } from 'lucide-react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface WorkspaceViewProps {
@@ -231,7 +231,12 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                     className="flex-1 min-w-0 bg-zinc-950 border border-emerald-500/50 rounded px-1.5 py-0.5 text-zinc-100 outline-none"
                   />
                 ) : (
-                  <span className="truncate">{artifact.name}</span>
+                  <span className="truncate flex-1 min-w-0">{artifact.name}</span>
+                )}
+                {artifact.provider === 'google_docs' && (
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-blue-500/20 text-blue-300 font-mono shrink-0">
+                    G-Doc
+                  </span>
                 )}
               </div>
               
@@ -302,13 +307,34 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                     <span className="sm:hidden">Chat</span>
                   </button>
                 )}
-                <div className="p-1.5 rounded-lg bg-emerald-950/70 border border-emerald-500/30 text-emerald-400 shrink-0">
+                <div className={`p-1.5 rounded-lg border shrink-0 ${
+                  activeArtifact.provider === 'google_docs'
+                    ? 'bg-blue-950/70 border-blue-500/30 text-blue-400'
+                    : 'bg-emerald-950/70 border-emerald-500/30 text-emerald-400'
+                }`}>
                   {activeArtifact.type === 'markdown' ? <FileType2 className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                 </div>
                 <h2 className="text-sm font-semibold text-zinc-100 tracking-tight truncate">{activeArtifact.name}</h2>
+                {activeArtifact.provider === 'google_docs' && (
+                  <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[10px] font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
+                    Google Cloud
+                  </span>
+                )}
               </div>
               
               <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+                {activeArtifact.url && (
+                  <a
+                    href={activeArtifact.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-900/30 hover:bg-blue-800/50 border border-blue-500/30 text-blue-300 text-xs font-medium transition-colors no-underline"
+                    title="Open in Google Docs"
+                  >
+                    <span>Google Docs</span>
+                    <ExternalLink className="w-3 h-3 text-blue-400" />
+                  </a>
+                )}
                 {activeArtifact.type === 'markdown' && (
                   <div className="flex items-center bg-zinc-900/50 rounded-lg p-0.5 border border-zinc-800">
                     <button

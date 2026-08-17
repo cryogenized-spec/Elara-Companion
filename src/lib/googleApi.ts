@@ -28,7 +28,10 @@ export function getGoogleClientId(): string {
     const custom = localStorage.getItem('elara_custom_google_client_id');
     if (custom && custom.trim().length > 0) return custom.trim();
   }
-  return import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_CLIENT_ID;
+  const envVal = typeof import.meta !== 'undefined' && (import.meta as any)?.env
+    ? (import.meta as any).env.VITE_GOOGLE_CLIENT_ID
+    : (typeof process !== 'undefined' && process.env ? process.env.VITE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID : undefined);
+  return envVal || DEFAULT_CLIENT_ID;
 }
 
 export function setCustomGoogleClientId(id: string | null) {
@@ -411,8 +414,17 @@ export interface GoogleDocSummary {
   url?: string;
 }
 
-export async function createGoogleDoc(title: string, markdownContent: string): Promise<{ documentId: string; url: string }> {
-  const token = await requestGoogleAuth();
+export interface GoogleDriveFileSummary {
+  id: string;
+  name: string;
+  mimeType: string;
+  modifiedTime?: string;
+  webViewLink?: string;
+  size?: string;
+}
+
+export async function createGoogleDoc(title: string, markdownContent: string, passedToken?: string): Promise<{ documentId: string; url: string; title: string }> {
+  const token = passedToken || (await requestGoogleAuth());
 
   const createRes = await fetch('https://docs.googleapis.com/v1/documents', {
     method: 'POST',
@@ -457,12 +469,13 @@ export async function createGoogleDoc(title: string, markdownContent: string): P
 
   return {
     documentId,
+    title: title || 'Untitled Document',
     url: `https://docs.google.com/document/d/${documentId}/edit`,
   };
 }
 
-export async function getGoogleDoc(documentId: string): Promise<{ documentId: string; title: string; content: string; url: string }> {
-  const token = await requestGoogleAuth();
+export async function getGoogleDoc(documentId: string, passedToken?: string): Promise<{ documentId: string; title: string; content: string; url: string }> {
+  const token = passedToken || (await requestGoogleAuth());
 
   const res = await fetch(`https://docs.googleapis.com/v1/documents/${documentId}`, {
     headers: {
@@ -514,9 +527,10 @@ export async function getGoogleDoc(documentId: string): Promise<{ documentId: st
 export async function editGoogleDoc(
   documentId: string,
   newText: string,
-  mode: 'append' | 'replace' | 'prepend' = 'append'
+  mode: 'append' | 'replace' | 'prepend' = 'append',
+  passedToken?: string
 ): Promise<{ documentId: string; url: string; success: boolean }> {
-  const token = await requestGoogleAuth();
+  const token = passedToken || (await requestGoogleAuth());
 
   let requests: any[] = [];
 
@@ -539,8 +553,6 @@ export async function editGoogleDoc(
       },
     ];
   } else if (mode === 'replace') {
-    // Read doc to get exact length for deletion
-    const existing = await getGoogleDoc(documentId);
     // Fetch document structure to inspect full character length
     const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${documentId}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -590,12 +602,11 @@ export async function editGoogleDoc(
   };
 }
 
-export async function searchGoogleDriveDocs(query: string = '', maxResults = 10): Promise<{ docs: GoogleDocSummary[] }> {
-  const token = await requestGoogleAuth();
+export async function searchGoogleDriveDocs(query: string = '', maxResults = 10, passedToken?: string): Promise<{ docs: GoogleDocSummary[] }> {
+  const token = passedToken || (await requestGoogleAuth());
 
   let q = "mimeType = 'application/vnd.google-apps.document' and trashed = false";
   if (query && query.trim()) {
-    // Sanitize query to avoid breaking Drive search syntax
     const cleanQ = query.replace(/['\\]/g, '');
     q += ` and name contains '${cleanQ}'`;
   }
@@ -623,6 +634,119 @@ export async function searchGoogleDriveDocs(query: string = '', maxResults = 10)
   }));
 
   return { docs: files };
+}
+
+export async function listGoogleDriveFiles(pageSize = 10, query = '', passedToken?: string): Promise<{ files: GoogleDriveFileSummary[] }> {
+  const token = passedToken || (await requestGoogleAuth());
+
+  let q = 'trashed = false';
+  if (query && query.trim()) {
+    const cleanQ = query.replace(/['\\]/g, '');
+    q += ` and (name contains '${cleanQ}' or fullText contains '${cleanQ}')`;
+  }
+
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&pageSize=${pageSize}&fields=files(id,name,mimeType,modifiedTime,webViewLink,size)&orderBy=modifiedTime desc`;
+
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseGoogleApiError(res, 'Failed to list Google Drive files'));
+  }
+
+  const data = await res.json();
+  const files: GoogleDriveFileSummary[] = (data.files || []).map((f: any) => ({
+    id: f.id,
+    name: f.name || 'Untitled File',
+    mimeType: f.mimeType || 'unknown',
+    modifiedTime: f.modifiedTime,
+    webViewLink: f.webViewLink || `https://drive.google.com/file/d/${f.id}/view`,
+    size: f.size,
+  }));
+
+  return { files };
+}
+
+export async function searchGoogleDriveFiles(query: string, pageSize = 10, passedToken?: string): Promise<{ files: GoogleDriveFileSummary[] }> {
+  return listGoogleDriveFiles(pageSize, query, passedToken);
+}
+
+export async function readGoogleDriveFile(fileId: string, passedToken?: string): Promise<{
+  id: string;
+  name: string;
+  mimeType: string;
+  content: string;
+  webViewLink: string;
+}> {
+  const token = passedToken || (await requestGoogleAuth());
+
+  // 1. Fetch file metadata
+  const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,webViewLink`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!metaRes.ok) {
+    throw new Error(await parseGoogleApiError(metaRes, `Failed to find Google Drive file (${fileId})`));
+  }
+
+  const meta = await metaRes.json();
+  const mimeType = meta.mimeType || '';
+
+  // 2. If it's a Google Doc, read via Docs API
+  if (mimeType === 'application/vnd.google-apps.document') {
+    const docData = await getGoogleDoc(fileId, token);
+    return {
+      id: meta.id,
+      name: meta.name || docData.title,
+      mimeType,
+      content: docData.content,
+      webViewLink: meta.webViewLink || docData.url,
+    };
+  }
+
+  // 3. If it's another Google App type (Spreadsheet, etc.), export as plain text
+  if (mimeType.startsWith('application/vnd.google-apps.')) {
+    const exportRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (exportRes.ok) {
+      const plainText = await exportRes.text();
+      return {
+        id: meta.id,
+        name: meta.name || 'Untitled File',
+        mimeType,
+        content: plainText.trim(),
+        webViewLink: meta.webViewLink || `https://drive.google.com/file/d/${fileId}/view`,
+      };
+    }
+  }
+
+  // 4. Regular file (text, markdown, code, json): download media
+  const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (contentRes.ok) {
+    const textContent = await contentRes.text();
+    return {
+      id: meta.id,
+      name: meta.name || 'Untitled File',
+      mimeType,
+      content: textContent,
+      webViewLink: meta.webViewLink || `https://drive.google.com/file/d/${fileId}/view`,
+    };
+  }
+
+  return {
+    id: meta.id,
+    name: meta.name || 'Untitled File',
+    mimeType,
+    content: '[Binary or Non-Text File Content]',
+    webViewLink: meta.webViewLink || `https://drive.google.com/file/d/${fileId}/view`,
+  };
 }
 
 // ----------------------------------------------------

@@ -12,7 +12,8 @@ import { resetWorldState, exportWorldStateJSON, importWorldStateJSON } from './l
 import { resetMemoryState, exportMemoryJSON, importMemoryJSON, DEFAULT_MEMORY_STATE } from './lib/memoryStorage';
 import { loadUserProfileNotes, loadActiveScratchpad, buildSystemPayload } from './lib/contextManager';
 import { 
-  isGoogleConnected, 
+  isGoogleConnected,
+  getAccessToken,
   getTasks, 
   getUpcomingCalendarEvents, 
   listGmailMessages, 
@@ -556,6 +557,7 @@ export default function App() {
           topK: settings.topK,
           thinkingBudget: settings.thinkingBudget,
           workspace: getWorkspace(),
+          googleToken: getAccessToken(),
           onChunk: handleChunkArrival,
           signal: controller.signal,
         });
@@ -579,6 +581,7 @@ export default function App() {
               topK: settings.topK,
               thinkingBudget: settings.thinkingBudget,
               workspace: getWorkspace(),
+              googleToken: getAccessToken(),
             }),
           });
         } catch (fetchErr: any) {

@@ -297,6 +297,8 @@ export const AVAILABLE_MODELS: GeminiModelOption[] = [
 
 
 
+export type ArtifactProvider = 'local' | 'google_docs' | 'google_keep';
+
 export interface WorkspaceArtifact {
   id: string;
   name: string;
@@ -304,6 +306,9 @@ export interface WorkspaceArtifact {
   createdAt: number;
   updatedAt: number;
   type: string;
+  provider?: ArtifactProvider;
+  externalId?: string;
+  url?: string;
 }
 
 export interface Workspace {
