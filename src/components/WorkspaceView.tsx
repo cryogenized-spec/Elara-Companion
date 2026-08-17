@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Workspace, WorkspaceArtifact } from '../types';
 import { getWorkspace, saveWorkspace, createArtifact, updateArtifact, deleteArtifact, setActiveArtifact } from '../lib/workspaceStorage';
-import { Plus, FileText, Trash2, Edit2, X, Check, Eye, Code, ChevronDown, FileType2, ArrowLeft, Menu, ExternalLink } from 'lucide-react';
+import { executeAnyWorkspaceTool } from '../lib/workspaceTools';
+import { Plus, FileText, Trash2, Edit2, X, Check, Eye, Code, ChevronDown, FileType2, ArrowLeft, Menu, ExternalLink, RefreshCw, UploadCloud, DownloadCloud, AlertTriangle } from 'lucide-react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface WorkspaceViewProps {
@@ -151,6 +152,44 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
           return updateArtifact(prev, activeArtifact.id, { content: newContent });
         });
       }, 400);
+    }
+  };
+
+  const [syncing, setSyncing] = useState(false);
+  const handleSyncAction = async (action: 'refresh_google_doc' | 'sync_to_google_doc' | 'sync_from_google_doc') => {
+    if (!activeArtifact || !workspace) return;
+    setSyncing(true);
+    
+    // Ensure we save the latest local content before syncing
+    let wsToUse = workspace;
+    if (localContent !== activeArtifact.content) {
+      wsToUse = updateArtifact(workspace, activeArtifact.id, { content: localContent });
+      setWorkspace(wsToUse);
+    }
+
+    try {
+      const result = await executeAnyWorkspaceTool(
+        wsToUse,
+        action, 
+        { artifactId: activeArtifact.id, force: true }, 
+        undefined
+      );
+      
+      if (result.updatedWorkspace) {
+        setWorkspace(result.updatedWorkspace);
+        saveWorkspace(result.updatedWorkspace);
+        const updatedArt = result.updatedWorkspace.artifacts.find(a => a.id === activeArtifact.id);
+        if (updatedArt) {
+          setLocalContent(updatedArt.content);
+        }
+      }
+      if (!result.result.success) {
+        alert('Sync Error: ' + result.result.error);
+      }
+    } catch (e) {
+      alert('Error during sync: ' + (e as Error).message);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -323,6 +362,52 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
               </div>
               
               <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+                {activeArtifact.provider === 'google_docs' && (
+                  <div className="flex items-center gap-2 bg-zinc-900/50 rounded-lg p-0.5 border border-zinc-800">
+                    <button
+                      onClick={() => handleSyncAction('refresh_google_doc')}
+                      disabled={syncing}
+                      className="px-2 py-1 text-xs font-medium rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 flex items-center gap-1.5 transition-colors"
+                      title="Check sync status"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+                    </button>
+                    {activeArtifact.syncStatus === 'local_ahead' || activeArtifact.syncStatus === 'conflict' ? (
+                      <button
+                        onClick={() => handleSyncAction('sync_to_google_doc')}
+                        disabled={syncing}
+                        className="px-2 py-1 text-xs font-medium rounded-md text-emerald-400 hover:text-emerald-300 hover:bg-emerald-900/20 flex items-center gap-1.5 transition-colors"
+                        title="Sync local changes up to Google Docs"
+                      >
+                        <UploadCloud className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Push</span>
+                      </button>
+                    ) : null}
+                    {activeArtifact.syncStatus === 'remote_ahead' || activeArtifact.syncStatus === 'conflict' ? (
+                      <button
+                        onClick={() => handleSyncAction('sync_from_google_doc')}
+                        disabled={syncing}
+                        className="px-2 py-1 text-xs font-medium rounded-md text-blue-400 hover:text-blue-300 hover:bg-blue-900/20 flex items-center gap-1.5 transition-colors"
+                        title="Pull changes down from Google Docs"
+                      >
+                        <DownloadCloud className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Pull</span>
+                      </button>
+                    ) : null}
+                    {activeArtifact.syncStatus === 'conflict' && (
+                      <div className="px-2 py-1 flex items-center gap-1.5 text-amber-500">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span className="text-[10px] uppercase tracking-wider font-bold hidden sm:inline">Conflict</span>
+                      </div>
+                    )}
+                    {activeArtifact.syncStatus === 'synchronized' && (
+                      <div className="px-2 py-1 flex items-center gap-1.5 text-emerald-500">
+                        <Check className="w-3.5 h-3.5" />
+                        <span className="text-[10px] uppercase tracking-wider font-bold hidden sm:inline">Synced</span>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {activeArtifact.url && (
                   <a
                     href={activeArtifact.url}

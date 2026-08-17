@@ -1,4 +1,5 @@
 import { Workspace, WorkspaceArtifact } from '../types';
+import { compareSyncState, computeLineDiff, hashString } from './syncUtils';
 import {
   createGoogleDoc,
   getGoogleDoc,
@@ -223,12 +224,12 @@ export const workspaceToolDeclarations = [
   },
 
   // ==========================================
-  // 4. GOOGLE KEEP / REFERENCE ARCHIVE TOOLS
+  // 4. QUICK REFERENCE ARCHIVE TOOLS (Legacy Keep)
   // ==========================================
   {
     name: 'create_keep_note',
     description:
-      'Create a quick reference note in the user\'s Keep reference archive (and mirror to Google Docs if authenticated).',
+      'Create a quick reference note in the user\'s local reference archive (with optional Google Docs mirror). Note: This does not synchronize with the official Google Keep product.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -252,13 +253,13 @@ export const workspaceToolDeclarations = [
   {
     name: 'read_keep_note',
     description:
-      'Read a note from the Keep reference archive by its ID or title.',
+      'Read a note from the local reference archive by its ID or title.',
     parameters: {
       type: 'OBJECT',
       properties: {
         noteId: {
           type: 'STRING',
-          description: 'The ID or title of the Keep note to read.',
+          description: 'The ID or title of the note to read.',
         },
       },
       required: ['noteId'],
@@ -267,7 +268,7 @@ export const workspaceToolDeclarations = [
   {
     name: 'update_keep_note',
     description:
-      'Update an existing note in the Keep reference archive.',
+      'Update an existing note in the local reference archive.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -294,7 +295,69 @@ export const workspaceToolDeclarations = [
   },
 
   // ==========================================
-  // 5. LEGACY COMPATIBILITY BRIDGE
+  // 5. SYNCHRONIZATION TOOLS
+  // ==========================================
+  {
+    name: 'link_google_doc',
+    description: 'Link an existing Workspace document to a Google Doc. Establishes the relationship without destructively syncing yet.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        artifactId: { type: 'STRING', description: 'The local Workspace document ID.' },
+        documentId: { type: 'STRING', description: 'The Google Doc ID.' }
+      },
+      required: ['artifactId', 'documentId']
+    }
+  },
+  {
+    name: 'refresh_google_doc',
+    description: 'Refresh the synchronization state of a linked document by inspecting the Google Doc and returning the comparison status.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        artifactId: { type: 'STRING', description: 'The local Workspace document ID to refresh.' }
+      },
+      required: ['artifactId']
+    }
+  },
+  {
+    name: 'sync_to_google_doc',
+    description: 'Push the local Workspace document content to Google Docs. Use when the user asks to sync their local changes to Google.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        artifactId: { type: 'STRING', description: 'The local Workspace document ID to sync.' },
+        force: { type: 'BOOLEAN', description: 'Force overwrite remote changes if conflict exists.' }
+      },
+      required: ['artifactId']
+    }
+  },
+  {
+    name: 'sync_from_google_doc',
+    description: 'Pull the Google Doc content into the local Workspace document. Use when the user asks to get the latest changes from Google.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        artifactId: { type: 'STRING', description: 'The local Workspace document ID to update.' },
+        force: { type: 'BOOLEAN', description: 'Force overwrite local changes if conflict exists.' }
+      },
+      required: ['artifactId']
+    }
+  },
+  {
+    name: 'compare_artifact_with_google_doc',
+    description: 'Compare a local Workspace document with its linked Google Doc, returning differences.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        artifactId: { type: 'STRING', description: 'The local Workspace document ID to compare.' }
+      },
+      required: ['artifactId']
+    }
+  },
+
+  // ==========================================
+  // 6. LEGACY COMPATIBILITY BRIDGE
   // ==========================================
   {
     name: 'generate_canvas',
@@ -647,6 +710,10 @@ export async function executeGoogleOperation(
               provider: 'google_docs',
               externalId: docRes.documentId,
               url: docRes.url,
+              linkedAt: Date.now(),
+              lastSyncedAt: Date.now(),
+              syncStatus: 'synchronized',
+              syncBaselineHash: hashString(content),
               updatedAt: Date.now(),
             };
             const copy = [...updatedWs.artifacts];
@@ -867,6 +934,209 @@ export async function executeGoogleOperation(
             note: updatedNote,
           },
           updatedWorkspace: currentWs,
+        };
+      }
+
+      // ----------------------------------------
+      // Synchronization Tools
+      // ----------------------------------------
+      case 'link_google_doc': {
+        const artifactId = typeof safeArgs.artifactId === 'string' ? safeArgs.artifactId.trim() : '';
+        const documentId = typeof safeArgs.documentId === 'string' ? safeArgs.documentId.trim() : '';
+        
+        if (!artifactId || !documentId) {
+          return {
+            result: { success: false, error: 'artifactId and documentId are required.' },
+            updatedWorkspace: currentWs
+          };
+        }
+
+        const idx = currentWs.artifacts.findIndex(a => a.id === artifactId);
+        if (idx === -1) {
+          return {
+            result: { success: false, error: 'Local artifact not found.' },
+            updatedWorkspace: currentWs
+          };
+        }
+
+        const doc = await getGoogleDoc(documentId, passedToken);
+        const art = currentWs.artifacts[idx];
+        const syncRes = compareSyncState(art.content, doc.content);
+        
+        const updatedArt: WorkspaceArtifact = {
+          ...art,
+          provider: 'google_docs',
+          externalId: documentId,
+          url: doc.url,
+          linkedAt: Date.now(),
+          syncStatus: syncRes.status,
+          // If perfectly identical, establish a baseline immediately
+          syncBaselineHash: syncRes.identical ? syncRes.localHash : undefined
+        };
+
+        const copy = [...currentWs.artifacts];
+        copy[idx] = updatedArt;
+        
+        return {
+          result: {
+            success: true,
+            message: `Linked document. Initial status: ${syncRes.status}`,
+            status: syncRes.status
+          },
+          updatedWorkspace: { ...currentWs, artifacts: copy },
+          modifiedArtifactId: updatedArt.id
+        };
+      }
+
+      case 'refresh_google_doc': {
+        const artifactId = typeof safeArgs.artifactId === 'string' ? safeArgs.artifactId.trim() : '';
+        if (!artifactId) return { result: { success: false, error: 'artifactId required' }, updatedWorkspace: currentWs };
+
+        const idx = currentWs.artifacts.findIndex(a => a.id === artifactId);
+        if (idx === -1) return { result: { success: false, error: 'Artifact not found' }, updatedWorkspace: currentWs };
+
+        const art = currentWs.artifacts[idx];
+        if (!art.externalId || art.provider !== 'google_docs') {
+          return { result: { success: false, error: 'Artifact is not linked to a Google Doc.' }, updatedWorkspace: currentWs };
+        }
+
+        const doc = await getGoogleDoc(art.externalId, passedToken);
+        const syncRes = compareSyncState(art.content, doc.content, art.syncBaselineHash);
+        
+        const updatedArt: WorkspaceArtifact = {
+          ...art,
+          syncStatus: syncRes.status
+        };
+
+        const copy = [...currentWs.artifacts];
+        copy[idx] = updatedArt;
+
+        return {
+          result: {
+            success: true,
+            status: syncRes.status,
+            localChanged: syncRes.localChanged,
+            remoteChanged: syncRes.remoteChanged
+          },
+          updatedWorkspace: { ...currentWs, artifacts: copy },
+          modifiedArtifactId: updatedArt.id
+        };
+      }
+
+      case 'sync_to_google_doc': {
+        const artifactId = typeof safeArgs.artifactId === 'string' ? safeArgs.artifactId.trim() : '';
+        const force = !!safeArgs.force;
+        
+        if (!artifactId) return { result: { success: false, error: 'artifactId required' }, updatedWorkspace: currentWs };
+
+        const idx = currentWs.artifacts.findIndex(a => a.id === artifactId);
+        if (idx === -1) return { result: { success: false, error: 'Artifact not found' }, updatedWorkspace: currentWs };
+
+        const art = currentWs.artifacts[idx];
+        if (!art.externalId || art.provider !== 'google_docs') {
+          return { result: { success: false, error: 'Artifact is not linked to a Google Doc.' }, updatedWorkspace: currentWs };
+        }
+
+        const doc = await getGoogleDoc(art.externalId, passedToken);
+        const syncRes = compareSyncState(art.content, doc.content, art.syncBaselineHash);
+
+        if (syncRes.status === 'remote_ahead' && !force) {
+          return { result: { success: false, error: 'Remote document has newer changes. Sync rejected.', status: 'remote_ahead' }, updatedWorkspace: currentWs };
+        }
+        if (syncRes.status === 'conflict' && !force) {
+          return { result: { success: false, error: 'Both local and remote documents have changed. Conflict detected. Sync rejected.', status: 'conflict' }, updatedWorkspace: currentWs };
+        }
+
+        await editGoogleDoc(art.externalId, art.content, 'replace', passedToken);
+        const now = Date.now();
+        
+        const updatedArt: WorkspaceArtifact = {
+          ...art,
+          lastSyncedAt: now,
+          syncStatus: 'synchronized',
+          syncBaselineHash: hashString(art.content)
+        };
+
+        const copy = [...currentWs.artifacts];
+        copy[idx] = updatedArt;
+
+        return {
+          result: { success: true, message: 'Successfully synced local changes to Google Doc.', status: 'synchronized' },
+          updatedWorkspace: { ...currentWs, artifacts: copy },
+          modifiedArtifactId: updatedArt.id
+        };
+      }
+
+      case 'sync_from_google_doc': {
+        const artifactId = typeof safeArgs.artifactId === 'string' ? safeArgs.artifactId.trim() : '';
+        const force = !!safeArgs.force;
+        
+        if (!artifactId) return { result: { success: false, error: 'artifactId required' }, updatedWorkspace: currentWs };
+
+        const idx = currentWs.artifacts.findIndex(a => a.id === artifactId);
+        if (idx === -1) return { result: { success: false, error: 'Artifact not found' }, updatedWorkspace: currentWs };
+
+        const art = currentWs.artifacts[idx];
+        if (!art.externalId || art.provider !== 'google_docs') {
+          return { result: { success: false, error: 'Artifact is not linked to a Google Doc.' }, updatedWorkspace: currentWs };
+        }
+
+        const doc = await getGoogleDoc(art.externalId, passedToken);
+        const syncRes = compareSyncState(art.content, doc.content, art.syncBaselineHash);
+
+        if (syncRes.status === 'local_ahead' && !force) {
+          return { result: { success: false, error: 'Local document has newer changes. Sync rejected.', status: 'local_ahead' }, updatedWorkspace: currentWs };
+        }
+        if (syncRes.status === 'conflict' && !force) {
+          return { result: { success: false, error: 'Both local and remote documents have changed. Conflict detected. Sync rejected.', status: 'conflict' }, updatedWorkspace: currentWs };
+        }
+
+        const now = Date.now();
+        const updatedArt: WorkspaceArtifact = {
+          ...art,
+          content: doc.content,
+          updatedAt: now,
+          lastSyncedAt: now,
+          syncStatus: 'synchronized',
+          syncBaselineHash: hashString(doc.content)
+        };
+
+        const copy = [...currentWs.artifacts];
+        copy[idx] = updatedArt;
+
+        return {
+          result: { success: true, message: 'Successfully synced Google Doc to local workspace.', status: 'synchronized' },
+          updatedWorkspace: { ...currentWs, artifacts: copy },
+          modifiedArtifactId: updatedArt.id
+        };
+      }
+
+      case 'compare_artifact_with_google_doc': {
+        const artifactId = typeof safeArgs.artifactId === 'string' ? safeArgs.artifactId.trim() : '';
+        if (!artifactId) return { result: { success: false, error: 'artifactId required' }, updatedWorkspace: currentWs };
+
+        const idx = currentWs.artifacts.findIndex(a => a.id === artifactId);
+        if (idx === -1) return { result: { success: false, error: 'Artifact not found' }, updatedWorkspace: currentWs };
+
+        const art = currentWs.artifacts[idx];
+        if (!art.externalId || art.provider !== 'google_docs') {
+          return { result: { success: false, error: 'Artifact is not linked to a Google Doc.' }, updatedWorkspace: currentWs };
+        }
+
+        const doc = await getGoogleDoc(art.externalId, passedToken);
+        const diffs = computeLineDiff(doc.content, art.content);
+        const syncRes = compareSyncState(art.content, doc.content, art.syncBaselineHash);
+
+        return {
+          result: {
+            success: true,
+            status: syncRes.status,
+            diff: diffs.filter(d => d.added || d.removed).map(d => ({
+              type: d.added ? 'local_added' : 'remote_removed',
+              value: d.value
+            }))
+          },
+          updatedWorkspace: currentWs
         };
       }
 
