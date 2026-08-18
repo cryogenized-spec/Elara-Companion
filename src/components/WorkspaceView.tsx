@@ -79,11 +79,15 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
 
   const handleCreate = (type: 'text' | 'markdown' = 'text') => {
     // Flush current active if needed
-    if (activeArtifact && localContent !== activeArtifact.content) {
-      updateArtifact(workspace, activeArtifact.id, { content: localContent });
+    let currentWs = workspace;
+    if (activeArtifact) {
+      if (localContent !== activeArtifact.content) {
+        currentWs = updateArtifact(workspace, activeArtifact.id, { content: localContent });
+      }
+      currentWs = createCheckpoint(currentWs, activeArtifact.id, 'user', 'user');
     }
 
-    const updated = createArtifact(workspace, type === 'markdown' ? 'Untitled.md' : 'Untitled', type);
+    const updated = createArtifact(currentWs, type === 'markdown' ? 'Untitled.md' : 'Untitled', type);
     setWorkspace(updated);
     setLocalContent('');
     setShowNewMenu(false);
@@ -96,11 +100,16 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
   const handleSelect = (id: string) => {
     // Flush current before switching
     let currentWs = workspace;
-    if (activeArtifact && localContent !== activeArtifact.content) {
-      currentWs = updateArtifact(workspace, activeArtifact.id, { content: localContent });
+    if (activeArtifact) {
+      if (localContent !== activeArtifact.content) {
+        currentWs = updateArtifact(workspace, activeArtifact.id, { content: localContent });
+      }
+      currentWs = createCheckpoint(currentWs, activeArtifact.id, 'user', 'user');
     }
 
-    const updated = setActiveArtifact(id);
+    // Set active artifact by id but update workspace manually to preserve checkpoint history if activeArtifact changed
+    let updated = setActiveArtifact(id);
+    updated = { ...updated, artifacts: currentWs.artifacts }; // keep the updated artifacts
     setWorkspace(updated);
 
     const newlyActive = updated.artifacts.find((a) => a.id === id);
@@ -111,6 +120,17 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
     if (onSelectArtifact) {
       onSelectArtifact(id);
     }
+  };
+
+  const handleBackToChat = () => {
+    if (activeArtifact) {
+      let currentWs = workspace;
+      if (localContent !== activeArtifact.content) {
+        currentWs = updateArtifact(workspace, activeArtifact.id, { content: localContent });
+      }
+      createCheckpoint(currentWs, activeArtifact.id, 'user', 'user');
+    }
+    if (onBackToChat) onBackToChat();
   };
 
   const handleDelete = (id: string) => {
@@ -406,7 +426,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                 )}
                 {onBackToChat && (
                   <button
-                    onClick={onBackToChat}
+                    onClick={handleBackToChat}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-medium border border-zinc-800 transition-colors shrink-0 mr-1"
                     title="Return to Chat Conversation"
                   >
@@ -574,7 +594,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
               </button>
               {onBackToChat && (
                 <button
-                  onClick={onBackToChat}
+                  onClick={handleBackToChat}
                   className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-medium rounded-lg border border-zinc-800 transition-colors"
                 >
                   Return to Chat

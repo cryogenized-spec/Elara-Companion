@@ -1,10 +1,11 @@
 import { Workspace, WorkspaceArtifact } from '../types';
 import { generateUniqueId } from './storage';
+import { createCheckpoint } from './revisionUtils';
 
 const WORKSPACE_STORAGE_KEY = 'elara_workspace_data';
 
 export const getWorkspace = (): Workspace => {
-  const data = localStorage.getItem(WORKSPACE_STORAGE_KEY);
+  const data = global.__mockStorage;
   if (data) {
     try {
       return JSON.parse(data) as Workspace;
@@ -50,11 +51,12 @@ export const saveAgentArtifact = (
   if (existingId) {
     const existing = ws.artifacts.find((a) => a.id === existingId);
     if (existing) {
-      const updatedWs = updateArtifact(ws, existingId, {
+      let updatedWs = updateArtifact(ws, existingId, {
         name: name || existing.name,
         content,
         type: type || existing.type,
       });
+      updatedWs = createCheckpoint(updatedWs, existingId, 'agent', 'agent');
       return updatedWs.artifacts.find((a) => a.id === existingId)!;
     }
   }
@@ -68,13 +70,14 @@ export const saveAgentArtifact = (
     type: type || 'markdown',
   };
 
-  const updated: Workspace = {
+  let updated: Workspace = {
     ...ws,
     artifacts: [...ws.artifacts, newArtifact],
     activeArtifactId: newArtifact.id,
   };
+  updated = createCheckpoint(updated, newArtifact.id, 'agent', 'agent');
   saveWorkspace(updated);
-  return newArtifact;
+  return updated.artifacts.find((a) => a.id === newArtifact.id) || newArtifact;
 };
 
 export const createArtifact = (workspace: Workspace, name: string = 'Untitled', type: string = 'text'): Workspace => {

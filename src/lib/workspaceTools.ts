@@ -418,7 +418,7 @@ export function executeWorkspaceOperation(
       const artifactId = `art_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
       const now = Date.now();
 
-      const newArtifact: WorkspaceArtifact = {
+      let newArtifact: WorkspaceArtifact = {
         id: artifactId,
         name: rawName,
         content,
@@ -427,6 +427,7 @@ export function executeWorkspaceOperation(
         createdAt: now,
         updatedAt: now,
       };
+      newArtifact = createRevisionForArtifact(newArtifact, 'agent', 'agent');
 
       const updatedWorkspace: Workspace = {
         ...currentWs,
@@ -517,11 +518,12 @@ export function executeWorkspaceOperation(
 
       const existingArtifact = currentWs.artifacts[targetIndex];
       const now = Date.now();
-      const updatedArtifact: WorkspaceArtifact = {
+      let updatedArtifact: WorkspaceArtifact = {
         ...existingArtifact,
         content: safeArgs.content,
         updatedAt: now,
       };
+      updatedArtifact = createRevisionForArtifact(updatedArtifact, 'agent', 'agent');
 
       const updatedArtifacts = [...currentWs.artifacts];
       updatedArtifacts[targetIndex] = updatedArtifact;
@@ -1129,7 +1131,7 @@ export async function executeGoogleOperation(
         }
 
         const now = Date.now();
-        const updatedArt: WorkspaceArtifact = {
+        let updatedArt: WorkspaceArtifact = {
           ...art,
           content: doc.content,
           updatedAt: now,
@@ -1137,6 +1139,7 @@ export async function executeGoogleOperation(
           syncStatus: 'synchronized',
           syncBaselineHash: hashString(doc.content)
         };
+        updatedArt = createRevisionForArtifact(updatedArt, 'google_sync', 'system');
 
         const copy = [...currentWs.artifacts];
         copy[idx] = updatedArt;
