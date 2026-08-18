@@ -301,6 +301,19 @@ export type ArtifactProvider = 'local' | 'google_docs' | 'google_keep';
 
 export type SyncStatus = 'unlinked' | 'linked' | 'local_ahead' | 'remote_ahead' | 'synchronized' | 'conflict' | 'error';
 
+export type RevisionSource = 'user' | 'agent' | 'google_sync' | 'restore' | 'system';
+
+export interface ArtifactRevision {
+  id: string;
+  artifactId: string;
+  revisionNumber: number;
+  content: string;
+  createdAt: number;
+  author: 'user' | 'agent' | 'system';
+  source: RevisionSource;
+  contentHash: string;
+}
+
 export interface WorkspaceArtifact {
   id: string;
   name: string;
@@ -315,6 +328,7 @@ export interface WorkspaceArtifact {
   lastSyncedAt?: number;
   syncStatus?: SyncStatus;
   syncBaselineHash?: string;
+  revisions?: ArtifactRevision[];
 }
 
 export interface Workspace {

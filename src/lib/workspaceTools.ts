@@ -1,5 +1,6 @@
 import { Workspace, WorkspaceArtifact } from '../types';
 import { compareSyncState, computeLineDiff, hashString } from './syncUtils';
+import { createRevisionForArtifact } from './revisionUtils';
 import {
   createGoogleDoc,
   getGoogleDoc,
@@ -992,6 +993,7 @@ export async function executeGoogleOperation(
           updatedArt.lastSyncedAt = now;
           updatedArt.syncStatus = 'synchronized';
           updatedArt.syncBaselineHash = hashString(doc.content);
+          updatedArt = createRevisionForArtifact(updatedArt, 'google_sync', 'system');
           message = 'Linked and replaced local content with Google Doc.';
         } else {
           // compare_only
