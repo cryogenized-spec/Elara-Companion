@@ -2,7 +2,7 @@ import express from "express";
 import { getGeminiClient, formatApiErrorDetails, normalizeModelName, parseDataUrl, HarmCategory, HarmBlockThreshold } from "../services/gemini";
 import { workspaceToolDeclarations, executeAnyWorkspaceTool, buildWorkspaceContextPrompt } from "../../src/lib/workspaceTools";
 import { googleAgentToolDeclarations, GOOGLE_AGENT_TOOL_NAMES, executeGoogleAgentTool } from "../../src/lib/googleAgentTools";
-import { googlePlanningToolDeclarations, GOOGLE_PLANNING_TOOL_NAMES, executeGooglePlanningTool } from "../../src/lib/googlePlanningTools";
+import { googleOperationalToolDeclarations, GOOGLE_OPERATIONAL_TOOL_NAMES, executeGoogleOperationalTool } from "../../src/lib/googleAgentOperationalTools";
 import { getModelProfile } from "../../src/lib/modelRegistry";
 
 export function setupChatRoutes(app: express.Express) {
@@ -81,7 +81,7 @@ export function setupChatRoutes(app: express.Express) {
         config.thinkingConfig = { thinkingBudget: budget, includeThoughts: true };
       }
 
-      config.tools = [{ functionDeclarations: [...workspaceToolDeclarations, ...googleAgentToolDeclarations, ...googlePlanningToolDeclarations] }];
+      config.tools = [{ functionDeclarations: [...workspaceToolDeclarations, ...googleAgentToolDeclarations, ...googleOperationalToolDeclarations] }];
       let currentWorkspace = workspace || { id: 'default-workspace', name: 'My Workspace', artifacts: [], activeArtifactId: null };
       const touchedArtifactIds: string[] = [];
       let iteration = 0;
@@ -124,8 +124,8 @@ export function setupChatRoutes(app: express.Express) {
         for (const fc of functionCalls) {
           const op = GOOGLE_AGENT_TOOL_NAMES.has(fc.name)
             ? { result: await executeGoogleAgentTool(fc.name, fc.args, googleToken), updatedWorkspace: currentWorkspace }
-            : GOOGLE_PLANNING_TOOL_NAMES.has(fc.name)
-              ? { result: await executeGooglePlanningTool(fc.name, fc.args, googleToken), updatedWorkspace: currentWorkspace }
+            : GOOGLE_OPERATIONAL_TOOL_NAMES.has(fc.name)
+              ? { result: await executeGoogleOperationalTool(fc.name, fc.args, googleToken), updatedWorkspace: currentWorkspace }
               : await executeAnyWorkspaceTool(currentWorkspace, fc.name, fc.args, googleToken);
           currentWorkspace = op.updatedWorkspace;
           if ((op as any).createdArtifactId) touchedArtifactIds.push((op as any).createdArtifactId);
