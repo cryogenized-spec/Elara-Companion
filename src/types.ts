@@ -70,6 +70,7 @@ export interface ElaraSettings {
   fontSize?: number;
   textBackground?: 'slate' | 'deep-onyx' | 'midnight-blue' | 'cyber-violet' | 'emerald-terminal' | 'frosted-glass' | 'high-contrast';
   thinkingBudget?: number;
+  thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
   sendOnEnter?: boolean;
   apiKey?: string;
   customBackendUrl?: string;
@@ -207,7 +208,7 @@ export interface MemoryItem {
   content: string;
   confidence: MemoryConfidence;
   importance: MemoryImportance;
-  isPrivate: boolean; // true = Elara's private observation; false = Shared history/fact
+  isPrivate: boolean;
   category: MemoryCategory;
   createdAt: string;
   updatedAt: string;
@@ -242,60 +243,17 @@ export interface MemoryAction {
 }
 
 export const AVAILABLE_MODELS: GeminiModelOption[] = [
-  {
-    id: 'gemini-3.7-flash',
-    name: 'Gemini 3.7 Flash',
-    description: 'Latest flagship Flash - High-speed reasoning & agentic execution.',
-    isDefault: true,
-  },
-  {
-    id: 'gemini-3.6-flash',
-    name: 'Gemini 3.6 Flash',
-    description: 'Balanced performance & high speed.',
-  },
-  {
-    id: 'gemini-3.5-flash',
-    name: 'Gemini 3.5 Flash',
-    description: 'Standard text generation workhorse.',
-  },
-  {
-    id: 'gemini-3.5-flash-lite',
-    name: 'Gemini 3.5 Flash Lite',
-    description: 'Ultra-low latency, high throughput.',
-  },
-  {
-    id: 'gemini-3.1-pro',
-    name: 'Gemini 3.1 Pro',
-    description: 'Advanced reasoning, deep logic, and complex tasks.',
-  },
-  {
-    id: 'gemini-3.1-flash-lite',
-    name: 'Gemini 3.1 Flash Lite',
-    description: 'Lightweight text execution.',
-  },
-  {
-    id: 'gemini-3-flash',
-    name: 'Gemini 3 Flash',
-    description: 'Frontier performance text engine.',
-  },
-  {
-    id: 'gemini-pro-latest',
-    name: 'Gemini Pro Latest (Alias)',
-    description: 'Points dynamically to the current stable Pro text model.',
-  },
-  {
-    id: 'gemini-flash-latest',
-    name: 'Gemini Flash Latest (Alias)',
-    description: 'Points dynamically to the current stable Flash text model.',
-  },
-  {
-    id: 'gemini-flash-lite-latest',
-    name: 'Gemini Flash-Lite Latest (Alias)',
-    description: 'Points dynamically to the current stable Flash-Lite text model.',
-  },
+  { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', description: 'Stable flagship Flash for complex agentic and multi-step work.', isDefault: true },
+  { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash', description: 'Stable Flash balancing speed, multimodal capability and reasoning.' },
+  { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', description: 'Stable legacy Flash for routine, high-throughput workloads.' },
+  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite', description: 'Stable fast, cost-efficient Flash-Lite execution.' },
+  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite', description: 'Stable lightweight Flash with strong performance at low cost.' },
+  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview', description: 'Preview high-intelligence model for complex reasoning and coding.' },
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview', description: 'Preview frontier Flash model for high-quality reasoning at lower cost.' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'Stable low-latency, high-volume reasoning model.' },
+  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', description: 'Stable budget-focused multimodal execution.' },
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: 'Stable advanced reasoning model for complex tasks.' },
 ];
-
-
 
 export type ArtifactProvider = 'local' | 'google_docs' | 'google_keep';
 
