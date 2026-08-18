@@ -1,23 +1,26 @@
 import { MemoryAction, MemoryItem, MemoryScratchpadState } from '../types';
-import { saveActiveScratchpad } from './contextManager';
 
-function persistScratchpad(state: MemoryScratchpadState): void {
-  const lines = state.memories
-    .slice(0, 80)
-    .map((memory) => {
-      const privacy = memory.isPrivate ? 'PRIVATE' : 'SHARED';
-      return `- [${privacy}] [${memory.category}] [${memory.importance}/${memory.confidence}] ${memory.content}`;
-    });
+const ACTIVE_SCRATCHPAD_KEY = 'elara_active_scratchpad_v1';
 
-  const scratchpad = [
-    '[ELARA PERSISTENT SCRATCHPAD]',
-    'Use this as cross-session working memory about the user and ongoing relationship/context.',
-    'Do not invent facts. Treat uncertain observations as uncertain and prefer current user statements.',
-    ...lines,
-    '[/ELARA PERSISTENT SCRATCHPAD]',
-  ].join('\n');
+function buildPersistentScratchpad(memories: MemoryItem[]): string {
+  const ranked = [...memories].sort((a, b) => {
+    const importanceRank: Record<string, number> = { core: 4, important: 3, normal: 2, low: 1 };
+    return (importanceRank[b.importance] || 0) - (importanceRank[a.importance] || 0);
+  }).slice(0, 40);
 
-  saveActiveScratchpad(scratchpad);
+  if (ranked.length === 0) return '';
+  return ranked.map((memory) => {
+    const privateTag = memory.isPrivate ? 'PRIVATE OBSERVATION' : 'SHARED FACT';
+    return `- [${privateTag}] [${memory.category}] [${memory.confidence}] ${memory.content}`;
+  }).join('\n');
+}
+
+function persistScratchpad(memories: MemoryItem[]): void {
+  try {
+    localStorage.setItem(ACTIVE_SCRATCHPAD_KEY, buildPersistentScratchpad(memories));
+  } catch (err) {
+    console.warn('Persistent scratchpad mirror unavailable:', err);
+  }
 }
 
 export function applyMemoryActions(
@@ -25,7 +28,10 @@ export function applyMemoryActions(
   actions: MemoryAction[],
   conversationId?: string
 ): MemoryScratchpadState {
-  if (!actions || actions.length === 0) return state;
+  if (!actions || actions.length === 0) {
+    persistScratchpad(state.memories);
+    return state;
+  }
 
   let currentMemories = [...state.memories];
   let stateModified = false;
@@ -33,7 +39,7 @@ export function applyMemoryActions(
   for (const action of actions) {
     if (!action || action.type === 'NO_ACTION') continue;
 
-    if ((action.type === 'ADD' || action.type === 'CREATE') && action.memory && action.memory.content) {
+    if (action.type === 'ADD' && action.memory && action.memory.content) {
       const newMem: MemoryItem = {
         id: `mem_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         content: action.memory.content,
@@ -67,13 +73,13 @@ export function applyMemoryActions(
         stateModified = true;
       }
     } else if (action.type === 'DELETE' && action.targetId) {
-      const initialLength = currentMemories.length;
+      const before = currentMemories.length;
       currentMemories = currentMemories.filter((m) => m.id !== action.targetId);
-      if (currentMemories.length !== initialLength) stateModified = true;
-    } else if (action.type === 'MERGE' && action.mergeTargetIds && action.mergeTargetIds.length > 0 && action.memory) {
+      if (currentMemories.length !== before) stateModified = true;
+    } else if (action.type === 'MERGE' && action.mergeTargetIds?.length && action.memory) {
       const mergeSet = new Set(action.mergeTargetIds);
       currentMemories = currentMemories.filter((m) => !mergeSet.has(m.id));
-      const mergedMem: MemoryItem = {
+      currentMemories.unshift({
         id: `mem_merged_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         content: action.memory.content,
         confidence: action.memory.confidence || 'certain',
@@ -84,20 +90,15 @@ export function applyMemoryActions(
         updatedAt: new Date().toISOString(),
         tags: action.memory.tags || ['merged'],
         sourceConversationId: conversationId,
-      };
-      currentMemories.unshift(mergedMem);
+      });
       stateModified = true;
     }
   }
 
-  if (!stateModified) return state;
+  const nextState = stateModified
+    ? { ...state, memories: currentMemories, lastMaintenanceAt: new Date().toISOString() }
+    : state;
 
-  const updatedState = {
-    ...state,
-    memories: currentMemories,
-    lastMaintenanceAt: new Date().toISOString(),
-  };
-
-  persistScratchpad(updatedState);
-  return updatedState;
+  persistScratchpad(nextState.memories);
+  return nextState;
 }
