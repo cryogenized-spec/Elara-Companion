@@ -717,7 +717,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
       {historyModal && historyModal.isOpen && activeArtifact && (() => {
         const allRevisions = activeArtifact.revisions || [];
         const items = [
-          { id: null, name: 'Current State', date: Date.now(), source: 'unsaved' },
+          { id: null, name: 'CURRENT STATE', date: Date.now(), source: 'Unsaved/Latest' },
           ...allRevisions.map(r => ({ id: r.id, name: `Revision ${r.revisionNumber}`, date: r.createdAt, source: r.source })).reverse()
         ];
         
@@ -727,16 +727,9 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
         }
 
         const handleSelectRevision = (id: string | null) => {
-           let compareId = historyModal.compareRevisionId;
-           if (historyModal.isComparing) {
-              const idx = items.findIndex(item => item.id === id);
-              if (idx >= 0 && idx + 1 < items.length) {
-                 compareId = items[idx + 1].id;
-              } else {
-                 compareId = null;
-              }
+           if (!historyModal.isComparing) {
+               setHistoryModal({ ...historyModal, selectedRevisionId: id });
            }
-           setHistoryModal({ ...historyModal, selectedRevisionId: id, compareRevisionId: compareId });
         };
 
         const handleToggleCompare = () => {
@@ -747,6 +740,8 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
               let compareId = null;
               if (idx >= 0 && idx + 1 < items.length) {
                  compareId = items[idx + 1].id;
+              } else if (items.length > 1) {
+                 compareId = items[0].id;
               }
               setHistoryModal({ ...historyModal, isComparing: true, compareRevisionId: compareId });
            }
@@ -782,76 +777,84 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
                    )}
                 </div>
                 
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-2 gap-1 flex flex-col">
+                <div className={`flex-1 overflow-y-auto custom-scrollbar p-2 gap-1 flex flex-col ${historyModal.isComparing ? 'opacity-50 pointer-events-none' : ''}`}>
                   {items.map(item => (
                     <div key={item.id || 'current'} className="flex flex-col gap-1">
                       <button
                         onClick={() => handleSelectRevision(item.id)}
                         className={`w-full text-left px-3 py-2 rounded-lg text-sm flex flex-col gap-1 transition-colors ${
-                          historyModal.selectedRevisionId === item.id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-300'
+                          !historyModal.isComparing && historyModal.selectedRevisionId === item.id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-300'
                         }`}
                       >
                         <div className="flex justify-between items-center w-full">
                           <span className={`font-medium ${item.id === null ? 'text-emerald-400' : ''}`}>{item.name}</span>
                           <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-700">{item.source}</span>
                         </div>
-                        <span className="text-[10px] text-zinc-500">{item.id === null ? 'Unsaved or latest changes' : new Date(item.date).toLocaleString()}</span>
+                        <span className="text-[10px] text-zinc-500">{item.id === null ? 'Latest document content' : new Date(item.date).toLocaleString()}</span>
                       </button>
-                      
-                      {historyModal.isComparing && historyModal.selectedRevisionId === item.id && (
-                         <div className="px-3 py-2 bg-zinc-950/50 rounded-lg border border-zinc-800/50 flex flex-col gap-2 mt-1 mb-2 animate-in slide-in-from-top-2">
-                            <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">Compare with:</span>
-                            <select 
-                               className="w-full bg-zinc-900 border border-zinc-700 rounded text-xs p-1 text-zinc-300 outline-none focus:border-emerald-500/50"
-                               value={historyModal.compareRevisionId || ''}
-                               onChange={(e) => setHistoryModal({ ...historyModal, compareRevisionId: e.target.value || null })}
-                            >
-                               {items.filter(i => i.id !== item.id).map(opt => (
-                                  <option key={opt.id || 'current'} value={opt.id || ''}>{opt.name}</option>
-                               ))}
-                            </select>
-                         </div>
-                      )}
                     </div>
                   ))}
                 </div>
               </div>
               
               <div className="flex-1 bg-[#0a0a0a] overflow-y-auto custom-scrollbar flex flex-col">
-                {historyModal.isComparing && diffResult ? (
+                {historyModal.isComparing ? (
                    <div className="flex flex-col h-full">
-                      <div className="p-3 border-b border-zinc-800/50 bg-zinc-950/80 flex items-center justify-between shadow-sm z-10">
-                         <div className="flex items-center gap-3">
-                            <div className="px-2 py-1 bg-red-950/30 text-red-400 border border-red-900/30 rounded text-xs font-mono flex items-center gap-2">
-                               <span className="text-[10px] uppercase tracking-wider opacity-60">Old</span>
-                               {items.find(i => i.id === historyModal.compareRevisionId)?.name || 'Unknown'}
+                      <div className="p-4 border-b border-zinc-800/50 bg-zinc-950/80 shadow-sm z-10 flex flex-col gap-3">
+                         <div className="text-xs text-zinc-500">Select any two versions to compare their contents.</div>
+                         <div className="flex items-center gap-4 w-full">
+                            <div className="flex-1 flex flex-col gap-1.5">
+                               <label className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">Compare From (Older)</label>
+                               <select 
+                                  className="w-full bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-zinc-300 outline-none focus:border-emerald-500/50"
+                                  value={historyModal.compareRevisionId || ''}
+                                  onChange={(e) => setHistoryModal({ ...historyModal, compareRevisionId: e.target.value || null })}
+                               >
+                                  {items.map(opt => (
+                                     <option key={opt.id || 'current'} value={opt.id || ''}>{opt.name}</option>
+                                  ))}
+                               </select>
                             </div>
-                            <ArrowLeft className="w-3 h-3 text-zinc-600 rotate-180" />
-                            <div className="px-2 py-1 bg-emerald-950/30 text-emerald-400 border border-emerald-900/30 rounded text-xs font-mono flex items-center gap-2">
-                               <span className="text-[10px] uppercase tracking-wider opacity-60">New</span>
-                               {items.find(i => i.id === historyModal.selectedRevisionId)?.name || 'Unknown'}
+                            <div className="flex items-center justify-center pt-4">
+                               <ArrowLeft className="w-4 h-4 text-zinc-600 rotate-180" />
+                            </div>
+                            <div className="flex-1 flex flex-col gap-1.5">
+                               <label className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">Compare To (Newer)</label>
+                               <select 
+                                  className="w-full bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-zinc-300 outline-none focus:border-emerald-500/50"
+                                  value={historyModal.selectedRevisionId || ''}
+                                  onChange={(e) => setHistoryModal({ ...historyModal, selectedRevisionId: e.target.value || null })}
+                               >
+                                  {items.map(opt => (
+                                     <option key={opt.id || 'current'} value={opt.id || ''}>{opt.name}</option>
+                                  ))}
+                               </select>
                             </div>
                          </div>
-                         {diffResult.identical && (
-                            <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider px-2 py-1 bg-zinc-900 rounded border border-zinc-800">
-                               Identical - No Changes
-                            </span>
-                         )}
                       </div>
-                      <div className="flex-1 overflow-y-auto p-4 font-mono text-xs leading-relaxed custom-scrollbar">
-                        {!diffResult.identical && diffResult.hunks?.map((d, i) => (
-                           <div key={i} className={`whitespace-pre-wrap px-2 py-0.5 rounded-sm ${
-                             d.added ? 'text-emerald-400 bg-emerald-900/20' : 
-                             d.removed ? 'text-red-400 bg-red-900/20 line-through opacity-70' : 
-                             'text-zinc-500'
-                           }`}>
-                             <span className="select-none inline-block w-4 opacity-50 mr-2 border-r border-zinc-800">{
-                               d.added ? '+' : d.removed ? '-' : ' '
-                             }</span>
-                             {d.value}
-                           </div>
-                        ))}
-                      </div>
+                      
+                      {diffResult && diffResult.success ? (
+                          <div className="flex-1 overflow-y-auto p-4 font-mono text-xs leading-relaxed custom-scrollbar relative">
+                            {diffResult.identical ? (
+                                <div className="text-zinc-500 italic flex items-center justify-center h-full">No changes between these versions.</div>
+                            ) : (
+                                diffResult.hunks?.map((d, i) => (
+                                <div key={i} className={`whitespace-pre-wrap px-2 py-0.5 rounded-sm ${
+                                    d.added ? 'text-emerald-400 bg-emerald-900/20' : 
+                                    d.removed ? 'text-red-400 bg-red-900/20 line-through opacity-70' : 
+                                    'text-zinc-500'
+                                }`}>
+                                    <span className="select-none inline-block w-4 opacity-50 mr-2 border-r border-zinc-800">{
+                                    d.added ? '+' : d.removed ? '-' : ' '
+                                    }</span>
+                                    {d.value}
+                                </div>
+                                ))
+                            )}
+                          </div>
+                      ) : (
+                          <div className="text-red-400 p-4">{diffResult?.error || 'Unknown error during comparison'}</div>
+                      )}
                    </div>
                 ) : (
                    <div className="p-6 text-zinc-300 text-sm whitespace-pre-wrap font-mono h-full">
@@ -890,7 +893,6 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
           </div>
         </div>
         );
-      })()}
-    </div>
+      })()}  </div>
   );
 };

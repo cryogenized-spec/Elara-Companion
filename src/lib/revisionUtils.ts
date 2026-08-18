@@ -103,11 +103,15 @@ export function createCheckpoint(
   return updatedWs;
 }
 
+export type ComparisonTarget =
+  | { kind: 'revision'; revision: ArtifactRevision }
+  | { kind: 'current'; contentHash: string; content: string };
+
 export interface RevisionComparisonResult {
   success: boolean;
   error?: string;
-  revisionA?: ArtifactRevision;
-  revisionB?: ArtifactRevision;
+  targetA?: ComparisonTarget;
+  targetB?: ComparisonTarget;
   identical?: boolean;
   hunks?: DiffResult[];
 }
@@ -125,43 +129,47 @@ export function compareRevisions(
 
   const revisions = artifact.revisions || [];
   
-  const getRevisionInfo = (id: string | null): ArtifactRevision | undefined => {
+  const getTargetInfo = (id: string | null): ComparisonTarget | undefined => {
     if (id === null) {
       return {
-        id: 'current',
-        artifactId: artifact.id,
-        revisionNumber: -1,
-        content: artifact.content,
-        createdAt: Date.now(),
-        author: 'user',
-        source: 'user',
-        contentHash: hashString(artifact.content)
+        kind: 'current',
+        contentHash: hashString(artifact.content),
+        content: artifact.content
       };
     }
-    return revisions.find(r => r.id === id);
+    const rev = revisions.find(r => r.id === id);
+    if (rev) {
+      return { kind: 'revision', revision: rev };
+    }
+    return undefined;
   };
 
-  const revisionA = getRevisionInfo(revisionAId);
-  if (!revisionA) {
+  const targetA = getTargetInfo(revisionAId);
+  if (!targetA) {
     return { success: false, error: 'Revision A not found in this artifact' };
   }
 
-  const revisionB = getRevisionInfo(revisionBId);
-  if (!revisionB) {
+  const targetB = getTargetInfo(revisionBId);
+  if (!targetB) {
     return { success: false, error: 'Revision B not found in this artifact' };
   }
 
-  const identical = revisionA.contentHash === revisionB.contentHash;
+  const hashA = targetA.kind === 'revision' ? targetA.revision.contentHash : targetA.contentHash;
+  const hashB = targetB.kind === 'revision' ? targetB.revision.contentHash : targetB.contentHash;
+
+  const identical = hashA === hashB;
   let hunks: DiffResult[] = [];
   
   if (!identical) {
-    hunks = computeLineDiff(revisionA.content, revisionB.content);
+    const contentA = targetA.kind === 'revision' ? targetA.revision.content : targetA.content;
+    const contentB = targetB.kind === 'revision' ? targetB.revision.content : targetB.content;
+    hunks = computeLineDiff(contentA, contentB);
   }
 
   return {
     success: true,
-    revisionA,
-    revisionB,
+    targetA,
+    targetB,
     identical,
     hunks
   };
