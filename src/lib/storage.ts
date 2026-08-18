@@ -6,6 +6,7 @@ import {
   DEFAULT_RUNTIME_RULES
 } from '../constants/defaultPrompt';
 import { DEFAULT_GEMINI_MODEL, GEMINI_MODEL_PROFILES } from './modelRegistry';
+import { applySettingsAppearance } from './themeManager';
 
 const CONVERSATIONS_STORAGE_KEY = 'elara_conversations_v1';
 const SETTINGS_STORAGE_KEY = 'elara_settings_v1';
@@ -15,6 +16,7 @@ export function loadCustomPortrait(): string | null {
   try { return localStorage.getItem(PORTRAIT_STORAGE_KEY); }
   catch (e) { console.error('Failed to load custom portrait from storage:', e); return null; }
 }
+
 export function saveCustomPortrait(base64Img: string | null): void {
   try {
     if (base64Img) localStorage.setItem(PORTRAIT_STORAGE_KEY, base64Img);
@@ -30,11 +32,12 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
   userName: 'User',
   model: DEFAULT_GEMINI_MODEL,
   temperature: 0.85,
-  maxOutputTokens: 8192,
+  maxOutputTokens: 16384,
   topP: 0.95,
   topK: 64,
   includeHistory: true,
   theme: 'dark',
+  themeMode: 'dark',
   portraitScale: 1.0,
   backdropImage: null,
   backdropOpacity: 0.3,
@@ -42,6 +45,16 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
   timezone: 'Africa/Johannesburg',
   fontSize: 14,
   textBackground: 'slate',
+  userFontFamily: 'system-ui',
+  userFontSource: 'system',
+  userFontWeight: 400,
+  userTextColor: '#e4e4e7',
+  userFontSize: 14,
+  assistantFontFamily: 'system-ui',
+  assistantFontSource: 'system',
+  assistantFontWeight: 400,
+  assistantTextColor: '#f4f4f5',
+  assistantFontSize: 14,
   thinkingBudget: 4096,
   thinkingLevel: 'medium',
   sendOnEnter: false,
@@ -54,20 +67,27 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
 export function loadSettings(): ElaraSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (!raw) return DEFAULT_SETTINGS;
+    if (!raw) {
+      applySettingsAppearance(DEFAULT_SETTINGS);
+      return DEFAULT_SETTINGS;
+    }
     const parsed = JSON.parse(raw);
     const loaded = { ...DEFAULT_SETTINGS, ...parsed };
     const isActiveModel = GEMINI_MODEL_PROFILES.some((m) => m.id === loaded.model);
     if (!loaded.model || !isActiveModel) loaded.model = DEFAULT_GEMINI_MODEL;
+    applySettingsAppearance(loaded);
     return loaded;
   } catch (e) {
     console.error('Failed to load settings from storage:', e);
+    applySettingsAppearance(DEFAULT_SETTINGS);
     return DEFAULT_SETTINGS;
   }
 }
+
 export function saveSettings(settings: ElaraSettings): void {
   try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings)); }
   catch (e) { console.error('Failed to save settings:', e); }
+  applySettingsAppearance(settings);
 }
 
 const FOLDERS_STORAGE_KEY = 'elara_folders_v1';
@@ -82,6 +102,7 @@ export function loadFolders(): import('../types').Folder[] {
     return [{ id: 'default', name: 'General', isExpanded: true }];
   }
 }
+
 export function saveFolders(folders: import('../types').Folder[]): void {
   try { localStorage.setItem(FOLDERS_STORAGE_KEY, JSON.stringify(folders)); }
   catch (e) { console.error('Failed to save folders:', e); }
@@ -93,11 +114,13 @@ export function loadConversations(): Conversation[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
+
     const seenConvIds = new Set<string>();
     const sanitized = parsed.map((conv: any, convIdx: number) => {
       let convId = conv.id && typeof conv.id === 'string' ? conv.id : `conv_${Date.now()}_${convIdx}`;
       while (seenConvIds.has(convId)) convId = `${convId}_${Math.random().toString(36).substring(2, 6)}`;
       seenConvIds.add(convId);
+
       const seenMsgIds = new Set<string>();
       const messages = Array.isArray(conv.messages) ? conv.messages.map((msg: any, msgIdx: number) => {
         let msgId = msg.id && typeof msg.id === 'string' ? msg.id : `msg_${Date.now()}_${msgIdx}`;
@@ -105,14 +128,17 @@ export function loadConversations(): Conversation[] {
         seenMsgIds.add(msgId);
         return { ...msg, id: msgId };
       }) : [];
+
       return { ...conv, id: convId, messages };
     });
+
     return sanitized.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   } catch (e) {
     console.error('Failed to load conversations:', e);
     return [];
   }
 }
+
 export function saveConversations(conversations: Conversation[]): void {
   try { localStorage.setItem(CONVERSATIONS_STORAGE_KEY, JSON.stringify(conversations)); }
   catch (e) { console.error('Failed to save conversations:', e); }
@@ -136,6 +162,7 @@ export function exportConversationMarkdown(conversation: Conversation): void {
     const time = new Date(msg.timestamp).toLocaleTimeString();
     md += `### ${roleName} (${time})\n\n${msg.content}\n\n---\n\n`;
   });
+
   const blob = new Blob([md], { type: 'text/markdown' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -150,14 +177,18 @@ export function importDataJSON(jsonStr: string): { conversations: Conversation[]
     const parsed = JSON.parse(jsonStr);
     let importedConversations: Conversation[] = [];
     let importedSettings: Partial<ElaraSettings> | undefined;
+
     if (Array.isArray(parsed)) importedConversations = parsed;
     else if (parsed && typeof parsed === 'object') {
       if (Array.isArray(parsed.conversations)) importedConversations = parsed.conversations;
       if (parsed.settings && typeof parsed.settings === 'object') importedSettings = parsed.settings;
     }
+
     const validConversations = importedConversations.filter((c) => c && typeof c.id === 'string' && Array.isArray(c.messages));
     return { conversations: validConversations, settings: importedSettings };
-  } catch (e) { throw new Error('Invalid JSON format for import'); }
+  } catch (e) {
+    throw new Error('Invalid JSON format for import');
+  }
 }
 
 export function clearAllStorageData(): void {
