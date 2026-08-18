@@ -133,7 +133,8 @@ export interface MemoryAction {
 }
 
 export const AVAILABLE_MODELS: GeminiModelOption[] = [
-  { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash', description: 'Current stable Flash for fast multimodal, general-purpose and agentic work.', isDefault: true },
+  { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', description: 'Latest stable Flash for fast multimodal, general-purpose and agentic work.', isDefault: true },
+  { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash', description: 'Stable Flash for fast multimodal, general-purpose and agentic work.' },
   { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', description: 'Current stable Flash for sustained agentic and coding workloads.' },
   { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite', description: 'Current stable fast, cost-efficient Flash-Lite execution.' },
   { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite', description: 'Stable lightweight Flash-Lite model for throughput and low latency.' },
