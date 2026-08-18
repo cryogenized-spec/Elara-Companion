@@ -2,6 +2,7 @@ import { get, set, del } from 'idb-keyval';
 import { Conversation, ElaraSettings, WorldState, MemoryScratchpadState, Folder, PersonaSnapshot } from '../types';
 import { DEFAULT_SETTINGS } from './storage';
 import { saveActiveScratchpad } from './contextManager';
+import { applySettingsAppearance } from './themeManager';
 
 const CONVERSATIONS_KEY = 'elara_conversations_v2';
 const SETTINGS_KEY = 'elara_settings_v2';
@@ -42,9 +43,14 @@ export async function setDbConversations(data: Conversation[]) { await set(CONVE
 
 export async function getDbSettings(): Promise<ElaraSettings> {
   const data = await get(SETTINGS_KEY);
-  return data ? { ...DEFAULT_SETTINGS, ...data } : DEFAULT_SETTINGS;
+  const settings = data ? { ...DEFAULT_SETTINGS, ...data } : DEFAULT_SETTINGS;
+  applySettingsAppearance(settings);
+  return settings;
 }
-export async function setDbSettings(data: ElaraSettings) { await set(SETTINGS_KEY, data); }
+export async function setDbSettings(data: ElaraSettings) {
+  await set(SETTINGS_KEY, data);
+  applySettingsAppearance(data);
+}
 
 export async function getDbPortrait(): Promise<string | null> { return (await get(PORTRAIT_KEY)) || null; }
 export async function setDbPortrait(data: string | null) { if (data) await set(PORTRAIT_KEY, data); else await del(PORTRAIT_KEY); }
