@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { Workspace, MemoryItem } from '../types';
 import { workspaceToolDeclarations, executeAnyWorkspaceTool, buildWorkspaceContextPrompt } from './workspaceTools';
 import { googleAgentToolDeclarations, GOOGLE_AGENT_TOOL_NAMES, executeGoogleAgentTool } from './googleAgentTools';
+import { googlePlanningToolDeclarations, GOOGLE_PLANNING_TOOL_NAMES, executeGooglePlanningTool } from './googlePlanningTools';
 import { getModelProfile } from './modelRegistry';
 import { classifyApiError } from './apiError';
 
@@ -86,7 +87,7 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
     }
     (async () => {
       try {
-        config.tools = [{ functionDeclarations: [...workspaceToolDeclarations, ...googleAgentToolDeclarations] }];
+        config.tools = [{ functionDeclarations: [...workspaceToolDeclarations, ...googleAgentToolDeclarations, ...googlePlanningToolDeclarations] }];
         let currentWorkspace: Workspace = workspace || { id: 'default-workspace', name: 'My Workspace', artifacts: [], activeArtifactId: null };
         const touchedArtifactIds: string[] = [];
         let iteration = 0;
@@ -132,7 +133,9 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
           for (const fc of functionCalls) {
             const op = GOOGLE_AGENT_TOOL_NAMES.has(fc.name)
               ? { result: await executeGoogleAgentTool(fc.name, fc.args, googleToken), updatedWorkspace: currentWorkspace }
-              : await executeAnyWorkspaceTool(currentWorkspace, fc.name, fc.args, googleToken);
+              : GOOGLE_PLANNING_TOOL_NAMES.has(fc.name)
+                ? { result: await executeGooglePlanningTool(fc.name, fc.args, googleToken), updatedWorkspace: currentWorkspace }
+                : await executeAnyWorkspaceTool(currentWorkspace, fc.name, fc.args, googleToken);
             currentWorkspace = op.updatedWorkspace;
             const result = op.result;
             if ((op as any).createdArtifactId) touchedArtifactIds.push((op as any).createdArtifactId);
@@ -184,9 +187,9 @@ export async function runDirectMemoryExtraction(apiKey: string, userMessage: str
   if (!apiKey || !apiKey.trim()) return [];
   try {
     const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
-    const formattedExisting = currentMemories?.length ? currentMemories.slice(0, 30).map((m: any) => `[ID: ${m.id}] [Category: ${m.category}] [Confidence: ${m.confidence}] "${m.content}"`).join('\n') : 'No existing memories recorded yet.';
-    const prompt = `You are Elara's Autonomous Memory Extraction Engine.\nAnalyze this recent interaction between [[user]] (${userName}) and Elara to determine if any new note should be created, updated, merged, or deleted in her long-term notebook.\n\nRECENT INTERACTION:\nUser: "${userMessage.slice(0, 1000)}"\nElara: "${assistantResponse.slice(0, 1500)}"\n\nCURRENT NOTEBOOK MEMORIES:\n${formattedExisting}\n\nReturn ONLY valid JSON matching this schema: {"actions":[{"type":"CREATE"|"UPDATE"|"DELETE","targetId":"string","memory":{"content":"concise, fact-based memory note","category":"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other","importance":"core|important|normal|low","confidence":"certain|likely|uncertain","isPrivate":true,"tags":["string"],"eventDate":"optional YYYY-MM-DD"},"reason":"brief reason"}]}`;
-    const res = await ai.models.generateContent({ model: 'gemini-3.5-flash', contents: prompt, config: { temperature: 0.2, responseMimeType: 'application/json' });
+    const formattedExisting = currentMemories?.length ? currentMemories.slice(0, 30).map((m: any) => `[ID: ${m.id}] [Category: ${m.category}] [Confidence: ${m.confidence}] \"${m.content}\"`).join('\n') : 'No existing memories recorded yet.';
+    const prompt = `You are Elara's Autonomous Memory Extraction Engine.\nAnalyze this recent interaction between [[user]] (${userName}) and Elara to determine if any new note should be created, updated, merged, or deleted in her long-term notebook.\n\nRECENT INTERACTION:\nUser: \"${userMessage.slice(0, 1000)}\"\nElara: \"${assistantResponse.slice(0, 1500)}\"\n\nCURRENT NOTEBOOK MEMORIES:\n${formattedExisting}\n\nReturn ONLY valid JSON matching this schema: {\"actions\":[{\"type\":\"CREATE\"|\"UPDATE\"|\"DELETE\",\"targetId\":\"string\",\"memory\":{\"content\":\"concise, fact-based memory note\",\"category\":\"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other\",\"importance\":\"core|important|normal|low\",\"confidence\":\"certain|likely|uncertain\",\"isPrivate\":true,\"tags\":[\"string\"],\"eventDate\":\"optional YYYY-MM-DD\"},\"reason\":\"brief reason\"}]}`;
+    const res = await ai.models.generateContent({ model: 'gemini-3.5-flash', contents: prompt, config: { temperature: 0.2, responseMimeType: 'application/json' } });
     const parsed = JSON.parse(res.text || '{}');
     return parsed?.actions || [];
   } catch (e) {
@@ -199,8 +202,8 @@ export async function runDirectMemoryMaintenance(apiKey: string, memories: Memor
   if (!apiKey || !apiKey.trim()) return { actions: [], summary: 'No API key provided.' };
   try {
     const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
-    const formattedList = memories.map((m) => `[ID: ${m.id}] [Category: ${m.category}] [Importance: ${m.importance}] [Confidence: ${m.confidence}] "${m.content}"`).join('\n');
-    const prompt = `You are Elara's Long-Term Memory Notebook Auditor.\nReview the following memories about [[user]] (${userName}) and Elara.\nIdentify any duplicate notes, superseded facts, or notes that should be merged.\n\nMEMORIES LIST:\n${formattedList}\n\nReturn ONLY valid JSON: {"summary":"Brief 1-2 sentence explanation of maintenance performed","actions":[{"type":"DELETE"|"UPDATE","targetId":"ID","memory":{"content":"updated concise text if updating","importance":"core|important|normal|low","confidence":"certain|likely|uncertain","category":"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other"},"reason":"why"}]}`;
+    const formattedList = memories.map((m) => `[ID: ${m.id}] [Category: ${m.category}] [Importance: ${m.importance}] [Confidence: ${m.confidence}] \"${m.content}\"`).join('\n');
+    const prompt = `You are Elara's Long-Term Memory Notebook Auditor.\nReview the following memories about [[user]] (${userName}) and Elara.\nIdentify any duplicate notes, superseded facts, or notes that should be merged.\n\nMEMORIES LIST:\n${formattedList}\n\nReturn ONLY valid JSON: {\"summary\":\"Brief 1-2 sentence explanation of maintenance performed\",\"actions\":[{\"type\":\"DELETE\"|\"UPDATE\",\"targetId\":\"ID\",\"memory\":{\"content\":\"updated concise text if updating\",\"importance\":\"core|important|normal|low\",\"confidence\":\"certain|likely|uncertain\",\"category\":\"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other\"},\"reason\":\"why\"}]}`;
     const res = await ai.models.generateContent({ model: 'gemini-3.5-flash', contents: prompt, config: { temperature: 0.2, responseMimeType: 'application/json' } });
     const parsed = JSON.parse(res.text || '{}');
     return { actions: parsed?.actions || [], summary: parsed?.summary || 'Memory notebook audit complete.' };
