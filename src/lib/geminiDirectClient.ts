@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { Workspace, MemoryItem } from '../types';
 import { workspaceToolDeclarations, executeAnyWorkspaceTool, buildWorkspaceContextPrompt } from './workspaceTools';
 import { getModelProfile } from './modelRegistry';
+import { classifyApiError } from './apiError';
 
 export interface DirectStreamParams {
   apiKey: string;
@@ -18,33 +19,25 @@ export interface DirectStreamParams {
   thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
   workspace?: Workspace;
   googleToken?: string;
-  onChunk: (chunk: {
-    text?: string;
-    thoughtText?: string;
-    thoughtType?: 'summary';
-    finishReason?: string;
-    safetyRatings?: any;
-    toolCall?: any;
-    workspace?: Workspace;
-    artifactIds?: string[];
-  }) => void;
+  onChunk: (chunk: { text?: string; thoughtText?: string; thoughtType?: 'summary'; finishReason?: string; safetyRatings?: any; toolCall?: any; workspace?: Workspace; artifactIds?: string[] }) => void;
   signal?: AbortSignal;
 }
 
-export async function runDirectGeminiStream(params: DirectStreamParams): Promise<void> {
-  const {
-    apiKey, model, systemPrompt, history = [], message, image,
-    temperature, maxOutputTokens, topP, topK, thinkingBudget, thinkingLevel,
-    workspace, googleToken, onChunk, signal,
-  } = params;
+function deriveThinkingLevel(explicitLevel: DirectStreamParams['thinkingLevel'], budget?: number): 'minimal' | 'low' | 'medium' | 'high' {
+  if (explicitLevel) return explicitLevel;
+  if (typeof budget !== 'number' || budget < 0) return 'medium';
+  if (budget === 0) return 'minimal';
+  if (budget <= 2048) return 'low';
+  if (budget <= 6144) return 'medium';
+  return 'high';
+}
 
-  if (!apiKey || !apiKey.trim()) {
-    throw new Error('Please enter your Gemini API Key in Settings (Model & API tab) to chat on GitHub Pages.');
-  }
+export async function runDirectGeminiStream(params: DirectStreamParams): Promise<void> {
+  const { apiKey, model, systemPrompt, history = [], message, image, temperature, maxOutputTokens, topP, topK, thinkingBudget, thinkingLevel, workspace, googleToken, onChunk, signal } = params;
+  if (!apiKey || !apiKey.trim()) throw new Error('Please enter your Gemini API Key in Settings (Model & API tab) to chat on GitHub Pages.');
 
   const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
   const contents: any[] = [];
-
   for (const h of history) {
     const parts: any[] = [];
     if (h.image) {
@@ -54,7 +47,6 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
     if (h.content) parts.push({ text: h.content });
     if (parts.length > 0) contents.push({ role: h.role === 'assistant' ? 'model' : 'user', parts });
   }
-
   const currentParts: any[] = [];
   if (image) {
     const match = image.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
@@ -67,7 +59,6 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
   const fullSystemInstruction = (systemPrompt || '') + '\n' + workspaceContext;
   const cleanModel = model.replace(/^models\//, '').trim() || 'gemini-3.7-flash';
   const profile = getModelProfile(cleanModel);
-
   const config: any = {};
   if (fullSystemInstruction.trim()) config.systemInstruction = fullSystemInstruction;
   if (typeof temperature === 'number') config.temperature = Math.min(profile.temperatureMax, Math.max(profile.temperatureMin, temperature));
@@ -75,12 +66,9 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
   if (typeof topP === 'number') config.topP = Math.min(profile.topPMax, Math.max(profile.topPMin, topP));
   if (typeof topK === 'number') config.topK = Math.min(profile.topKMax, Math.max(profile.topKMin, topK));
 
-  // Do not attempt to expose or reconstruct hidden chain-of-thought.
-  // Google exposes supported thought summaries via includeThoughts.
   if (profile.thinkingControl === 'level') {
-    const level = profile.thinkingLevels?.includes(thinkingLevel as any)
-      ? thinkingLevel
-      : profile.thinkingLevels?.[Math.min(1, (profile.thinkingLevels?.length || 1) - 1)] || 'medium';
+    let level = deriveThinkingLevel(thinkingLevel, thinkingBudget);
+    if (!profile.thinkingLevels?.includes(level)) level = profile.thinkingLevels?.[0] || 'low';
     config.thinkingConfig = { thinkingLevel: level, includeThoughts: true };
   } else if (profile.thinkingControl === 'budget') {
     const budget = typeof thinkingBudget === 'number' ? thinkingBudget : -1;
@@ -95,13 +83,10 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
       if (signal.aborted) return handleAbort();
       signal.addEventListener('abort', handleAbort);
     }
-
     (async () => {
       try {
         config.tools = [{ functionDeclarations: workspaceToolDeclarations }];
-        let currentWorkspace: Workspace = workspace || {
-          id: 'default-workspace', name: 'My Workspace', artifacts: [], activeArtifactId: null,
-        };
+        let currentWorkspace: Workspace = workspace || { id: 'default-workspace', name: 'My Workspace', artifacts: [], activeArtifactId: null };
         const touchedArtifactIds: string[] = [];
         let iteration = 0;
         const MAX_ITERATIONS = 5;
@@ -109,7 +94,6 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
         while (iteration < MAX_ITERATIONS) {
           if (signal?.aborted) break;
           iteration++;
-
           const responseStream = await ai.models.generateContentStream({ model: cleanModel, contents, config });
           const functionCalls: any[] = [];
           const modelParts: any[] = [];
@@ -120,7 +104,6 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
             const finishReason = candidate?.finishReason;
             const safetyRatings = candidate?.safetyRatings;
             const parts = candidate?.content?.parts;
-
             if (parts && parts.length > 0) {
               for (const part of parts) {
                 if ((part as any).thought && part.text) {
@@ -143,42 +126,35 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
           }
 
           if (functionCalls.length === 0 || signal?.aborted) break;
-
           contents.push({ role: 'model', parts: modelParts.length > 0 ? modelParts : functionCalls.map((fc) => ({ functionCall: fc })) });
           const toolResponseParts: any[] = [];
-
           for (const fc of functionCalls) {
             const op = await executeAnyWorkspaceTool(currentWorkspace, fc.name, fc.args, googleToken);
             currentWorkspace = op.updatedWorkspace;
             if (op.createdArtifactId) touchedArtifactIds.push(op.createdArtifactId);
             if (op.modifiedArtifactId) touchedArtifactIds.push(op.modifiedArtifactId);
-
             if (fc.name === 'generate_canvas') {
               const title = fc.args?.title || 'Canvas Workspace';
               const content = fc.args?.content || '';
               onChunk({ text: `\n<canvas title="${title}">\n${content}\n</canvas>\n` });
             }
-
             onChunk({
-              toolCall: {
-                name: fc.name, args: fc.args, result: op.result, workspace: currentWorkspace,
-                createdArtifactId: op.createdArtifactId, modifiedArtifactId: op.modifiedArtifactId,
-                externalDocUrl: op.externalDocUrl,
-              },
+              toolCall: { name: fc.name, args: fc.args, result: op.result, workspace: currentWorkspace, createdArtifactId: op.createdArtifactId, modifiedArtifactId: op.modifiedArtifactId, externalDocUrl: op.externalDocUrl },
               workspace: currentWorkspace,
               artifactIds: Array.from(new Set(touchedArtifactIds)),
             });
-
             toolResponseParts.push({ functionResponse: { name: fc.name, response: op.result, id: fc.id } });
           }
-
           contents.push({ role: 'tool', parts: toolResponseParts });
         }
 
         onChunk({ workspace: currentWorkspace, artifactIds: Array.from(new Set(touchedArtifactIds)) });
         resolve();
       } catch (err) {
-        reject(err);
+        const classified = classifyApiError(err, cleanModel);
+        const wrapped = new Error(`[${classified.code}] ${classified.message}`);
+        (wrapped as any).apiError = classified;
+        reject(wrapped);
       } finally {
         if (signal) signal.removeEventListener('abort', handleAbort);
       }
@@ -204,9 +180,7 @@ export async function runDirectMemoryExtraction(apiKey: string, userMessage: str
   if (!apiKey || !apiKey.trim()) return [];
   try {
     const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
-    const formattedExisting = currentMemories?.length
-      ? currentMemories.slice(0, 30).map((m: any) => `[ID: ${m.id}] [Category: ${m.category}] [Confidence: ${m.confidence}] "${m.content}"`).join('\n')
-      : 'No existing memories recorded yet.';
+    const formattedExisting = currentMemories?.length ? currentMemories.slice(0, 30).map((m: any) => `[ID: ${m.id}] [Category: ${m.category}] [Confidence: ${m.confidence}] "${m.content}"`).join('\n') : 'No existing memories recorded yet.';
     const prompt = `You are Elara's Autonomous Memory Extraction Engine.\nAnalyze this recent interaction between [[user]] (${userName}) and Elara to determine if any new note should be created, updated, merged, or deleted in her long-term notebook.\n\nRECENT INTERACTION:\nUser: "${userMessage.slice(0, 1000)}"\nElara: "${assistantResponse.slice(0, 1500)}"\n\nCURRENT NOTEBOOK MEMORIES:\n${formattedExisting}\n\nReturn ONLY valid JSON matching this schema: {"actions":[{"type":"CREATE"|"UPDATE"|"DELETE","targetId":"string","memory":{"content":"concise, fact-based memory note","category":"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other","importance":"core|important|normal|low","confidence":"certain|likely|uncertain","isPrivate":true,"tags":["string"],"eventDate":"optional YYYY-MM-DD"},"reason":"brief reason"}]}`;
     const res = await ai.models.generateContent({ model: 'gemini-3.5-flash', contents: prompt, config: { temperature: 0.2, responseMimeType: 'application/json' } });
     const parsed = JSON.parse(res.text || '{}');
