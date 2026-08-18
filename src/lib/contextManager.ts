@@ -1,3 +1,5 @@
+import { loadAgentOperatingPolicy } from './agentPolicy';
+
 export const USER_PROFILE_NOTES_KEY = 'elara_user_profile_notes_v1';
 export const ACTIVE_SCRATCHPAD_KEY = 'elara_active_scratchpad_v1';
 
@@ -81,7 +83,8 @@ export function buildSystemPayload({
   activeScratchpad: string;
 }): string {
   const timestamp = new Date().toLocaleString();
-  
+  const agentOperatingPolicy = loadAgentOperatingPolicy();
+
   return `--- BEGIN SYSTEM PAYLOAD TEMPLATE ---
 [SYSTEM INSTRUCTIONS & PERSONA]
 ${baseSystemInstruction}
@@ -91,6 +94,9 @@ ${personaProtocol}
 ${intimacyModule}
 
 ${runtimeRules}
+
+[AGENT OPERATING POLICY — USER CONFIGURABLE]
+${agentOperatingPolicy}
 
 [CURRENT APP & ENVIRONMENT STATE]
 - Model: ${activeModelId}
