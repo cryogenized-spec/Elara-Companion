@@ -5,6 +5,7 @@ import {
   DEFAULT_INTIMACY_MODULE,
   DEFAULT_RUNTIME_RULES
 } from '../constants/defaultPrompt';
+import { DEFAULT_AGENT_BEHAVIOR_POLICY } from '../constants/defaultAgentBehaviorPolicy';
 import { DEFAULT_GEMINI_MODEL, GEMINI_MODEL_PROFILES } from './modelRegistry';
 import { applySettingsAppearance } from './themeManager';
 
@@ -28,6 +29,7 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
   personaProtocol: DEFAULT_PERSONA_PROTOCOL,
   intimacyModule: DEFAULT_INTIMACY_MODULE,
   runtimeRules: DEFAULT_RUNTIME_RULES,
+  agentBehaviorPolicy: DEFAULT_AGENT_BEHAVIOR_POLICY,
   userName: 'User',
   model: DEFAULT_GEMINI_MODEL,
   temperature: 0.85,
@@ -109,22 +111,7 @@ export function loadConversations(): Conversation[] {
     const raw = localStorage.getItem(CONVERSATIONS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    const seenConvIds = new Set<string>();
-    const sanitized = parsed.map((conv: any, convIdx: number) => {
-      let convId = conv.id && typeof conv.id === 'string' ? conv.id : `conv_${Date.now()}_${convIdx}`;
-      while (seenConvIds.has(convId)) convId = `${convId}_${Math.random().toString(36).substring(2, 6)}`;
-      seenConvIds.add(convId);
-      const seenMsgIds = new Set<string>();
-      const messages = Array.isArray(conv.messages) ? conv.messages.map((msg: any, msgIdx: number) => {
-        let msgId = msg.id && typeof msg.id === 'string' ? msg.id : `msg_${Date.now()}_${msgIdx}`;
-        while (seenMsgIds.has(msgId)) msgId = `${msgId}_${Math.random().toString(36).substring(2, 6)}`;
-        seenMsgIds.add(msgId);
-        return { ...msg, id: msgId };
-      }) : [];
-      return { ...conv, id: convId, messages };
-    });
-    return sanitized.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
     console.error('Failed to load conversations:', e);
     return [];
@@ -133,77 +120,4 @@ export function loadConversations(): Conversation[] {
 export function saveConversations(conversations: Conversation[]): void {
   try { localStorage.setItem(CONVERSATIONS_STORAGE_KEY, JSON.stringify(conversations)); }
   catch (e) { console.error('Failed to save conversations:', e); }
-}
-
-export function exportAllDataJSON(conversations: Conversation[], settings: ElaraSettings): void {
-  const data = { version: '3.0', exportDate: new Date().toISOString(), settings, conversations };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `elara-conversations-backup-${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-export function exportConversationMarkdown(conversation: Conversation): void {
-  let md = `# ${conversation.title}\n\n*Date: ${new Date(conversation.createdAt).toLocaleString()}*\n\n---\n\n`;
-  conversation.messages.forEach((msg) => {
-    const roleName = msg.role === 'user' ? 'User' : 'Elara';
-    const time = new Date(msg.timestamp).toLocaleTimeString();
-    md += `### ${roleName} (${time})\n\n${msg.content}\n\n---\n\n`;
-  });
-  const blob = new Blob([md], { type: 'text/markdown' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${conversation.title.replace(/[^a-z0-9_-]/gi, '_').toLowerCase()}.md`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-export function importDataJSON(jsonStr: string): { conversations: Conversation[]; settings?: Partial<ElaraSettings> } {
-  try {
-    const parsed = JSON.parse(jsonStr);
-    let importedConversations: Conversation[] = [];
-    let importedSettings: Partial<ElaraSettings> | undefined;
-    if (Array.isArray(parsed)) importedConversations = parsed;
-    else if (parsed && typeof parsed === 'object') {
-      if (Array.isArray(parsed.conversations)) importedConversations = parsed.conversations;
-      if (parsed.settings && typeof parsed.settings === 'object') importedSettings = parsed.settings;
-    }
-    const validConversations = importedConversations.filter((c) => c && typeof c.id === 'string' && Array.isArray(c.messages));
-    return { conversations: validConversations, settings: importedSettings };
-  } catch (e) { throw new Error('Invalid JSON format for import'); }
-}
-
-export function clearAllStorageData(): void {
-  try {
-    localStorage.removeItem(CONVERSATIONS_STORAGE_KEY);
-    localStorage.removeItem(SETTINGS_STORAGE_KEY);
-  } catch (e) { console.error('Failed to clear storage:', e); }
-}
-
-export function incrementRateLimit(modelId: string): void {
-  const dateStr = new Date().toLocaleDateString();
-  let data = loadRateLimits();
-  if (data.date !== dateStr) data = { date: dateStr, counts: {} };
-  data.counts[modelId] = (data.counts[modelId] || 0) + 1;
-  try { localStorage.setItem('elara_api_rate_limits', JSON.stringify(data)); }
-  catch (e) { console.error('Failed to save rate limits:', e); }
-}
-
-export function generateUniqueId(prefix: string = 'id'): string { return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`; }
-export function generateId(prefix: string = 'id'): string { return generateUniqueId(prefix); }
-
-export function loadRateLimits(): { date: string; counts: Record<string, number> } {
-  const dateStr = new Date().toLocaleDateString();
-  try {
-    const raw = localStorage.getItem('elara_api_rate_limits');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed.date === dateStr) return parsed;
-    }
-  } catch (e) { console.error('Failed to load rate limits:', e); }
-  return { date: dateStr, counts: {} };
 }
