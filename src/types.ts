@@ -12,7 +12,6 @@ export interface Conversation { id: string; title: string; createdAt: number; up
 
 export interface ElaraSettings {
   systemPrompt: string; personaProtocol: string; intimacyModule: string; runtimeRules: string;
-  agentBehaviorPolicy?: string;
   userName: string; model: string;
   temperature: number; maxOutputTokens: number; topP: number; topK: number; includeHistory: boolean;
   theme: 'dark' | 'light'; themeMode?: 'dark' | 'light' | 'system';
