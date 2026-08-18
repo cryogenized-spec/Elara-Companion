@@ -6,6 +6,7 @@ import {
   DEFAULT_RUNTIME_RULES
 } from '../constants/defaultPrompt';
 import { DEFAULT_GEMINI_MODEL, GEMINI_MODEL_PROFILES } from './modelRegistry';
+import { applySettingsAppearance } from './themeManager';
 
 const CONVERSATIONS_STORAGE_KEY = 'elara_conversations_v1';
 const SETTINGS_STORAGE_KEY = 'elara_settings_v1';
@@ -30,7 +31,7 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
   userName: 'User',
   model: DEFAULT_GEMINI_MODEL,
   temperature: 0.85,
-  maxOutputTokens: 8192,
+  maxOutputTokens: 16384,
   topP: 0.95,
   topK: 64,
   includeHistory: true,
@@ -42,6 +43,16 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
   timezone: 'Africa/Johannesburg',
   fontSize: 14,
   textBackground: 'slate',
+  userFontFamily: 'system-ui',
+  userFontSource: 'system',
+  userFontWeight: 400,
+  userTextColor: '#e4e4e7',
+  userFontSize: 14,
+  assistantFontFamily: 'system-ui',
+  assistantFontSource: 'system',
+  assistantFontWeight: 400,
+  assistantTextColor: '#f4f4f5',
+  assistantFontSize: 14,
   thinkingBudget: 4096,
   thinkingLevel: 'medium',
   sendOnEnter: false,
@@ -54,20 +65,26 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
 export function loadSettings(): ElaraSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (!raw) return DEFAULT_SETTINGS;
+    if (!raw) {
+      applySettingsAppearance(DEFAULT_SETTINGS);
+      return DEFAULT_SETTINGS;
+    }
     const parsed = JSON.parse(raw);
     const loaded = { ...DEFAULT_SETTINGS, ...parsed };
     const isActiveModel = GEMINI_MODEL_PROFILES.some((m) => m.id === loaded.model);
     if (!loaded.model || !isActiveModel) loaded.model = DEFAULT_GEMINI_MODEL;
+    applySettingsAppearance(loaded);
     return loaded;
   } catch (e) {
     console.error('Failed to load settings from storage:', e);
+    applySettingsAppearance(DEFAULT_SETTINGS);
     return DEFAULT_SETTINGS;
   }
 }
 export function saveSettings(settings: ElaraSettings): void {
   try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings)); }
   catch (e) { console.error('Failed to save settings:', e); }
+  applySettingsAppearance(settings);
 }
 
 const FOLDERS_STORAGE_KEY = 'elara_folders_v1';
