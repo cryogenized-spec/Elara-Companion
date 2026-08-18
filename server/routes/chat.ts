@@ -1,8 +1,7 @@
 import express from "express";
 import { getGeminiClient, formatApiErrorDetails, normalizeModelName, parseDataUrl, HarmCategory, HarmBlockThreshold } from "../services/gemini";
-import { workspaceToolDeclarations, executeAnyWorkspaceTool, buildWorkspaceContextPrompt } from "../../src/lib/workspaceTools";
-import { googleAgentToolDeclarations, GOOGLE_AGENT_TOOL_NAMES, executeGoogleAgentTool } from "../../src/lib/googleAgentTools";
-import { googleOperationalToolDeclarations, GOOGLE_OPERATIONAL_TOOL_NAMES, executeGoogleOperationalTool } from "../../src/lib/googleAgentOperationalTools";
+import { buildWorkspaceContextPrompt } from "../../src/lib/workspaceTools";
+import { agentToolDeclarations, executeAgentTool } from "../../src/lib/agentToolRegistry";
 import { getModelProfile } from "../../src/lib/modelRegistry";
 
 export function setupChatRoutes(app: express.Express) {
@@ -81,7 +80,7 @@ export function setupChatRoutes(app: express.Express) {
         config.thinkingConfig = { thinkingBudget: budget, includeThoughts: true };
       }
 
-      config.tools = [{ functionDeclarations: [...workspaceToolDeclarations, ...googleAgentToolDeclarations, ...googleOperationalToolDeclarations] }];
+      config.tools = [{ functionDeclarations: agentToolDeclarations }];
       let currentWorkspace = workspace || { id: 'default-workspace', name: 'My Workspace', artifacts: [], activeArtifactId: null };
       const touchedArtifactIds: string[] = [];
       let iteration = 0;
@@ -122,20 +121,16 @@ export function setupChatRoutes(app: express.Express) {
         contents.push({ role: 'model', parts: modelParts.length > 0 ? modelParts : functionCalls.map((fc) => ({ functionCall: fc })) });
         const toolResponseParts: any[] = [];
         for (const fc of functionCalls) {
-          const op = GOOGLE_AGENT_TOOL_NAMES.has(fc.name)
-            ? { result: await executeGoogleAgentTool(fc.name, fc.args, googleToken), updatedWorkspace: currentWorkspace }
-            : GOOGLE_OPERATIONAL_TOOL_NAMES.has(fc.name)
-              ? { result: await executeGoogleOperationalTool(fc.name, fc.args, googleToken), updatedWorkspace: currentWorkspace }
-              : await executeAnyWorkspaceTool(currentWorkspace, fc.name, fc.args, googleToken);
+          const op = await executeAgentTool(currentWorkspace, fc.name, fc.args, googleToken);
           currentWorkspace = op.updatedWorkspace;
-          if ((op as any).createdArtifactId) touchedArtifactIds.push((op as any).createdArtifactId);
-          if ((op as any).modifiedArtifactId) touchedArtifactIds.push((op as any).modifiedArtifactId);
+          if (op.createdArtifactId) touchedArtifactIds.push(op.createdArtifactId);
+          if (op.modifiedArtifactId) touchedArtifactIds.push(op.modifiedArtifactId);
           if (fc.name === 'generate_canvas') {
             const title = fc.args?.title || 'Canvas Workspace';
             const content = fc.args?.content || '';
             res.write(`data: ${JSON.stringify({ text: `\n<canvas title="${title}">\n${content}\n</canvas>\n` })}\n\n`);
           }
-          res.write(`data: ${JSON.stringify({ toolCall: { name: fc.name, args: fc.args, result: op.result, workspace: currentWorkspace, createdArtifactId: (op as any).createdArtifactId, modifiedArtifactId: (op as any).modifiedArtifactId, externalDocUrl: (op as any).externalDocUrl } })}\n\n`);
+          res.write(`data: ${JSON.stringify({ toolCall: { name: fc.name, args: fc.args, result: op.result, workspace: currentWorkspace, createdArtifactId: op.createdArtifactId, modifiedArtifactId: op.modifiedArtifactId, externalDocUrl: op.externalDocUrl } })}\n\n`);
           toolResponseParts.push({ functionResponse: { name: fc.name, response: op.result, id: fc.id } });
         }
         contents.push({ role: 'tool', parts: toolResponseParts });
