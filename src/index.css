@@ -88,6 +88,25 @@ body {
   color-scheme: light;
 }
 
+:root[data-theme="light"] .bg-\[\#0a0a0a\] {
+  background-color: var(--elara-bg) !important;
+}
+
+:root[data-theme="light"] .bg-\[\#121212\] {
+  background-color: var(--elara-surface) !important;
+}
+
+:root[data-theme="light"] .text-zinc-100,
+:root[data-theme="light"] .text-zinc-200 {
+  color: var(--elara-text) !important;
+}
+
+:root[data-theme="light"] .text-zinc-300,
+:root[data-theme="light"] .text-zinc-400,
+:root[data-theme="light"] .text-zinc-500 {
+  color: var(--elara-text-muted) !important;
+}
+
 button,
 input,
 textarea,
