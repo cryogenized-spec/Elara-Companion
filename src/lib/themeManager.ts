@@ -18,7 +18,7 @@ export function applyTheme(mode: ThemeMode): void {
 }
 
 export function applySettingsAppearance(settings: Partial<ElaraSettings>): void {
-  applyTheme((settings.theme || 'dark') as ThemeMode);
+  applyTheme((settings.themeMode || settings.theme || 'dark') as ThemeMode);
   void applyTypographySettings(settings);
 }
 
