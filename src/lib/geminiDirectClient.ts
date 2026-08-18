@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { Workspace, MemoryItem } from '../types';
 import { workspaceToolDeclarations, executeAnyWorkspaceTool, buildWorkspaceContextPrompt } from './workspaceTools';
+import { googleAgentToolDeclarations, GOOGLE_AGENT_TOOL_NAMES, executeGoogleAgentTool } from './googleAgentTools';
 import { getModelProfile } from './modelRegistry';
 import { classifyApiError } from './apiError';
 
@@ -61,10 +62,10 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
   const profile = getModelProfile(cleanModel);
   const config: any = {};
   if (fullSystemInstruction.trim()) config.systemInstruction = fullSystemInstruction;
-  if (typeof temperature === 'number') config.temperature = Math.min(profile.temperatureMax, Math.max(profile.temperatureMin, temperature));
+  if (profile.supportsTemperature && typeof temperature === 'number') config.temperature = Math.min(profile.temperatureMax, Math.max(profile.temperatureMin, temperature));
   if (typeof maxOutputTokens === 'number') config.maxOutputTokens = Math.min(profile.maxOutputTokensMax, Math.max(profile.maxOutputTokensMin, maxOutputTokens));
-  if (typeof topP === 'number') config.topP = Math.min(profile.topPMax, Math.max(profile.topPMin, topP));
-  if (typeof topK === 'number') config.topK = Math.min(profile.topKMax, Math.max(profile.topKMin, topK));
+  if (profile.supportsTopP && typeof topP === 'number') config.topP = Math.min(profile.topPMax, Math.max(profile.topPMin, topP));
+  if (profile.supportsTopK && typeof topK === 'number') config.topK = Math.min(profile.topKMax, Math.max(profile.topKMin, topK));
 
   if (profile.thinkingControl === 'level') {
     let level = deriveThinkingLevel(thinkingLevel, thinkingBudget);
@@ -85,7 +86,7 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
     }
     (async () => {
       try {
-        config.tools = [{ functionDeclarations: workspaceToolDeclarations }];
+        config.tools = [{ functionDeclarations: [...workspaceToolDeclarations, ...googleAgentToolDeclarations] }];
         let currentWorkspace: Workspace = workspace || { id: 'default-workspace', name: 'My Workspace', artifacts: [], activeArtifactId: null };
         const touchedArtifactIds: string[] = [];
         let iteration = 0;
@@ -129,21 +130,24 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
           contents.push({ role: 'model', parts: modelParts.length > 0 ? modelParts : functionCalls.map((fc) => ({ functionCall: fc })) });
           const toolResponseParts: any[] = [];
           for (const fc of functionCalls) {
-            const op = await executeAnyWorkspaceTool(currentWorkspace, fc.name, fc.args, googleToken);
+            const op = GOOGLE_AGENT_TOOL_NAMES.has(fc.name)
+              ? { result: await executeGoogleAgentTool(fc.name, fc.args, googleToken), updatedWorkspace: currentWorkspace }
+              : await executeAnyWorkspaceTool(currentWorkspace, fc.name, fc.args, googleToken);
             currentWorkspace = op.updatedWorkspace;
-            if (op.createdArtifactId) touchedArtifactIds.push(op.createdArtifactId);
-            if (op.modifiedArtifactId) touchedArtifactIds.push(op.modifiedArtifactId);
+            const result = op.result;
+            if ((op as any).createdArtifactId) touchedArtifactIds.push((op as any).createdArtifactId);
+            if ((op as any).modifiedArtifactId) touchedArtifactIds.push((op as any).modifiedArtifactId);
             if (fc.name === 'generate_canvas') {
               const title = fc.args?.title || 'Canvas Workspace';
               const content = fc.args?.content || '';
               onChunk({ text: `\n<canvas title="${title}">\n${content}\n</canvas>\n` });
             }
             onChunk({
-              toolCall: { name: fc.name, args: fc.args, result: op.result, workspace: currentWorkspace, createdArtifactId: op.createdArtifactId, modifiedArtifactId: op.modifiedArtifactId, externalDocUrl: op.externalDocUrl },
+              toolCall: { name: fc.name, args: fc.args, result, workspace: currentWorkspace, createdArtifactId: (op as any).createdArtifactId, modifiedArtifactId: (op as any).modifiedArtifactId, externalDocUrl: (op as any).externalDocUrl },
               workspace: currentWorkspace,
               artifactIds: Array.from(new Set(touchedArtifactIds)),
             });
-            toolResponseParts.push({ functionResponse: { name: fc.name, response: op.result, id: fc.id } });
+            toolResponseParts.push({ functionResponse: { name: fc.name, response: result, id: fc.id } });
           }
           contents.push({ role: 'tool', parts: toolResponseParts });
         }
@@ -182,7 +186,7 @@ export async function runDirectMemoryExtraction(apiKey: string, userMessage: str
     const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
     const formattedExisting = currentMemories?.length ? currentMemories.slice(0, 30).map((m: any) => `[ID: ${m.id}] [Category: ${m.category}] [Confidence: ${m.confidence}] "${m.content}"`).join('\n') : 'No existing memories recorded yet.';
     const prompt = `You are Elara's Autonomous Memory Extraction Engine.\nAnalyze this recent interaction between [[user]] (${userName}) and Elara to determine if any new note should be created, updated, merged, or deleted in her long-term notebook.\n\nRECENT INTERACTION:\nUser: "${userMessage.slice(0, 1000)}"\nElara: "${assistantResponse.slice(0, 1500)}"\n\nCURRENT NOTEBOOK MEMORIES:\n${formattedExisting}\n\nReturn ONLY valid JSON matching this schema: {"actions":[{"type":"CREATE"|"UPDATE"|"DELETE","targetId":"string","memory":{"content":"concise, fact-based memory note","category":"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other","importance":"core|important|normal|low","confidence":"certain|likely|uncertain","isPrivate":true,"tags":["string"],"eventDate":"optional YYYY-MM-DD"},"reason":"brief reason"}]}`;
-    const res = await ai.models.generateContent({ model: 'gemini-3.5-flash', contents: prompt, config: { temperature: 0.2, responseMimeType: 'application/json' } });
+    const res = await ai.models.generateContent({ model: 'gemini-3.5-flash', contents: prompt, config: { temperature: 0.2, responseMimeType: 'application/json' });
     const parsed = JSON.parse(res.text || '{}');
     return parsed?.actions || [];
   } catch (e) {
