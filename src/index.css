@@ -32,84 +32,39 @@
 }
 
 @layer utilities {
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #27272a;
-    border-radius: 10px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #3f3f46;
-  }
-
-  .elara-user-typography {
-    font-family: var(--elara-user-font);
-    font-size: var(--elara-user-size);
-    font-weight: var(--elara-user-weight);
-    color: var(--elara-user-color);
-  }
-
-  .elara-assistant-typography {
-    font-family: var(--elara-assistant-font);
-    font-size: var(--elara-assistant-size);
-    font-weight: var(--elara-assistant-weight);
-    color: var(--elara-assistant-color);
-  }
+  .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+  .elara-user-typography { font-family: var(--elara-user-font); font-size: var(--elara-user-size); font-weight: var(--elara-user-weight); color: var(--elara-user-color); }
+  .elara-assistant-typography { font-family: var(--elara-assistant-font); font-size: var(--elara-assistant-size); font-weight: var(--elara-assistant-weight); color: var(--elara-assistant-color); }
 }
 
-html, body, #root {
-  height: 100vh;
-  height: 100dvh;
-  width: 100%;
-  overflow: hidden;
-  margin: 0;
-  padding: 0;
-  overscroll-behavior-y: none;
-}
+html, body, #root { height: 100vh; height: 100dvh; width: 100%; overflow: hidden; margin: 0; padding: 0; overscroll-behavior-y: none; }
+.touch-scroll { -webkit-overflow-scrolling: touch; }
+body { background-color: var(--elara-bg); color: var(--elara-text); font-family: var(--elara-user-font); color-scheme: dark; transition: background-color 160ms ease, color 160ms ease; }
+:root[data-theme="light"] body { color-scheme: light; }
 
-.touch-scroll {
-  -webkit-overflow-scrolling: touch;
-}
+/* The chat component predates the token layer, so these narrow selectors apply the
+   configured user/Elara typography without rewriting the large message component. */
+main [class*="rounded-tr-none"] { font-family: var(--elara-user-font) !important; font-size: var(--elara-user-size) !important; font-weight: var(--elara-user-weight) !important; color: var(--elara-user-color) !important; }
+main .group > div[class*="overflow-hidden"][class*="w-full"] { font-family: var(--elara-assistant-font) !important; font-size: var(--elara-assistant-size) !important; font-weight: var(--elara-assistant-weight) !important; color: var(--elara-assistant-color) !important; }
+main [class*="rounded-tr-none"] textarea { font-family: var(--elara-user-font) !important; font-size: var(--elara-user-size) !important; font-weight: var(--elara-user-weight) !important; }
+main .group > div[class*="overflow-hidden"][class*="w-full"] p,
+main .group > div[class*="overflow-hidden"][class*="w-full"] li,
+main .group > div[class*="overflow-hidden"][class*="w-full"] blockquote,
+main .group > div[class*="overflow-hidden"][class*="w-full"] td,
+main .group > div[class*="overflow-hidden"][class*="w-full"] th { font-family: inherit; font-size: inherit; font-weight: inherit; }
 
-body {
-  background-color: var(--elara-bg);
-  color: var(--elara-text);
-  font-family: var(--elara-user-font);
-  color-scheme: dark;
-  transition: background-color 160ms ease, color 160ms ease;
-}
-
-:root[data-theme="light"] body {
-  color-scheme: light;
-}
-
-:root[data-theme="light"] .bg-\[\#0a0a0a\] {
-  background-color: var(--elara-bg) !important;
-}
-
-:root[data-theme="light"] .bg-\[\#121212\] {
-  background-color: var(--elara-surface) !important;
-}
-
+:root[data-theme="light"] .bg-\[\#0a0a0a\] { background-color: var(--elara-bg) !important; }
+:root[data-theme="light"] .bg-\[\#121212\] { background-color: var(--elara-surface) !important; }
+:root[data-theme="light"] .bg-\[\#0d0d0d\] { background-color: var(--elara-surface-elevated) !important; }
 :root[data-theme="light"] .text-zinc-100,
-:root[data-theme="light"] .text-zinc-200 {
-  color: var(--elara-text) !important;
-}
-
+:root[data-theme="light"] .text-zinc-200 { color: var(--elara-text) !important; }
 :root[data-theme="light"] .text-zinc-300,
 :root[data-theme="light"] .text-zinc-400,
-:root[data-theme="light"] .text-zinc-500 {
-  color: var(--elara-text-muted) !important;
-}
+:root[data-theme="light"] .text-zinc-500 { color: var(--elara-text-muted) !important; }
+:root[data-theme="light"] .border-zinc-800,
+:root[data-theme="light"] .border-zinc-700 { border-color: var(--elara-border) !important; }
 
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}
+button, input, textarea, select { font: inherit; }
