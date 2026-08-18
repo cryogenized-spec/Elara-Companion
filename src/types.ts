@@ -61,7 +61,7 @@ export interface ElaraSettings {
   topP: number;
   topK: number;
   includeHistory: boolean;
-  theme: 'dark' | 'light';
+  theme: 'dark' | 'light' | 'system';
   portraitScale: number;
   backdropImage: string | null;
   backdropOpacity: number;
@@ -69,6 +69,16 @@ export interface ElaraSettings {
   timezone: string;
   fontSize?: number;
   textBackground?: 'slate' | 'deep-onyx' | 'midnight-blue' | 'cyber-violet' | 'emerald-terminal' | 'frosted-glass' | 'high-contrast';
+  userFontFamily?: string;
+  userFontSource?: 'system' | 'google';
+  userFontWeight?: 300 | 400 | 500 | 600 | 700;
+  userTextColor?: string;
+  userFontSize?: number;
+  assistantFontFamily?: string;
+  assistantFontSource?: 'system' | 'google';
+  assistantFontWeight?: 300 | 400 | 500 | 600 | 700;
+  assistantTextColor?: string;
+  assistantFontSize?: number;
   thinkingBudget?: number;
   thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
   sendOnEnter?: boolean;
@@ -134,7 +144,7 @@ export const AVAILABLE_MODELS: GeminiModelOption[] = [
   { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: 'Stable advanced reasoning model for complex tasks.' },
 ];
 
-export type ArtifactProvider = 'local' | 'google_docs' | 'google_keep';
+export type ArtifactProvider = 'local' | 'google_docs' | 'google_sheets' | 'google_keep';
 export type SyncStatus = 'unlinked' | 'linked' | 'local_ahead' | 'remote_ahead' | 'synchronized' | 'conflict' | 'error';
 export type RevisionSource = 'user' | 'agent' | 'google_sync' | 'restore' | 'system';
 
