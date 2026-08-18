@@ -1,11 +1,37 @@
 import { MemoryAction, MemoryItem, MemoryScratchpadState } from '../types';
 
+const ACTIVE_SCRATCHPAD_KEY = 'elara_active_scratchpad_v1';
+
+function buildPersistentScratchpad(memories: MemoryItem[]): string {
+  const ranked = [...memories].sort((a, b) => {
+    const importanceRank: Record<string, number> = { core: 4, important: 3, normal: 2, low: 1 };
+    return (importanceRank[b.importance] || 0) - (importanceRank[a.importance] || 0);
+  }).slice(0, 40);
+
+  if (ranked.length === 0) return '';
+  return ranked.map((memory) => {
+    const privateTag = memory.isPrivate ? 'PRIVATE OBSERVATION' : 'SHARED FACT';
+    return `- [${privateTag}] [${memory.category}] [${memory.confidence}] ${memory.content}`;
+  }).join('\n');
+}
+
+function persistScratchpad(memories: MemoryItem[]): void {
+  try {
+    localStorage.setItem(ACTIVE_SCRATCHPAD_KEY, buildPersistentScratchpad(memories));
+  } catch (err) {
+    console.warn('Persistent scratchpad mirror unavailable:', err);
+  }
+}
+
 export function applyMemoryActions(
   state: MemoryScratchpadState,
   actions: MemoryAction[],
   conversationId?: string
 ): MemoryScratchpadState {
-  if (!actions || actions.length === 0) return state;
+  if (!actions || actions.length === 0) {
+    persistScratchpad(state.memories);
+    return state;
+  }
 
   let currentMemories = [...state.memories];
   let stateModified = false;
@@ -47,16 +73,13 @@ export function applyMemoryActions(
         stateModified = true;
       }
     } else if (action.type === 'DELETE' && action.targetId) {
-      const initialLength = currentMemories.length;
+      const before = currentMemories.length;
       currentMemories = currentMemories.filter((m) => m.id !== action.targetId);
-      if (currentMemories.length !== initialLength) {
-        stateModified = true;
-      }
-    } else if (action.type === 'MERGE' && action.mergeTargetIds && action.mergeTargetIds.length > 0 && action.memory) {
+      if (currentMemories.length !== before) stateModified = true;
+    } else if (action.type === 'MERGE' && action.mergeTargetIds?.length && action.memory) {
       const mergeSet = new Set(action.mergeTargetIds);
       currentMemories = currentMemories.filter((m) => !mergeSet.has(m.id));
-
-      const mergedMem: MemoryItem = {
+      currentMemories.unshift({
         id: `mem_merged_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         content: action.memory.content,
         confidence: action.memory.confidence || 'certain',
@@ -67,17 +90,15 @@ export function applyMemoryActions(
         updatedAt: new Date().toISOString(),
         tags: action.memory.tags || ['merged'],
         sourceConversationId: conversationId,
-      };
-      currentMemories.unshift(mergedMem);
+      });
       stateModified = true;
     }
   }
 
-  if (!stateModified) return state;
+  const nextState = stateModified
+    ? { ...state, memories: currentMemories, lastMaintenanceAt: new Date().toISOString() }
+    : state;
 
-  return {
-    ...state,
-    memories: currentMemories,
-    lastMaintenanceAt: new Date().toISOString(),
-  };
+  persistScratchpad(nextState.memories);
+  return nextState;
 }

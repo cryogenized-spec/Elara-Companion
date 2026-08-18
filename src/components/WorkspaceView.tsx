@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Workspace, WorkspaceArtifact } from '../types';
-import { getWorkspace, saveWorkspace, createArtifact, updateArtifact, deleteArtifact, setActiveArtifact } from '../lib/workspaceStorage';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Workspace, WorkspaceArtifact, ArtifactRevision } from '../types';
+import { createArtifact, deleteArtifact, getWorkspace, saveWorkspace, setActiveArtifact, updateArtifact } from '../lib/workspaceStorage';
 import { executeAnyWorkspaceTool } from '../lib/workspaceTools';
-import { createCheckpoint, restoreRevision, compareRevisions } from '../lib/revisionUtils';
-import { Plus, FileText, Trash2, Edit2, X, Check, Eye, Code, ChevronDown, FileType2, ArrowLeft, Menu, ExternalLink, RefreshCw, UploadCloud, DownloadCloud, AlertTriangle } from 'lucide-react';
+import { compareRevisions, createCheckpoint, restoreRevision } from '../lib/revisionUtils';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { Clock, Save } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, Clock3, Code2, Download, Eye, FileText, FileType2, History, Menu, MoreHorizontal, Plus, RefreshCw, Save, X } from 'lucide-react';
 
 interface WorkspaceViewProps {
   activeArtifactId?: string | null;
@@ -14,885 +13,230 @@ interface WorkspaceViewProps {
   onOpenSidebar?: () => void;
 }
 
-export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
-  activeArtifactId: propActiveArtifactId,
-  onSelectArtifact,
-  onBackToChat,
-  onOpenSidebar,
-}) => {
+const statusLabel = (artifact: WorkspaceArtifact) => {
+  if (artifact.provider !== 'google_docs') return null;
+  switch (artifact.syncStatus) {
+    case 'synchronized': return 'Synced';
+    case 'local_ahead': return 'Local changes';
+    case 'remote_ahead': return 'Google changes';
+    case 'conflict': return 'Conflict';
+    case 'linked': return 'Linked';
+    default: return 'Google Doc';
+  }
+};
+
+export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ activeArtifactId: propActiveArtifactId, onSelectArtifact, onBackToChat, onOpenSidebar }) => {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [localContent, setLocalContent] = useState('');
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
-  const [showNewMenu, setShowNewMenu] = useState(false);
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null);
+  const [compareRevisionId, setCompareRevisionId] = useState<string | null>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [renameId, setRenameId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [googleLinkOpen, setGoogleLinkOpen] = useState(false);
+  const [googleDocId, setGoogleDocId] = useState('');
+  const [googleLinkMode, setGoogleLinkMode] = useState<'compare_only' | 'local_to_google' | 'google_to_local'>('compare_only');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contentRef = useRef(localContent);
+  const activeRef = useRef<WorkspaceArtifact | null>(null);
 
-  // Local state for fast typing without re-rendering the whole workspace object
-  const [localContent, setLocalContent] = useState<string>('');
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const localContentRef = useRef(localContent);
-  localContentRef.current = localContent;
-  const activeArtifactRef = useRef<WorkspaceArtifact | null>(null);
+  contentRef.current = localContent;
 
-  // Load and synchronize workspace
-  useEffect(() => {
-    const ws = getWorkspace();
-    let targetId = propActiveArtifactId || ws.activeArtifactId;
+  const activeArtifact = useMemo(() => workspace?.artifacts.find((a) => a.id === workspace.activeArtifactId) || null, [workspace]);
+  activeRef.current = activeArtifact;
 
-    if (propActiveArtifactId && ws.artifacts.some((a) => a.id === propActiveArtifactId)) {
-      ws.activeArtifactId = propActiveArtifactId;
-      saveWorkspace(ws);
-      targetId = propActiveArtifactId;
-    }
-
-    setWorkspace(ws);
-
-    if (targetId) {
-      const active = ws.artifacts.find((a) => a.id === targetId);
-      if (active) {
-        setLocalContent(active.content);
-        activeArtifactRef.current = active;
-      }
-    }
-  }, [propActiveArtifactId]);
-
-  // Flush any pending unsaved changes on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-      if (activeArtifactRef.current) {
-        let ws = getWorkspace();
-        if (localContentRef.current !== activeArtifactRef.current.content) {
-          ws = updateArtifact(ws, activeArtifactRef.current.id, { content: localContentRef.current });
-        }
-        createCheckpoint(ws, activeArtifactRef.current.id, 'user', 'user');
-      }
-    };
+  const persistCurrent = useCallback((source: 'user' | 'agent' = 'user') => {
+    const artifact = activeRef.current;
+    let ws = getWorkspace();
+    if (!artifact) return ws;
+    if (contentRef.current !== artifact.content) ws = updateArtifact(ws, artifact.id, { content: contentRef.current });
+    ws = createCheckpoint(ws, artifact.id, source, source);
+    saveWorkspace(ws);
+    return ws;
   }, []);
 
-  if (!workspace) return null;
-
-  const activeArtifact = workspace.artifacts.find((a) => a.id === workspace.activeArtifactId) || null;
-  activeArtifactRef.current = activeArtifact;
-
-  const handleCreate = (type: 'text' | 'markdown' = 'text') => {
-    // Flush current active if needed
-    let currentWs = workspace;
-    if (activeArtifact) {
-      if (localContent !== activeArtifact.content) {
-        currentWs = updateArtifact(workspace, activeArtifact.id, { content: localContent });
-      }
-      currentWs = createCheckpoint(currentWs, activeArtifact.id, 'user', 'user');
+  useEffect(() => {
+    const ws = getWorkspace();
+    const targetId = propActiveArtifactId || ws.activeArtifactId;
+    if (targetId && ws.artifacts.some((a) => a.id === targetId)) {
+      ws.activeArtifactId = targetId;
+      saveWorkspace(ws);
     }
-
-    const updated = createArtifact(currentWs, type === 'markdown' ? 'Untitled.md' : 'Untitled', type);
-    setWorkspace(updated);
-    setLocalContent('');
-    setShowNewMenu(false);
+    setWorkspace(ws);
+    setLocalContent(ws.artifacts.find((a) => a.id === ws.activeArtifactId)?.content || '');
     setPreviewMode(false);
-    if (onSelectArtifact && updated.activeArtifactId) {
-      onSelectArtifact(updated.activeArtifactId);
+  }, [propActiveArtifactId]);
+
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    persistCurrent('user');
+  }, [persistCurrent]);
+
+  const flush = useCallback(() => {
+    if (!workspace || !activeArtifact) return workspace;
+    let ws = workspace;
+    if (contentRef.current !== activeArtifact.content) {
+      ws = updateArtifact(ws, activeArtifact.id, { content: contentRef.current });
+      saveWorkspace(ws);
     }
+    return ws;
+  }, [workspace, activeArtifact]);
+
+  const handleContentChange = (value: string) => {
+    setLocalContent(value);
+    contentRef.current = value;
+    if (!activeArtifact) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setWorkspace((current) => current ? updateArtifact(current, activeArtifact.id, { content: value }) : current);
+    }, 350);
   };
 
   const handleSelect = (id: string) => {
-    // Flush current before switching
-    let currentWs = workspace;
-    if (activeArtifact) {
-      if (localContent !== activeArtifact.content) {
-        currentWs = updateArtifact(workspace, activeArtifact.id, { content: localContent });
-      }
-      currentWs = createCheckpoint(currentWs, activeArtifact.id, 'user', 'user');
-    }
-
-    // Set active artifact by id but update workspace manually to preserve checkpoint history if activeArtifact changed
-    let updated = setActiveArtifact(id);
-    updated = { ...updated, artifacts: currentWs.artifacts }; // keep the updated artifacts
-    setWorkspace(updated);
-
-    const newlyActive = updated.artifacts.find((a) => a.id === id);
-    setLocalContent(newlyActive?.content || '');
-    setEditingId(null);
-    setDeleteConfirmId(null);
-
-    if (onSelectArtifact) {
-      onSelectArtifact(id);
-    }
+    const ws = flush();
+    const checkpointed = activeArtifact ? createCheckpoint(ws, activeArtifact.id, 'user', 'user') : ws;
+    const next = setActiveArtifact(id);
+    const merged: Workspace = { ...next, artifacts: checkpointed.artifacts };
+    saveWorkspace(merged);
+    setWorkspace(merged);
+    setLocalContent(merged.artifacts.find((a) => a.id === id)?.content || '');
+    setPreviewMode(false);
+    setDrawerOpen(false);
+    onSelectArtifact?.(id);
   };
 
-  const handleBackToChat = () => {
-    if (activeArtifact) {
-      let currentWs = workspace;
-      if (localContent !== activeArtifact.content) {
-        currentWs = updateArtifact(workspace, activeArtifact.id, { content: localContent });
-      }
-      createCheckpoint(currentWs, activeArtifact.id, 'user', 'user');
-    }
-    if (onBackToChat) onBackToChat();
+  const handleCreate = (type: 'markdown' | 'text') => {
+    const ws = flush();
+    const checkpointed = activeArtifact ? createCheckpoint(ws, activeArtifact.id, 'user', 'user') : ws;
+    const next = createArtifact(checkpointed, type === 'markdown' ? 'Untitled.md' : 'Untitled', type);
+    saveWorkspace(next);
+    setWorkspace(next);
+    setLocalContent('');
+    setPreviewMode(false);
+    setNewMenuOpen(false);
+    setDrawerOpen(false);
+    if (next.activeArtifactId) onSelectArtifact?.(next.activeArtifactId);
   };
 
   const handleDelete = (id: string) => {
-    let becameEmpty = false;
-    let newActiveContent = '';
-
-    const updated = deleteArtifact(workspace, id);
-    if (id === workspace.activeArtifactId) {
-      becameEmpty = true;
-      const newActive = updated.artifacts.find((a) => a.id === updated.activeArtifactId);
-      newActiveContent = newActive?.content || '';
-      if (onSelectArtifact) {
-        onSelectArtifact(updated.activeArtifactId || '');
-      }
-    }
-    setWorkspace(updated);
-
-    if (becameEmpty) {
-      setLocalContent(newActiveContent);
-    }
-    setDeleteConfirmId(null);
+    if (!workspace) return;
+    if (deleteId !== id) { setDeleteId(id); return; }
+    const next = deleteArtifact(workspace, id);
+    saveWorkspace(next);
+    setWorkspace(next);
+    setLocalContent(next.artifacts.find((a) => a.id === next.activeArtifactId)?.content || '');
+    setDeleteId(null);
+    onSelectArtifact?.(next.activeArtifactId || '');
   };
 
-  const handleRenameSubmit = (id: string) => {
-    if (editName.trim()) {
-      const updated = updateArtifact(workspace, id, { name: editName.trim() });
-      setWorkspace(updated);
-    }
-    setEditingId(null);
+  const handleRename = (artifact: WorkspaceArtifact) => {
+    if (!workspace || !renameValue.trim()) return;
+    const next = updateArtifact(workspace, artifact.id, { name: renameValue.trim() });
+    saveWorkspace(next);
+    setWorkspace(next);
+    setRenameId(null);
   };
 
-  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newContent = e.target.value;
-    setLocalContent(newContent);
-
-    if (activeArtifact) {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-
-      debounceTimerRef.current = setTimeout(() => {
-        setWorkspace((prev) => {
-          if (!prev) return prev;
-          return updateArtifact(prev, activeArtifact.id, { content: newContent });
-        });
-      }, 400);
-    }
+  const handleCheckpoint = () => {
+    if (!activeArtifact) return;
+    const ws = flush();
+    const next = createCheckpoint(ws, activeArtifact.id, 'user', 'user');
+    saveWorkspace(next);
+    setWorkspace(next);
   };
 
-  const [syncing, setSyncing] = useState(false);
-  const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, action: 'push'|'pull', message: string, title: string} | null>(null);
-  const [diffModal, setDiffModal] = useState<{isOpen: boolean, diffs: {type: string, value: string}[]} | null>(null);
-  const [linkModal, setLinkModal] = useState<{isOpen: boolean, linkUrl: string, linkMode: 'local_to_google'|'google_to_local'|'compare_only'} | null>(null);
-  const [historyModal, setHistoryModal] = useState<{isOpen: boolean, selectedRevisionId: string | null, compareRevisionId?: string | null, isComparing?: boolean} | null>(null);
-
-  const handleSyncAction = async (action: 'refresh_google_doc' | 'sync_to_google_doc' | 'sync_from_google_doc', force = false) => {
-    if (!activeArtifact || !workspace) return;
-    setSyncing(true);
-    
-    // Ensure we save the latest local content before syncing
-    let wsToUse = workspace;
-    if (localContent !== activeArtifact.content) {
-      wsToUse = updateArtifact(workspace, activeArtifact.id, { content: localContent });
-      setWorkspace(wsToUse);
-    }
-
+  const runGoogleTool = async (name: string, args: any) => {
+    if (!workspace || !activeArtifact) return;
+    setBusy(true);
     try {
-      const result = await executeAnyWorkspaceTool(
-        wsToUse,
-        action, 
-        { artifactId: activeArtifact.id, force }, 
-        undefined
-      );
-      
+      const result = await executeAnyWorkspaceTool(flush(), name, args);
       if (result.updatedWorkspace) {
-        setWorkspace(result.updatedWorkspace);
         saveWorkspace(result.updatedWorkspace);
-        const updatedArt = result.updatedWorkspace.artifacts.find(a => a.id === activeArtifact.id);
-        if (updatedArt) {
-          setLocalContent(updatedArt.content);
-        }
+        setWorkspace(result.updatedWorkspace);
+        setLocalContent(result.updatedWorkspace.artifacts.find((a) => a.id === activeArtifact.id)?.content || '');
       }
-      if (!result.result.success) {
-        if (result.result.requiresResolution) {
-           // We just let the UI update to show conflict controls based on the status
-           // since refresh or the failed attempt updates the status anyway.
-           alert(`Sync rejected: ${result.result.error}\nPlease use the conflict resolution controls.`);
-        } else {
-           alert('Sync Error: ' + result.result.error);
-        }
-      }
-    } catch (e) {
-      alert('Error during sync: ' + (e as Error).message);
     } finally {
-      setSyncing(false);
-      setConfirmModal(null);
+      setBusy(false);
     }
   };
 
-  const handleCompare = async () => {
-    if (!activeArtifact || !workspace) return;
-    setSyncing(true);
+  const handleLinkGoogle = async () => {
+    if (!workspace || !activeArtifact || !googleDocId.trim()) return;
+    setBusy(true);
     try {
-      const result = await executeAnyWorkspaceTool(workspace, 'compare_artifact_with_google_doc', { artifactId: activeArtifact.id });
-      if (result.result.success && result.result.diff) {
-        setDiffModal({ isOpen: true, diffs: result.result.diff });
-      } else {
-        alert('Failed to compare: ' + result.result.error);
-      }
-    } catch (e) {
-      alert('Error comparing: ' + (e as Error).message);
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  const handleLinkGoogleDoc = async () => {
-    if (!activeArtifact || !workspace || !linkModal || !linkModal.linkUrl.trim()) return;
-    setSyncing(true);
-    try {
-      let wsToUse = workspace;
-      if (localContent !== activeArtifact.content) {
-        wsToUse = updateArtifact(workspace, activeArtifact.id, { content: localContent });
-        setWorkspace(wsToUse);
-      }
-
-      const result = await executeAnyWorkspaceTool(wsToUse, 'link_google_doc', { 
-        artifactId: activeArtifact.id, 
-        documentId: linkModal.linkUrl.trim(),
-        initialSyncMode: linkModal.linkMode
-      });
-
+      const result = await executeAnyWorkspaceTool(flush(), 'link_google_doc', { artifactId: activeArtifact.id, documentId: googleDocId.trim(), initialSyncMode: googleLinkMode });
       if (result.updatedWorkspace) {
-        setWorkspace(result.updatedWorkspace);
         saveWorkspace(result.updatedWorkspace);
-        const updatedArt = result.updatedWorkspace.artifacts.find(a => a.id === activeArtifact.id);
-        if (updatedArt) {
-          setLocalContent(updatedArt.content);
-        }
+        setWorkspace(result.updatedWorkspace);
+        setLocalContent(result.updatedWorkspace.artifacts.find((a) => a.id === activeArtifact.id)?.content || '');
       }
-      if (!result.result.success) {
-        alert('Link Error: ' + result.result.error);
-      }
-    } catch (e) {
-      alert('Error linking: ' + (e as Error).message);
     } finally {
-      setSyncing(false);
-      setLinkModal(null);
+      setBusy(false);
+      setGoogleLinkOpen(false);
+      setGoogleDocId('');
     }
   };
+
+  const handleSaveKeep = async () => {
+    if (!workspace || !activeArtifact) return;
+    setBusy(true);
+    try {
+      await executeAnyWorkspaceTool(flush(), 'create_keep_note', { title: activeArtifact.name, content: contentRef.current, tags: ['workspace', activeArtifact.type || 'document'] });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revisions = useMemo<ArtifactRevision[]>(() => [...(activeArtifact?.revisions || [])].sort((a, b) => a.revisionNumber - b.revisionNumber), [activeArtifact]);
+  const compareResult = useMemo(() => {
+    if (!workspace || !activeArtifact || !compareOpen || !selectedRevisionId) return null;
+    return compareRevisions(workspace, activeArtifact.id, compareRevisionId, selectedRevisionId);
+  }, [workspace, activeArtifact, compareOpen, compareRevisionId, selectedRevisionId]);
+
+  if (!workspace) return null;
+  const status = activeArtifact ? statusLabel(activeArtifact) : null;
 
   return (
-    <div className="flex h-full w-full bg-[#0a0a0a] text-zinc-200">
-      {/* Left Sidebar (Artifacts) */}
-      <div className="w-64 border-r border-zinc-800 flex flex-col bg-[#121212] shrink-0">
-        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-100">{workspace.name}</h2>
-          <div className="relative">
-            <button
-              onClick={() => setShowNewMenu(!showNewMenu)}
-              className="p-1.5 rounded bg-zinc-800/80 hover:bg-zinc-700 border border-zinc-700/50 hover:border-zinc-500 text-zinc-300 hover:text-white transition-colors flex items-center gap-1"
-              title="New Artifact"
-            >
-              <Plus className="w-4 h-4" />
-              <ChevronDown className="w-3 h-3" />
-            </button>
-            
-            {showNewMenu && (
-              <>
-                <div 
-                  className="fixed inset-0 z-10"
-                  onClick={() => setShowNewMenu(false)}
-                />
-                <div className="absolute right-0 top-full mt-1 w-40 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl overflow-hidden z-20 animate-in fade-in zoom-in-95 duration-100">
-                  <button
-                    onClick={() => handleCreate('markdown')}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:bg-emerald-600/20 hover:text-emerald-400 transition-colors text-left"
-                  >
-                    <FileType2 className="w-4 h-4" />
-                    Markdown
-                  </button>
-                  <button
-                    onClick={() => handleCreate('text')}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-400 hover:bg-sky-600/20 hover:text-sky-400 transition-colors text-left"
-                  >
-                    <FileText className="w-4 h-4" />
-                    Plain Text
-                  </button>
-                </div>
-              </>
-            )}
+    <div className="fixed inset-0 z-20 flex h-[100dvh] w-full flex-col bg-[#09090b] text-zinc-100">
+      <header className="flex min-h-14 items-center gap-2 border-b border-zinc-800 bg-[#0d0d0f]/95 px-3 backdrop-blur-xl">
+        <button onClick={() => { persistCurrent('user'); if (onBackToChat) onBackToChat(); else onOpenSidebar?.(); }} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100" title="Back to chat"><ArrowLeft className="h-4 w-4" /></button>
+        <button onClick={() => setDrawerOpen(true)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100" title="Artifacts"><Menu className="h-4 w-4" /></button>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            {activeArtifact?.type === 'markdown' ? <FileType2 className="h-4 w-4 shrink-0 text-emerald-400" /> : <FileText className="h-4 w-4 shrink-0 text-sky-400" />}
+            <div className="truncate text-sm font-semibold">{activeArtifact?.name || 'Workspace'}</div>
           </div>
+          {status && <div className="truncate text-[10px] text-zinc-500">{status}</div>}
         </div>
-        
-        <div className="flex-1 overflow-y-auto p-3 space-y-1.5 custom-scrollbar">
-          {workspace.artifacts.length === 0 && (
-            <div className="text-xs text-zinc-500 text-center mt-4">No artifacts yet.</div>
-          )}
-          {workspace.artifacts.map((artifact) => (
-            <div
-              key={artifact.id}
-              onClick={() => handleSelect(artifact.id)}
-              className={`group flex items-center justify-between p-2 rounded-lg cursor-pointer text-xs transition-colors ${
-                workspace.activeArtifactId === artifact.id
-                  ? 'bg-emerald-900/40 text-emerald-300 border border-emerald-800/60 font-medium shadow-sm'
-                  : 'bg-zinc-900/30 border border-zinc-800/40 text-zinc-400 hover:bg-zinc-800/80 hover:text-zinc-200'
-              }`}
-            >
-              <div className="flex items-center gap-2.5 truncate flex-1 min-w-0">
-                {artifact.type === 'markdown' ? (
-                  <FileType2 className={`w-3.5 h-3.5 shrink-0 ${workspace.activeArtifactId === artifact.id ? 'text-emerald-400' : 'text-zinc-500'}`} />
-                ) : (
-                  <FileText className={`w-3.5 h-3.5 shrink-0 ${workspace.activeArtifactId === artifact.id ? 'text-emerald-400' : 'text-zinc-500'}`} />
-                )}
-                {editingId === artifact.id ? (
-                  <input
-                    autoFocus
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    onBlur={() => handleRenameSubmit(artifact.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleRenameSubmit(artifact.id);
-                      if (e.key === 'Escape') setEditingId(null);
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="flex-1 min-w-0 bg-zinc-950 border border-emerald-500/50 rounded px-1.5 py-0.5 text-zinc-100 outline-none"
-                  />
-                ) : (
-                  <span className="truncate flex-1 min-w-0">{artifact.name}</span>
-                )}
-                {artifact.provider === 'google_docs' && (
-                  <span className="text-[9px] px-1 py-0.2 rounded bg-blue-500/20 text-blue-300 font-mono shrink-0">
-                    G-Doc
-                  </span>
-                )}
-              </div>
-              
-              <div className={`flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${deleteConfirmId === artifact.id ? 'opacity-100' : ''}`}>
-                {deleteConfirmId === artifact.id ? (
-                  <>
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(artifact.id); }} className="p-1 hover:text-red-400 transition-colors" title="Confirm Delete">
-                      <Check className="w-3.5 h-3.5 text-red-500" />
-                    </button>
-                    <button onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(null); }} className="p-1 hover:text-zinc-300 transition-colors">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingId(artifact.id);
-                        setEditName(artifact.name);
-                      }}
-                      className="p-1 text-zinc-500 hover:text-emerald-400 transition-colors"
-                      title="Rename"
-                    >
-                      <Edit2 className="w-3 h-3" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeleteConfirmId(artifact.id);
-                      }}
-                      className="p-1 text-zinc-500 hover:text-red-400 transition-colors"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+        {activeArtifact?.type === 'markdown' && <div className="flex rounded-lg border border-zinc-800 bg-zinc-900/80 p-0.5"><button onClick={() => setPreviewMode(false)} className={`flex h-8 items-center gap-1 rounded-md px-2 text-[11px] ${!previewMode ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500'}`}><Code2 className="h-3.5 w-3.5" />Edit</button><button onClick={() => setPreviewMode(true)} className={`flex h-8 items-center gap-1 rounded-md px-2 text-[11px] ${previewMode ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500'}`}><Eye className="h-3.5 w-3.5" />Live</button></div>}
+        <button onClick={() => setNewMenuOpen((v) => !v)} className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"><Plus className="h-4 w-4" /></button>
+        <button onClick={() => setHistoryOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100" title="History"><History className="h-4 w-4" /></button>
+        <button onClick={() => setDrawerOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100" title="More"><MoreHorizontal className="h-4 w-4" /></button>
+      </header>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
-        {activeArtifact ? (
-          <>
-            <div className="h-16 border-b border-zinc-800 flex items-center justify-between px-4 sm:px-6 shrink-0 bg-[#0a0a0a]/80 backdrop-blur-md gap-2">
-              <div className="flex items-center gap-2.5 min-w-0">
-                {onOpenSidebar && (
-                  <button
-                    onClick={onOpenSidebar}
-                    className="md:hidden p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors shrink-0"
-                    title="Open Navigation"
-                  >
-                    <Menu className="w-4 h-4" />
-                  </button>
-                )}
-                {onBackToChat && (
-                  <button
-                    onClick={handleBackToChat}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-medium border border-zinc-800 transition-colors shrink-0 mr-1"
-                    title="Return to Chat Conversation"
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5 text-sky-400" />
-                    <span className="hidden sm:inline">Return to Chat</span>
-                    <span className="sm:hidden">Chat</span>
-                  </button>
-                )}
-                <div className={`p-1.5 rounded-lg border shrink-0 ${
-                  activeArtifact.provider === 'google_docs'
-                    ? 'bg-blue-950/70 border-blue-500/30 text-blue-400'
-                    : 'bg-emerald-950/70 border-emerald-500/30 text-emerald-400'
-                }`}>
-                  {activeArtifact.type === 'markdown' ? <FileType2 className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-                </div>
-                <h2 className="text-sm font-semibold text-zinc-100 tracking-tight truncate">{activeArtifact.name}</h2>
-                {activeArtifact.provider === 'google_docs' && (
-                  <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[10px] font-mono bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
-                    Google Cloud
-                  </span>
-                )}
-              </div>
-              
-              <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-                {(!activeArtifact.provider || activeArtifact.provider === 'local') && (
-                  <>
-                  <button onClick={() => {
-                      if (activeArtifact) {
-                        let currentWs = workspace;
-                        if (localContent !== activeArtifact.content) {
-                          currentWs = updateArtifact(workspace, activeArtifact.id, { content: localContent });
-                        }
-                        const newWs = createCheckpoint(currentWs, activeArtifact.id, 'user', 'user');
-                        setWorkspace(newWs);
-                      }
-                    }} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900/50 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors">
-                    <Save className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Checkpoint</span>
-                  </button>
-                  <button onClick={() => setHistoryModal({isOpen: true, selectedRevisionId: null, isComparing: false})} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900/50 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors">
-                    <Clock className="w-3.5 h-3.5" />
-                    History
-                  </button>
-                  <button onClick={() => setLinkModal({isOpen: true, linkUrl: '', linkMode: 'compare_only'})} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900/50 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors">
-                    Link Google Doc
-                  </button>
-                  </>
-                )}
-                {activeArtifact.provider === 'google_docs' && (activeArtifact.syncStatus === 'conflict' || activeArtifact.syncStatus === 'linked') ? (
-                  <div className="flex items-center gap-2 bg-zinc-900/50 rounded-lg p-0.5 border border-zinc-800">
-                    <span className="px-2 text-[10px] uppercase tracking-wider font-bold text-amber-500 flex items-center gap-1.5">
-                      <AlertTriangle className="w-3 h-3" /> {activeArtifact.syncStatus === 'conflict' ? 'Conflict' : 'Unsynced'}
-                    </span>
-                    <button onClick={handleCompare} disabled={syncing} className="px-2 py-1 text-xs font-medium rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors">Compare</button>
-                    <button onClick={() => setConfirmModal({isOpen: true, action: 'push', title: 'Keep Local', message: 'Replace the Google Doc with the local version?'})} disabled={syncing} className="px-2 py-1 text-xs font-medium rounded-md text-emerald-400 hover:text-emerald-300 hover:bg-emerald-900/20 transition-colors">Keep Local</button>
-                    <button onClick={() => setConfirmModal({isOpen: true, action: 'pull', title: 'Keep Google', message: 'Replace the local Workspace document with the Google version?'})} disabled={syncing} className="px-2 py-1 text-xs font-medium rounded-md text-blue-400 hover:text-blue-300 hover:bg-blue-900/20 transition-colors">Keep Google</button>
-                  </div>
-                ) : activeArtifact.provider === 'google_docs' ? (
-                  <div className="flex items-center gap-2 bg-zinc-900/50 rounded-lg p-0.5 border border-zinc-800">
-                    <button
-                      onClick={() => handleSyncAction('refresh_google_doc')}
-                      disabled={syncing}
-                      className="px-2 py-1 text-xs font-medium rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 flex items-center gap-1.5 transition-colors"
-                      title="Check sync status"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
-                    </button>
-                    {activeArtifact.syncStatus === 'local_ahead' ? (
-                      <button
-                        onClick={() => handleSyncAction('sync_to_google_doc')}
-                        disabled={syncing}
-                        className="px-2 py-1 text-xs font-medium rounded-md text-emerald-400 hover:text-emerald-300 hover:bg-emerald-900/20 flex items-center gap-1.5 transition-colors"
-                        title="Push local changes up to Google Docs"
-                      >
-                        <UploadCloud className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Push</span>
-                      </button>
-                    ) : null}
-                    {activeArtifact.syncStatus === 'remote_ahead' ? (
-                      <button
-                        onClick={() => handleSyncAction('sync_from_google_doc')}
-                        disabled={syncing}
-                        className="px-2 py-1 text-xs font-medium rounded-md text-blue-400 hover:text-blue-300 hover:bg-blue-900/20 flex items-center gap-1.5 transition-colors"
-                        title="Pull changes down from Google Docs"
-                      >
-                        <DownloadCloud className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Pull</span>
-                      </button>
-                    ) : null}
-                    {activeArtifact.syncStatus === 'synchronized' && (
-                      <div className="px-2 py-1 flex items-center gap-1.5 text-emerald-500">
-                        <Check className="w-3.5 h-3.5" />
-                        <span className="text-[10px] uppercase tracking-wider font-bold hidden sm:inline">Synced</span>
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-                {activeArtifact.url && (
-                  <a
-                    href={activeArtifact.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-900/30 hover:bg-blue-800/50 border border-blue-500/30 text-blue-300 text-xs font-medium transition-colors no-underline"
-                    title="Open in Google Docs"
-                  >
-                    <span>Google Docs</span>
-                    <ExternalLink className="w-3 h-3 text-blue-400" />
-                  </a>
-                )}
-                {activeArtifact.type === 'markdown' && (
-                  <div className="flex items-center bg-zinc-900/50 rounded-lg p-0.5 border border-zinc-800">
-                    <button
-                      onClick={() => setPreviewMode(false)}
-                      className={`px-2.5 sm:px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${!previewMode ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
-                    >
-                      <Code className="w-3.5 h-3.5" />
-                      <span>Edit</span>
-                    </button>
-                    <button
-                      onClick={() => setPreviewMode(true)}
-                      className={`px-2.5 sm:px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${previewMode ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Preview</span>
-                    </button>
-                  </div>
-                )}
-                <div className="flex items-center gap-3 text-[10px] font-mono border-l border-zinc-800 pl-3 sm:pl-4">
-                  <span className="text-zinc-500 px-2 py-0.5 rounded border border-zinc-800 bg-zinc-900/50 hidden sm:inline-block">
-                    {localContent.trim() ? localContent.trim().split(/\s+/).length : 0} words
-                  </span>
-                  <span className="text-zinc-500">
-                    Updated: {new Date(activeArtifact.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex-1 p-6 md:p-8 lg:px-12 xl:px-24 overflow-y-auto custom-scrollbar">
-              {previewMode && activeArtifact.type === 'markdown' ? (
-                <MarkdownRenderer content={localContent} />
-              ) : (
-                <textarea
-                  value={localContent}
-                  onChange={handleContentChange}
-                  placeholder="Start typing..."
-                  className="w-full h-full bg-transparent text-zinc-300 text-sm resize-none outline-none custom-scrollbar leading-relaxed font-mono"
-                  spellCheck="false"
-                />
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 space-y-4 p-4">
-            <div className="w-16 h-16 rounded-2xl bg-zinc-900/50 border border-zinc-800 flex items-center justify-center text-zinc-600 shadow-inner">
-              <FileText className="w-8 h-8" />
-            </div>
-            <div className="text-sm">Select or create an artifact to begin</div>
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={() => handleCreate('markdown')}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded-lg transition-colors shadow-sm"
-              >
-                Create New Artifact
-              </button>
-              {onBackToChat && (
-                <button
-                  onClick={handleBackToChat}
-                  className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-medium rounded-lg border border-zinc-800 transition-colors"
-                >
-                  Return to Chat
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-      {/* Modals */}
-      {confirmModal && confirmModal.isOpen && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl w-full max-w-md shadow-2xl flex flex-col gap-4">
-            <h3 className="text-lg font-semibold text-zinc-100">{confirmModal.title}</h3>
-            <p className="text-sm text-zinc-400">{confirmModal.message}</p>
-            <div className="flex justify-end gap-3 mt-4">
-              <button onClick={() => setConfirmModal(null)} className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors">Cancel</button>
-              <button 
-                onClick={() => {
-                  if (confirmModal.action === 'push') handleSyncAction('sync_to_google_doc', true);
-                  if (confirmModal.action === 'pull') handleSyncAction('sync_from_google_doc', true);
-                }} 
-                className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors ${confirmModal.action === 'push' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-blue-600 hover:bg-blue-500'}`}
-              >
-                Confirm Replace
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {newMenuOpen && <div className="absolute right-3 top-16 z-40 w-44 rounded-xl border border-zinc-800 bg-zinc-900 p-1.5 shadow-2xl"><button onClick={() => handleCreate('markdown')} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs hover:bg-zinc-800"><FileType2 className="h-4 w-4 text-emerald-400" />New Markdown</button><button onClick={() => handleCreate('text')} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs hover:bg-zinc-800"><FileText className="h-4 w-4 text-sky-400" />New Text</button><button onClick={() => { setHistoryOpen(true); setNewMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs hover:bg-zinc-800"><Clock3 className="h-4 w-4 text-amber-400" />History</button></div>}
 
-      {linkModal && linkModal.isOpen && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl w-full max-w-lg shadow-2xl flex flex-col gap-5">
-            <h3 className="text-lg font-semibold text-zinc-100">Link Google Doc</h3>
-            <div className="flex flex-col gap-2">
-              <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Google Doc URL or ID</label>
-              <input 
-                type="text" 
-                value={linkModal.linkUrl} 
-                onChange={(e) => setLinkModal({...linkModal, linkUrl: e.target.value})}
-                placeholder="https://docs.google.com/document/d/..."
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-emerald-500/50"
-              />
-            </div>
-            <div className="flex flex-col gap-3">
-              <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Initial Synchronization</label>
-              <div className="flex flex-col gap-2">
-                <label className="flex items-start gap-3 p-3 rounded-lg border border-zinc-800 bg-zinc-950/50 cursor-pointer hover:border-zinc-700 transition-colors">
-                  <input type="radio" name="linkMode" value="compare_only" checked={linkModal.linkMode === 'compare_only'} onChange={() => setLinkModal({...linkModal, linkMode: 'compare_only'})} className="mt-1" />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium text-zinc-200">Compare Only (Safest)</span>
-                    <span className="text-xs text-zinc-500">Do not overwrite either side. Just establish the link.</span>
-                  </div>
-                </label>
-                <label className="flex items-start gap-3 p-3 rounded-lg border border-zinc-800 bg-zinc-950/50 cursor-pointer hover:border-emerald-700/50 transition-colors">
-                  <input type="radio" name="linkMode" value="local_to_google" checked={linkModal.linkMode === 'local_to_google'} onChange={() => setLinkModal({...linkModal, linkMode: 'local_to_google'})} className="mt-1" />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium text-emerald-400">Use Local as Starting Version</span>
-                    <span className="text-xs text-zinc-500">Overwrites the Google Doc with local content.</span>
-                  </div>
-                </label>
-                <label className="flex items-start gap-3 p-3 rounded-lg border border-zinc-800 bg-zinc-950/50 cursor-pointer hover:border-blue-700/50 transition-colors">
-                  <input type="radio" name="linkMode" value="google_to_local" checked={linkModal.linkMode === 'google_to_local'} onChange={() => setLinkModal({...linkModal, linkMode: 'google_to_local'})} className="mt-1" />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium text-blue-400">Use Google as Starting Version</span>
-                    <span className="text-xs text-zinc-500">Overwrites local Workspace with Google Doc content.</span>
-                  </div>
-                </label>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 mt-2">
-              <button onClick={() => setLinkModal(null)} className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors">Cancel</button>
-              <button 
-                onClick={handleLinkGoogleDoc} 
-                disabled={!linkModal.linkUrl.trim()}
-                className="px-4 py-2 text-sm font-medium text-white bg-zinc-100 hover:bg-white text-zinc-900 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Link Document
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <main className="min-h-0 flex-1 overflow-hidden">
+        {activeArtifact ? (previewMode && activeArtifact.type === 'markdown' ? <div className="min-h-0 h-full overflow-y-auto px-4 py-5 sm:px-8"><div className="mx-auto w-full max-w-3xl"><MarkdownRenderer content={localContent} /></div></div> : <textarea value={localContent} onChange={(e) => handleContentChange(e.target.value)} placeholder="Start writing…" className="h-full min-h-0 w-full resize-none bg-transparent px-4 py-5 font-mono text-[13px] leading-7 text-zinc-200 outline-none placeholder:text-zinc-700 sm:px-8" spellCheck={false} />) : <div className="flex h-full items-center justify-center p-6 text-center"><div className="space-y-4"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 text-zinc-600"><FileText className="h-7 w-7" /></div><p className="text-sm text-zinc-400">No document open.</p><button onClick={() => handleCreate('markdown')} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white">Create Markdown</button></div></div>}
+      </main>
 
-      {diffModal && diffModal.isOpen && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl">
-            <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/50 rounded-t-xl">
-              <h3 className="text-sm font-medium text-zinc-200">Difference Comparison</h3>
-              <button onClick={() => setDiffModal(null)} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-200 transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 bg-[#0a0a0a] font-mono text-xs leading-relaxed custom-scrollbar">
-              {diffModal.diffs.map((d, i) => (
-                <div key={i} className={`whitespace-pre-wrap px-2 py-0.5 rounded-sm ${
-                  d.type === 'local_added' ? 'text-emerald-400 bg-emerald-900/20' : 
-                  d.type === 'remote_removed' ? 'text-red-400 bg-red-900/20 line-through opacity-70' : 
-                  'text-zinc-500'
-                }`}>
-                  <span className="select-none inline-block w-4 opacity-50 mr-2 border-r border-zinc-800">{
-                    d.type === 'local_added' ? '+' : d.type === 'remote_removed' ? '-' : ' '
-                  }</span>
-                  {d.value}
-                </div>
-              ))}
-            </div>
-            <div className="p-4 border-t border-zinc-800 flex justify-between items-center bg-zinc-950/50 rounded-b-xl">
-               <div className="flex gap-4 text-[10px] uppercase font-bold tracking-wider">
-                  <span className="text-emerald-500">+ Local</span>
-                  <span className="text-red-500">- Remote</span>
-               </div>
-              <button onClick={() => setDiffModal(null)} className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors">Close</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {activeArtifact && <footer className="flex min-h-12 items-center gap-2 overflow-x-auto border-t border-zinc-800 bg-[#0d0d0f]/95 px-3 backdrop-blur-xl"><span className="shrink-0 text-[10px] text-zinc-500">{localContent.trim() ? localContent.trim().split(/\s+/).length : 0} words</span><span className="h-4 w-px shrink-0 bg-zinc-800" /><button onClick={handleCheckpoint} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-400 hover:bg-zinc-800"><Save className="h-3.5 w-3.5" />Checkpoint</button><button onClick={() => setHistoryOpen(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-400 hover:bg-zinc-800"><History className="h-3.5 w-3.5" />History</button>{activeArtifact.provider === 'google_docs' && activeArtifact.url && <a href={activeArtifact.url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 rounded-lg bg-blue-950/50 px-2.5 py-1.5 text-[11px] text-blue-300">Google Docs</a>}<button disabled={busy} onClick={handleSaveKeep} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-amber-300 hover:bg-amber-950/40 disabled:opacity-40"><Download className="h-3.5 w-3.5" />Keep</button>{activeArtifact.provider === 'google_docs' && <><button disabled={busy} onClick={() => runGoogleTool('refresh_google_doc', { artifactId: activeArtifact.id })} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-400 hover:bg-zinc-800"><RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} />Refresh</button>{activeArtifact.syncStatus === 'local_ahead' && <button disabled={busy} onClick={() => runGoogleTool('sync_to_google_doc', { artifactId: activeArtifact.id, force: false })} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-emerald-300 hover:bg-emerald-950/40">Push</button>}{activeArtifact.syncStatus === 'remote_ahead' && <button disabled={busy} onClick={() => runGoogleTool('sync_from_google_doc', { artifactId: activeArtifact.id, force: false })} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-blue-300 hover:bg-blue-950/40">Pull</button>}</>}<button onClick={() => setGoogleLinkOpen(true)} className="ml-auto inline-flex shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-400 hover:bg-zinc-800">Link Google Doc</button></footer>}
 
-      {historyModal && historyModal.isOpen && activeArtifact && (() => {
-        const allRevisions = activeArtifact.revisions || [];
-        const items = [
-          { id: null, name: 'CURRENT STATE', date: Date.now(), source: 'Unsaved/Latest' },
-          ...allRevisions.map(r => ({ id: r.id, name: `Revision ${r.revisionNumber}`, date: r.createdAt, source: r.source })).reverse()
-        ];
-        
-        let diffResult = null;
-        if (historyModal.isComparing) {
-           diffResult = compareRevisions(workspace!, activeArtifact.id, historyModal.compareRevisionId, historyModal.selectedRevisionId);
-        }
+      {drawerOpen && <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setDrawerOpen(false)}><aside className="absolute left-0 top-0 flex h-full w-[min(88vw,360px)] flex-col border-r border-zinc-800 bg-[#111113] shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="flex min-h-14 items-center justify-between border-b border-zinc-800 px-4"><div><div className="text-sm font-semibold">{workspace.name}</div><div className="text-[10px] text-zinc-500">{workspace.artifacts.length} documents</div></div><button onClick={() => setDrawerOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400"><X className="h-4 w-4" /></button></div><div className="flex-1 overflow-y-auto p-3"><div className="mb-3 grid grid-cols-2 gap-2"><button onClick={() => handleCreate('markdown')} className="rounded-xl border border-emerald-800/60 bg-emerald-950/30 px-3 py-3 text-xs text-emerald-300">+ Markdown</button><button onClick={() => handleCreate('text')} className="rounded-xl border border-sky-800/60 bg-sky-950/30 px-3 py-3 text-xs text-sky-300">+ Text</button></div><div className="space-y-2">{workspace.artifacts.map((artifact) => { const isActive = artifact.id === workspace.activeArtifactId; return <div key={artifact.id} className={`rounded-xl border p-3 ${isActive ? 'border-emerald-700/60 bg-emerald-950/20' : 'border-zinc-800 bg-zinc-900/40'}`}><button onClick={() => handleSelect(artifact.id)} className="flex w-full items-center gap-2 text-left">{artifact.type === 'markdown' ? <FileType2 className="h-4 w-4 text-emerald-400" /> : <FileText className="h-4 w-4 text-sky-400" />}<span className="min-w-0 flex-1 truncate text-xs font-medium">{artifact.name}</span>{artifact.provider === 'google_docs' && <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[9px] text-blue-300">G-Doc</span>}</button><div className="mt-2 flex items-center gap-2">{renameId === artifact.id ? <div className="flex flex-1 gap-1"><input autoFocus value={renameValue} onChange={(e) => setRenameValue(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-[11px] outline-none" /><button onClick={() => handleRename(artifact)} className="rounded-lg p-1.5 text-emerald-400"><Check className="h-3.5 w-3.5" /></button></div> : <><button onClick={() => { setRenameId(artifact.id); setRenameValue(artifact.name); }} className="rounded-lg px-2 py-1 text-[10px] text-zinc-500 hover:bg-zinc-800">Rename</button><button onClick={() => handleDelete(artifact.id)} className="rounded-lg px-2 py-1 text-[10px] text-red-400 hover:bg-red-950/30">{deleteId === artifact.id ? 'Confirm delete' : 'Delete'}</button>{deleteId === artifact.id && <button onClick={() => setDeleteId(null)} className="rounded-lg p-1.5 text-zinc-500"><X className="h-3 w-3" /></button>}</>}</div></div>; })}</div></div></aside></div>}
 
-        const handleSelectRevision = (id: string | null) => {
-           if (!historyModal.isComparing) {
-               setHistoryModal({ ...historyModal, selectedRevisionId: id });
-           }
-        };
+      {historyOpen && activeArtifact && <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm" onClick={() => setHistoryOpen(false)}><section className="absolute inset-x-0 bottom-0 max-h-[82dvh] overflow-hidden rounded-t-3xl border border-zinc-800 bg-[#111113] shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3"><div><div className="text-sm font-semibold">Revision History</div><div className="text-[10px] text-zinc-500">{activeArtifact.name}</div></div><button onClick={() => setHistoryOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400"><X className="h-4 w-4" /></button></div><div className="flex gap-2 border-b border-zinc-800 px-4 py-3"><select value={selectedRevisionId || ''} onChange={(e) => setSelectedRevisionId(e.target.value || null)} className="min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-200"><option value="">From revision…</option>{revisions.map((r) => <option key={r.id} value={r.id}>Revision {r.revisionNumber}</option>)}</select><select value={compareRevisionId || ''} onChange={(e) => setCompareRevisionId(e.target.value || null)} className="min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-200"><option value="">To revision…</option>{revisions.map((r) => <option key={r.id} value={r.id}>Revision {r.revisionNumber}</option>)}</select><button disabled={!selectedRevisionId || !compareRevisionId || selectedRevisionId === compareRevisionId} onClick={() => setCompareOpen(true)} className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Compare</button></div><div className="max-h-[55dvh] overflow-y-auto px-4 py-3">{[...revisions].reverse().map((r) => <div key={r.id} className="mb-2 rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3"><div className="flex items-center justify-between gap-3"><div><div className="text-xs font-semibold">Revision {r.revisionNumber}</div><div className="text-[10px] text-zinc-500">{r.source} · {new Date(r.createdAt).toLocaleString()}</div></div><button onClick={() => { const next = restoreRevision(workspace, activeArtifact.id, r.id); saveWorkspace(next); setWorkspace(next); setLocalContent(r.content); setHistoryOpen(false); }} className="rounded-lg border border-zinc-800 px-2.5 py-1.5 text-[10px] text-zinc-300">Restore</button></div></div>)}</div></section></div>}
 
-        const handleToggleCompare = () => {
-           if (historyModal.isComparing) {
-              setHistoryModal({ ...historyModal, isComparing: false });
-           } else {
-              const idx = items.findIndex(item => item.id === historyModal.selectedRevisionId);
-              let compareId = null;
-              if (idx >= 0 && idx + 1 < items.length) {
-                 compareId = items[idx + 1].id;
-              } else if (items.length > 1) {
-                 compareId = items[0].id;
-              }
-              setHistoryModal({ ...historyModal, isComparing: true, compareRevisionId: compareId });
-           }
-        };
+      {compareOpen && compareResult && <div className="fixed inset-0 z-[60] bg-[#09090b]"><div className="flex h-full flex-col"><header className="flex min-h-14 items-center justify-between border-b border-zinc-800 px-4"><div><div className="text-sm font-semibold">Revision comparison</div><div className="text-[10px] text-zinc-500">Read-only</div></div><button onClick={() => setCompareOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400"><X className="h-4 w-4" /></button></header><div className="flex-1 overflow-y-auto p-4 font-mono text-[11px] leading-6">{compareResult.hunks?.map((h: any, i: number) => <div key={i} className={`whitespace-pre-wrap rounded px-2 py-0.5 ${h.type === 'local_added' ? 'bg-emerald-950/30 text-emerald-300' : h.type === 'remote_removed' ? 'bg-red-950/30 text-red-300' : 'text-zinc-500'}`}><span className="mr-2 text-zinc-700">{h.type === 'local_added' ? '+' : h.type === 'remote_removed' ? '-' : ' '}</span>{h.value}</div>)}{compareResult.identical && <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 text-sm text-zinc-300">Identical — no changes.</div>}</div></div></div>}
 
-        return (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl">
-            <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/50 rounded-t-xl">
-              <h3 className="text-sm font-medium text-zinc-200 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-emerald-400" />
-                Revision History - {activeArtifact.name}
-              </h3>
-              <button onClick={() => setHistoryModal(null)} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-200 transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="flex flex-1 min-h-0 overflow-hidden">
-              <div className="w-72 border-r border-zinc-800 bg-zinc-950/30 flex flex-col">
-                <div className="p-3 border-b border-zinc-800 flex justify-between items-center">
-                   <div className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Revisions</div>
-                   {items.length >= 2 && (
-                   <label className="flex items-center gap-2 text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer">
-                      <input 
-                         type="checkbox" 
-                         checked={historyModal.isComparing || false} 
-                         onChange={handleToggleCompare}
-                         className="rounded border-zinc-700 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/20"
-                      />
-                      Compare
-                   </label>
-                   )}
-                </div>
-                
-                <div className={`flex-1 overflow-y-auto custom-scrollbar p-2 gap-1 flex flex-col ${historyModal.isComparing ? 'opacity-50 pointer-events-none' : ''}`}>
-                  {items.map(item => (
-                    <div key={item.id || 'current'} className="flex flex-col gap-1">
-                      <button
-                        onClick={() => handleSelectRevision(item.id)}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-sm flex flex-col gap-1 transition-colors ${
-                          !historyModal.isComparing && historyModal.selectedRevisionId === item.id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-300'
-                        }`}
-                      >
-                        <div className="flex justify-between items-center w-full">
-                          <span className={`font-medium ${item.id === null ? 'text-emerald-400' : ''}`}>{item.name}</span>
-                          <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-700">{item.source}</span>
-                        </div>
-                        <span className="text-[10px] text-zinc-500">{item.id === null ? 'Latest document content' : new Date(item.date).toLocaleString()}</span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              <div className="flex-1 bg-[#0a0a0a] overflow-y-auto custom-scrollbar flex flex-col">
-                {historyModal.isComparing ? (
-                   <div className="flex flex-col h-full">
-                      <div className="p-4 border-b border-zinc-800/50 bg-zinc-950/80 shadow-sm z-10 flex flex-col gap-3">
-                         <div className="text-xs text-zinc-500">Select any two versions to compare their contents.</div>
-                         <div className="flex items-center gap-4 w-full">
-                            <div className="flex-1 flex flex-col gap-1.5">
-                               <label className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">Compare From (Older)</label>
-                               <select 
-                                  className="w-full bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-zinc-300 outline-none focus:border-emerald-500/50"
-                                  value={historyModal.compareRevisionId || ''}
-                                  onChange={(e) => setHistoryModal({ ...historyModal, compareRevisionId: e.target.value || null })}
-                               >
-                                  {items.map(opt => (
-                                     <option key={opt.id || 'current'} value={opt.id || ''}>{opt.name}</option>
-                                  ))}
-                               </select>
-                            </div>
-                            <div className="flex items-center justify-center pt-4">
-                               <ArrowLeft className="w-4 h-4 text-zinc-600 rotate-180" />
-                            </div>
-                            <div className="flex-1 flex flex-col gap-1.5">
-                               <label className="text-[10px] uppercase font-bold tracking-wider text-zinc-500">Compare To (Newer)</label>
-                               <select 
-                                  className="w-full bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-zinc-300 outline-none focus:border-emerald-500/50"
-                                  value={historyModal.selectedRevisionId || ''}
-                                  onChange={(e) => setHistoryModal({ ...historyModal, selectedRevisionId: e.target.value || null })}
-                               >
-                                  {items.map(opt => (
-                                     <option key={opt.id || 'current'} value={opt.id || ''}>{opt.name}</option>
-                                  ))}
-                               </select>
-                            </div>
-                         </div>
-                      </div>
-                      
-                      {diffResult && diffResult.success ? (
-                          <div className="flex-1 overflow-y-auto p-4 font-mono text-xs leading-relaxed custom-scrollbar relative">
-                            {diffResult.identical ? (
-                                <div className="text-zinc-500 italic flex items-center justify-center h-full">No changes between these versions.</div>
-                            ) : (
-                                diffResult.hunks?.map((d, i) => (
-                                <div key={i} className={`whitespace-pre-wrap px-2 py-0.5 rounded-sm ${
-                                    d.added ? 'text-emerald-400 bg-emerald-900/20' : 
-                                    d.removed ? 'text-red-400 bg-red-900/20 line-through opacity-70' : 
-                                    'text-zinc-500'
-                                }`}>
-                                    <span className="select-none inline-block w-4 opacity-50 mr-2 border-r border-zinc-800">{
-                                    d.added ? '+' : d.removed ? '-' : ' '
-                                    }</span>
-                                    {d.value}
-                                </div>
-                                ))
-                            )}
-                          </div>
-                      ) : (
-                          <div className="text-red-400 p-4">{diffResult?.error || 'Unknown error during comparison'}</div>
-                      )}
-                   </div>
-                ) : (
-                   <div className="p-6 text-zinc-300 text-sm whitespace-pre-wrap font-mono h-full">
-                     {historyModal.selectedRevisionId === null 
-                        ? localContent 
-                        : (activeArtifact.revisions || []).find(r => r.id === historyModal.selectedRevisionId)?.content || 'Content not found.'}
-                   </div>
-                )}
-              </div>
-            </div>
-            
-            <div className="p-4 border-t border-zinc-800 flex justify-between items-center bg-zinc-950/50 rounded-b-xl">
-               <div className="text-xs text-zinc-500">
-                  {historyModal.isComparing 
-                     ? 'Viewing read-only difference comparison.' 
-                     : (historyModal.selectedRevisionId === null ? 'Viewing current editable state.' : 'Viewing read-only historical revision.')}
-               </div>
-               <div className="flex gap-3">
-                 <button onClick={() => setHistoryModal(null)} className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-zinc-100 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors">Close</button>
-                 {!historyModal.isComparing && historyModal.selectedRevisionId !== null && (
-                   <button
-                      onClick={() => {
-                       const updatedWs = restoreRevision(workspace!, activeArtifact.id, historyModal.selectedRevisionId!);
-                       setWorkspace(updatedWs);
-                       const restored = updatedWs.artifacts.find(a => a.id === activeArtifact.id);
-                       if (restored) setLocalContent(restored.content);
-                       setHistoryModal(null);
-                     }}
-                      className="px-4 py-2 text-sm font-medium text-emerald-900 bg-emerald-400 hover:bg-emerald-300 rounded-lg transition-colors"
-                   >
-                     Restore this version
-                   </button>
-                 )}
-               </div>
-            </div>
-          </div>
-        </div>
-        );
-      })()}  </div>
+      {googleLinkOpen && activeArtifact && <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm" onClick={() => setGoogleLinkOpen(false)}><section className="absolute inset-x-3 bottom-3 rounded-2xl border border-zinc-800 bg-[#111113] p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="mb-3 flex items-center justify-between"><div className="text-sm font-semibold">Link Google Doc</div><button onClick={() => setGoogleLinkOpen(false)} className="rounded-lg p-1.5 text-zinc-500"><X className="h-4 w-4" /></button></div><input value={googleDocId} onChange={(e) => setGoogleDocId(e.target.value)} placeholder="Google Doc URL or document ID" className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-xs outline-none" /><div className="mt-3 grid grid-cols-1 gap-2">{[['compare_only', 'Compare only'], ['local_to_google', 'Use local as starting version'], ['google_to_local', 'Use Google as starting version']].map(([mode, label]) => <label key={mode} className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-950/60 p-3"><input type="radio" checked={googleLinkMode === mode} onChange={() => setGoogleLinkMode(mode as any)} className="mt-0.5" /><span className="text-xs text-zinc-300">{label}</span></label>)}</div><button disabled={!googleDocId.trim() || busy} onClick={handleLinkGoogle} className="mt-4 w-full rounded-xl bg-blue-600 py-2.5 text-xs font-semibold text-white disabled:opacity-40">Link document</button></section></div>}
+
+      {busy && <div className="pointer-events-none fixed bottom-16 left-1/2 z-[70] -translate-x-1/2 rounded-full border border-zinc-800 bg-zinc-950/95 px-3 py-1.5 text-[10px] text-zinc-300 shadow-xl"><RefreshCw className="mr-1.5 inline h-3 w-3 animate-spin" />Working…</div>}
+    </div>
   );
 };

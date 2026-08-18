@@ -1,34 +1,25 @@
 import { Conversation, ElaraSettings } from '../types';
-import { 
+import {
   DEFAULT_ELARA_SYSTEM_PROMPT,
   DEFAULT_PERSONA_PROTOCOL,
   DEFAULT_INTIMACY_MODULE,
   DEFAULT_RUNTIME_RULES
 } from '../constants/defaultPrompt';
+import { DEFAULT_GEMINI_MODEL, GEMINI_MODEL_PROFILES } from './modelRegistry';
 
 const CONVERSATIONS_STORAGE_KEY = 'elara_conversations_v1';
 const SETTINGS_STORAGE_KEY = 'elara_settings_v1';
 const PORTRAIT_STORAGE_KEY = 'elara_custom_portrait_v1';
 
 export function loadCustomPortrait(): string | null {
-  try {
-    return localStorage.getItem(PORTRAIT_STORAGE_KEY);
-  } catch (e) {
-    console.error('Failed to load custom portrait from storage:', e);
-    return null;
-  }
+  try { return localStorage.getItem(PORTRAIT_STORAGE_KEY); }
+  catch (e) { console.error('Failed to load custom portrait from storage:', e); return null; }
 }
-
 export function saveCustomPortrait(base64Img: string | null): void {
   try {
-    if (base64Img) {
-      localStorage.setItem(PORTRAIT_STORAGE_KEY, base64Img);
-    } else {
-      localStorage.removeItem(PORTRAIT_STORAGE_KEY);
-    }
-  } catch (e) {
-    console.error('Failed to save custom portrait to storage:', e);
-  }
+    if (base64Img) localStorage.setItem(PORTRAIT_STORAGE_KEY, base64Img);
+    else localStorage.removeItem(PORTRAIT_STORAGE_KEY);
+  } catch (e) { console.error('Failed to save portrait:', e); }
 }
 
 export const DEFAULT_SETTINGS: ElaraSettings = {
@@ -37,9 +28,9 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
   intimacyModule: DEFAULT_INTIMACY_MODULE,
   runtimeRules: DEFAULT_RUNTIME_RULES,
   userName: 'User',
-  model: 'gemini-3.7-flash',
+  model: DEFAULT_GEMINI_MODEL,
   temperature: 0.85,
-  maxOutputTokens: 3072,
+  maxOutputTokens: 8192,
   topP: 0.95,
   topK: 64,
   includeHistory: true,
@@ -52,6 +43,7 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
   fontSize: 14,
   textBackground: 'slate',
   thinkingBudget: 4096,
+  thinkingLevel: 'medium',
   sendOnEnter: false,
   speechLanguage: 'en-US',
   speechAutoSend: false,
@@ -65,26 +57,20 @@ export function loadSettings(): ElaraSettings {
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw);
     const loaded = { ...DEFAULT_SETTINGS, ...parsed };
-    if (!loaded.model || loaded.model.includes('2.5')) {
-      loaded.model = 'gemini-3.7-flash';
-    }
+    const isActiveModel = GEMINI_MODEL_PROFILES.some((m) => m.id === loaded.model);
+    if (!loaded.model || !isActiveModel) loaded.model = DEFAULT_GEMINI_MODEL;
     return loaded;
   } catch (e) {
     console.error('Failed to load settings from storage:', e);
     return DEFAULT_SETTINGS;
   }
 }
-
 export function saveSettings(settings: ElaraSettings): void {
-  try {
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-  } catch (e) {
-    console.error('Failed to save settings to storage:', e);
-  }
+  try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings)); }
+  catch (e) { console.error('Failed to save settings:', e); }
 }
 
 const FOLDERS_STORAGE_KEY = 'elara_folders_v1';
-
 export function loadFolders(): import('../types').Folder[] {
   try {
     const raw = localStorage.getItem(FOLDERS_STORAGE_KEY);
@@ -92,17 +78,13 @@ export function loadFolders(): import('../types').Folder[] {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [{ id: 'default', name: 'General', isExpanded: true }];
   } catch (e) {
-    console.error('Failed to load folders from storage:', e);
+    console.error('Failed to load folders:', e);
     return [{ id: 'default', name: 'General', isExpanded: true }];
   }
 }
-
 export function saveFolders(folders: import('../types').Folder[]): void {
-  try {
-    localStorage.setItem(FOLDERS_STORAGE_KEY, JSON.stringify(folders));
-  } catch (e) {
-    console.error('Failed to save folders to storage:', e);
-  }
+  try { localStorage.setItem(FOLDERS_STORAGE_KEY, JSON.stringify(folders)); }
+  catch (e) { console.error('Failed to save folders:', e); }
 }
 
 export function loadConversations(): Conversation[] {
@@ -110,56 +92,35 @@ export function loadConversations(): Conversation[] {
     const raw = localStorage.getItem(CONVERSATIONS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      const seenConvIds = new Set<string>();
-      const sanitized = parsed.map((conv: any, convIdx: number) => {
-        let convId = conv.id && typeof conv.id === 'string' ? conv.id : `conv_${Date.now()}_${convIdx}`;
-        while (seenConvIds.has(convId)) {
-          convId = `${convId}_${Math.random().toString(36).substring(2, 6)}`;
-        }
-        seenConvIds.add(convId);
-
-        const seenMsgIds = new Set<string>();
-        const messages = Array.isArray(conv.messages)
-          ? conv.messages.map((msg: any, msgIdx: number) => {
-              let msgId = msg.id && typeof msg.id === 'string' ? msg.id : `msg_${Date.now()}_${msgIdx}`;
-              while (seenMsgIds.has(msgId)) {
-                msgId = `${msgId}_${Math.random().toString(36).substring(2, 6)}`;
-              }
-              seenMsgIds.add(msgId);
-              return { ...msg, id: msgId };
-            })
-          : [];
-
-        return { ...conv, id: convId, messages };
-      });
-
-      return sanitized.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-    }
-    return [];
+    if (!Array.isArray(parsed)) return [];
+    const seenConvIds = new Set<string>();
+    const sanitized = parsed.map((conv: any, convIdx: number) => {
+      let convId = conv.id && typeof conv.id === 'string' ? conv.id : `conv_${Date.now()}_${convIdx}`;
+      while (seenConvIds.has(convId)) convId = `${convId}_${Math.random().toString(36).substring(2, 6)}`;
+      seenConvIds.add(convId);
+      const seenMsgIds = new Set<string>();
+      const messages = Array.isArray(conv.messages) ? conv.messages.map((msg: any, msgIdx: number) => {
+        let msgId = msg.id && typeof msg.id === 'string' ? msg.id : `msg_${Date.now()}_${msgIdx}`;
+        while (seenMsgIds.has(msgId)) msgId = `${msgId}_${Math.random().toString(36).substring(2, 6)}`;
+        seenMsgIds.add(msgId);
+        return { ...msg, id: msgId };
+      }) : [];
+      return { ...conv, id: convId, messages };
+    });
+    return sanitized.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   } catch (e) {
-    console.error('Failed to load conversations from storage:', e);
+    console.error('Failed to load conversations:', e);
     return [];
   }
 }
-
 export function saveConversations(conversations: Conversation[]): void {
-  try {
-    localStorage.setItem(CONVERSATIONS_STORAGE_KEY, JSON.stringify(conversations));
-  } catch (e) {
-    console.error('Failed to save conversations to storage:', e);
-  }
+  try { localStorage.setItem(CONVERSATIONS_STORAGE_KEY, JSON.stringify(conversations)); }
+  catch (e) { console.error('Failed to save conversations:', e); }
 }
 
 export function exportAllDataJSON(conversations: Conversation[], settings: ElaraSettings): void {
-  const data = {
-    version: '1.0',
-    exportDate: new Date().toISOString(),
-    settings,
-    conversations,
-  };
-  const jsonStr = JSON.stringify(data, null, 2);
-  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const data = { version: '3.0', exportDate: new Date().toISOString(), settings, conversations };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -169,15 +130,12 @@ export function exportAllDataJSON(conversations: Conversation[], settings: Elara
 }
 
 export function exportConversationMarkdown(conversation: Conversation): void {
-  let md = `# ${conversation.title}\n\n`;
-  md += `*Date: ${new Date(conversation.createdAt).toLocaleString()}*\n\n---\n\n`;
-
+  let md = `# ${conversation.title}\n\n*Date: ${new Date(conversation.createdAt).toLocaleString()}*\n\n---\n\n`;
   conversation.messages.forEach((msg) => {
     const roleName = msg.role === 'user' ? 'User' : 'Elara';
     const time = new Date(msg.timestamp).toLocaleTimeString();
     md += `### ${roleName} (${time})\n\n${msg.content}\n\n---\n\n`;
   });
-
   const blob = new Blob([md], { type: 'text/markdown' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -191,63 +149,35 @@ export function importDataJSON(jsonStr: string): { conversations: Conversation[]
   try {
     const parsed = JSON.parse(jsonStr);
     let importedConversations: Conversation[] = [];
-    let importedSettings: Partial<ElaraSettings> | undefined = undefined;
-
-    if (Array.isArray(parsed)) {
-      importedConversations = parsed;
-    } else if (parsed && typeof parsed === 'object') {
-      if (Array.isArray(parsed.conversations)) {
-        importedConversations = parsed.conversations;
-      }
-      if (parsed.settings && typeof parsed.settings === 'object') {
-        importedSettings = parsed.settings;
-      }
+    let importedSettings: Partial<ElaraSettings> | undefined;
+    if (Array.isArray(parsed)) importedConversations = parsed;
+    else if (parsed && typeof parsed === 'object') {
+      if (Array.isArray(parsed.conversations)) importedConversations = parsed.conversations;
+      if (parsed.settings && typeof parsed.settings === 'object') importedSettings = parsed.settings;
     }
-
-    // Validate structure
-    const validConversations = importedConversations.filter(
-      (c) => c && typeof c.id === 'string' && Array.isArray(c.messages)
-    );
-
-    return {
-      conversations: validConversations,
-      settings: importedSettings,
-    };
-  } catch (e) {
-    throw new Error('Invalid JSON format for import');
-  }
+    const validConversations = importedConversations.filter((c) => c && typeof c.id === 'string' && Array.isArray(c.messages));
+    return { conversations: validConversations, settings: importedSettings };
+  } catch (e) { throw new Error('Invalid JSON format for import'); }
 }
 
 export function clearAllStorageData(): void {
   try {
     localStorage.removeItem(CONVERSATIONS_STORAGE_KEY);
     localStorage.removeItem(SETTINGS_STORAGE_KEY);
-  } catch (e) {
-    console.error('Failed to clear storage:', e);
-  }
+  } catch (e) { console.error('Failed to clear storage:', e); }
 }
 
 export function incrementRateLimit(modelId: string): void {
   const dateStr = new Date().toLocaleDateString();
   let data = loadRateLimits();
-  if (data.date !== dateStr) {
-    data = { date: dateStr, counts: {} };
-  }
+  if (data.date !== dateStr) data = { date: dateStr, counts: {} };
   data.counts[modelId] = (data.counts[modelId] || 0) + 1;
-  try {
-    localStorage.setItem('elara_api_rate_limits', JSON.stringify(data));
-  } catch (e) {
-    console.error('Failed to save rate limits:', e);
-  }
+  try { localStorage.setItem('elara_api_rate_limits', JSON.stringify(data)); }
+  catch (e) { console.error('Failed to save rate limits:', e); }
 }
 
-export function generateUniqueId(prefix: string = 'id'): string {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-}
-
-export function generateId(prefix: string = 'id'): string {
-  return generateUniqueId(prefix);
-}
+export function generateUniqueId(prefix: string = 'id'): string { return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`; }
+export function generateId(prefix: string = 'id'): string { return generateUniqueId(prefix); }
 
 export function loadRateLimits(): { date: string; counts: Record<string, number> } {
   const dateStr = new Date().toLocaleDateString();
@@ -257,8 +187,6 @@ export function loadRateLimits(): { date: string; counts: Record<string, number>
       const parsed = JSON.parse(raw);
       if (parsed.date === dateStr) return parsed;
     }
-  } catch (e) {
-    console.error('Failed to load rate limits:', e);
-  }
+  } catch (e) { console.error('Failed to load rate limits:', e); }
   return { date: dateStr, counts: {} };
 }
