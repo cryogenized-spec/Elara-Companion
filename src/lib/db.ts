@@ -1,7 +1,7 @@
 import { get, set, del } from 'idb-keyval';
 import { Conversation, ElaraSettings, WorldState, MemoryScratchpadState, Folder, PersonaSnapshot } from '../types';
 import { DEFAULT_SETTINGS } from './storage';
-import { saveActiveScratchpad } from './contextManager';
+import { saveActiveScratchpad, saveAgentBehaviorPolicyRuntime } from './contextManager';
 import { applySettingsAppearance } from './themeManager';
 
 const CONVERSATIONS_KEY = 'elara_conversations_v2';
@@ -44,11 +44,13 @@ export async function setDbConversations(data: Conversation[]) { await set(CONVE
 export async function getDbSettings(): Promise<ElaraSettings> {
   const data = await get(SETTINGS_KEY);
   const settings = data ? { ...DEFAULT_SETTINGS, ...data } : DEFAULT_SETTINGS;
+  saveAgentBehaviorPolicyRuntime(settings.agentBehaviorPolicy || '');
   applySettingsAppearance(settings);
   return settings;
 }
 export async function setDbSettings(data: ElaraSettings) {
   await set(SETTINGS_KEY, data);
+  saveAgentBehaviorPolicyRuntime(data.agentBehaviorPolicy || '');
   applySettingsAppearance(data);
 }
 
