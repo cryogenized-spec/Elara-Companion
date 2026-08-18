@@ -13,10 +13,7 @@ export function parseDataUrl(dataUrl: string): { mimeType: string; data: string 
 export function getGeminiClient() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY environment variable is not configured.');
-  return new GoogleGenAI({
-    apiKey,
-    httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-  });
+  return new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
 }
 
 export function formatApiErrorDetails(err: any, modelId: string): {
@@ -41,22 +38,20 @@ export function formatApiErrorDetails(err: any, modelId: string): {
 }
 
 export function normalizeModelName(rawModel?: string): string {
-  if (!rawModel || typeof rawModel !== 'string') return 'gemini-3.7-flash';
+  if (!rawModel || typeof rawModel !== 'string') return 'gemini-3.6-flash';
   let clean = rawModel.trim().replace(/^["'`]|["'`]$/g, '').trim();
   clean = clean.replace(/^(\/?models\/)+/gi, '').trim();
 
-  // Only normalize historical/invalid aliases. Never silently remap an active
-  // Google model to a different model; the selected model must remain the model
-  // the user actually chose in Settings.
   const aliasMap: Record<string, string> = {
     'gemini-3.1-pro': 'gemini-3.1-pro-preview',
     'gemini-3-flash': 'gemini-3-flash-preview',
-    'gemini-pro-latest': 'gemini-3.7-flash',
-    'gemini-flash-latest': 'gemini-3.7-flash',
-    'gemini-flash-lite-latest': 'gemini-3.1-flash-lite',
+    'gemini-pro-latest': 'gemini-3.1-pro-preview',
+    'gemini-flash-latest': 'gemini-3.6-flash',
+    'gemini-flash-lite-latest': 'gemini-3.5-flash-lite',
+    'gemini-3.7-flash': 'gemini-3.6-flash',
   };
 
   clean = aliasMap[clean] || clean;
   clean = clean.replace(/[^a-zA-Z0-9.\-_]/g, '');
-  return clean || 'gemini-3.7-flash';
+  return clean || 'gemini-3.6-flash';
 }
