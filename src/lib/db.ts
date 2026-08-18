@@ -1,7 +1,9 @@
 import { get, set, del } from 'idb-keyval';
 import { Conversation, ElaraSettings, WorldState, MemoryScratchpadState, Folder, PersonaSnapshot } from '../types';
 import { DEFAULT_SETTINGS } from './storage';
-import { saveActiveScratchpad, saveAgentBehaviorPolicyRuntime } from './contextManager';
+import { loadAgentOperatingPolicy, saveAgentOperatingPolicy } from './agentPolicy';
+import { saveActiveScratchpad } from './contextManager';
+import { DEFAULT_WORLD_STATE } from '../constants/defaultWorldState';
 import { applySettingsAppearance } from './themeManager';
 
 const CONVERSATIONS_KEY = 'elara_conversations_v2';
@@ -44,13 +46,23 @@ export async function setDbConversations(data: Conversation[]) { await set(CONVE
 export async function getDbSettings(): Promise<ElaraSettings> {
   const data = await get(SETTINGS_KEY);
   const settings = data ? { ...DEFAULT_SETTINGS, ...data } : DEFAULT_SETTINGS;
-  saveAgentBehaviorPolicyRuntime(settings.agentBehaviorPolicy || '');
+
+  // Migrate the temporary V3 agentBehaviorPolicy field into the canonical runtime store once.
+  const legacyPolicy = data && typeof data === 'object' && typeof (data as any).agentBehaviorPolicy === 'string'
+    ? String((data as any).agentBehaviorPolicy).trim()
+    : '';
+  if (legacyPolicy) {
+    saveAgentOperatingPolicy(legacyPolicy);
+  } else {
+    loadAgentOperatingPolicy();
+  }
+
   applySettingsAppearance(settings);
   return settings;
 }
+
 export async function setDbSettings(data: ElaraSettings) {
   await set(SETTINGS_KEY, data);
-  saveAgentBehaviorPolicyRuntime(data.agentBehaviorPolicy || '');
   applySettingsAppearance(data);
 }
 
@@ -65,7 +77,7 @@ export async function setDbFolders(data: Folder[]) { await set(FOLDERS_KEY, data
 
 export async function getDbWorldState(): Promise<WorldState> {
   const data = await get(WORLD_STATE_KEY);
-  return data || { isInitialized: false, userProfile: { name: 'User' }, relationship: { trustLevel: 0 } };
+  return data && typeof data === 'object' ? data as WorldState : DEFAULT_WORLD_STATE;
 }
 export async function setDbWorldState(data: WorldState) { await set(WORLD_STATE_KEY, data); }
 
