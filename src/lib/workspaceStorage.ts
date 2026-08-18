@@ -4,21 +4,31 @@ import { createCheckpoint } from './revisionUtils';
 
 const WORKSPACE_STORAGE_KEY = 'elara_workspace_data';
 
+const EMPTY_WORKSPACE: Workspace = {
+  id: 'default-workspace',
+  name: 'My Workspace',
+  artifacts: [],
+  activeArtifactId: null,
+};
+
 export const getWorkspace = (): Workspace => {
-  const data = global.__mockStorage;
-  if (data) {
-    try {
-      return JSON.parse(data) as Workspace;
-    } catch (e) {
-      console.error('Failed to parse workspace data', e);
+  try {
+    const stored = localStorage.getItem(WORKSPACE_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.artifacts)) {
+        return {
+          ...EMPTY_WORKSPACE,
+          ...parsed,
+          artifacts: parsed.artifacts,
+        } as Workspace;
+      }
     }
+  } catch (e) {
+    console.error('Failed to parse workspace data', e);
   }
-  return {
-    id: 'default-workspace',
-    name: 'My Workspace',
-    artifacts: [],
-    activeArtifactId: null,
-  };
+
+  return { ...EMPTY_WORKSPACE, artifacts: [] };
 };
 
 export const saveWorkspace = (workspace: Workspace): void => {
@@ -89,7 +99,7 @@ export const createArtifact = (workspace: Workspace, name: string = 'Untitled', 
     updatedAt: Date.now(),
     type,
   };
-  
+
   const updated = {
     ...workspace,
     artifacts: [...workspace.artifacts, newArtifact],
@@ -102,7 +112,7 @@ export const createArtifact = (workspace: Workspace, name: string = 'Untitled', 
 export const updateArtifact = (workspace: Workspace, artifactId: string, updates: Partial<WorkspaceArtifact>): Workspace => {
   const updated = {
     ...workspace,
-    artifacts: workspace.artifacts.map(a => 
+    artifacts: workspace.artifacts.map(a =>
       a.id === artifactId ? { ...a, ...updates, updatedAt: Date.now() } : a
     )
   };
@@ -112,10 +122,10 @@ export const updateArtifact = (workspace: Workspace, artifactId: string, updates
 
 export const deleteArtifact = (workspace: Workspace, artifactId: string): Workspace => {
   const updatedArtifacts = workspace.artifacts.filter(a => a.id !== artifactId);
-  const activeId = workspace.activeArtifactId === artifactId 
-    ? (updatedArtifacts.length > 0 ? updatedArtifacts[0].id : null) 
+  const activeId = workspace.activeArtifactId === artifactId
+    ? (updatedArtifacts.length > 0 ? updatedArtifacts[0].id : null)
     : workspace.activeArtifactId;
-    
+
   const updated = {
     ...workspace,
     artifacts: updatedArtifacts,
