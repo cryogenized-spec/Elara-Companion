@@ -2,7 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { Workspace, MemoryItem } from '../types';
 import { workspaceToolDeclarations, executeAnyWorkspaceTool, buildWorkspaceContextPrompt } from './workspaceTools';
 import { googleAgentToolDeclarations, GOOGLE_AGENT_TOOL_NAMES, executeGoogleAgentTool } from './googleAgentTools';
-import { googlePlanningToolDeclarations, GOOGLE_PLANNING_TOOL_NAMES, executeGooglePlanningTool } from './googlePlanningTools';
+import { googleOperationalToolDeclarations, GOOGLE_OPERATIONAL_TOOL_NAMES, executeGoogleOperationalTool } from './googleAgentOperationalTools';
 import { getModelProfile } from './modelRegistry';
 import { classifyApiError } from './apiError';
 
@@ -87,7 +87,7 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
     }
     (async () => {
       try {
-        config.tools = [{ functionDeclarations: [...workspaceToolDeclarations, ...googleAgentToolDeclarations, ...googlePlanningToolDeclarations] }];
+        config.tools = [{ functionDeclarations: [...workspaceToolDeclarations, ...googleAgentToolDeclarations, ...googleOperationalToolDeclarations] }];
         let currentWorkspace: Workspace = workspace || { id: 'default-workspace', name: 'My Workspace', artifacts: [], activeArtifactId: null };
         const touchedArtifactIds: string[] = [];
         let iteration = 0;
@@ -133,8 +133,8 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
           for (const fc of functionCalls) {
             const op = GOOGLE_AGENT_TOOL_NAMES.has(fc.name)
               ? { result: await executeGoogleAgentTool(fc.name, fc.args, googleToken), updatedWorkspace: currentWorkspace }
-              : GOOGLE_PLANNING_TOOL_NAMES.has(fc.name)
-                ? { result: await executeGooglePlanningTool(fc.name, fc.args, googleToken), updatedWorkspace: currentWorkspace }
+              : GOOGLE_OPERATIONAL_TOOL_NAMES.has(fc.name)
+                ? { result: await executeGoogleOperationalTool(fc.name, fc.args, googleToken), updatedWorkspace: currentWorkspace }
                 : await executeAnyWorkspaceTool(currentWorkspace, fc.name, fc.args, googleToken);
             currentWorkspace = op.updatedWorkspace;
             const result = op.result;
