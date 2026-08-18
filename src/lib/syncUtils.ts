@@ -59,15 +59,18 @@ export function compareSyncState(
   }
 
   let status: SyncStatus = 'unlinked';
-
   if (identical) {
     status = 'synchronized';
-  } else if (localChanged && !remoteChanged) {
-    status = 'local_ahead';
-  } else if (!localChanged && remoteChanged) {
-    status = 'remote_ahead';
-  } else if (localChanged && remoteChanged) {
-    status = 'conflict';
+  } else if (baselineHash) {
+    if (localChanged && !remoteChanged) {
+      status = 'local_ahead';
+    } else if (!localChanged && remoteChanged) {
+      status = 'remote_ahead';
+    } else {
+      status = 'conflict';
+    }
+  } else {
+    status = 'linked';
   }
 
   return {
