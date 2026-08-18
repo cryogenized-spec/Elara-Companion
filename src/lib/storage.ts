@@ -5,7 +5,6 @@ import {
   DEFAULT_INTIMACY_MODULE,
   DEFAULT_RUNTIME_RULES
 } from '../constants/defaultPrompt';
-import { DEFAULT_AGENT_BEHAVIOR_POLICY } from '../constants/defaultAgentBehaviorPolicy';
 import { DEFAULT_GEMINI_MODEL, GEMINI_MODEL_PROFILES } from './modelRegistry';
 import { applySettingsAppearance } from './themeManager';
 
@@ -29,7 +28,6 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
   personaProtocol: DEFAULT_PERSONA_PROTOCOL,
   intimacyModule: DEFAULT_INTIMACY_MODULE,
   runtimeRules: DEFAULT_RUNTIME_RULES,
-  agentBehaviorPolicy: DEFAULT_AGENT_BEHAVIOR_POLICY,
   userName: 'User',
   model: DEFAULT_GEMINI_MODEL,
   temperature: 0.85,
