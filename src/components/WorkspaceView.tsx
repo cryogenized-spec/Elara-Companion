@@ -4,7 +4,7 @@ import { createArtifact, deleteArtifact, getWorkspace, saveWorkspace, setActiveA
 import { executeAnyWorkspaceTool } from '../lib/workspaceTools';
 import { compareRevisions, createCheckpoint, restoreRevision } from '../lib/revisionUtils';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { AlertTriangle, ArrowLeft, Check, Clock3, Code2, Download, Eye, FileText, FileType2, History, Menu, MoreHorizontal, Plus, RefreshCw, Save, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, Clock3, Code2, Columns3, Download, Eye, FileText, FileType2, History, Menu, MoreHorizontal, Plus, RefreshCw, Save, X } from 'lucide-react';
 
 interface WorkspaceViewProps {
   activeArtifactId?: string | null;
@@ -29,7 +29,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ activeArtifactId: 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [localContent, setLocalContent] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [previewMode, setPreviewMode] = useState(false);
+  const [canvasMode, setCanvasMode] = useState<'raw' | 'read' | 'split'>('raw');
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null);
@@ -70,7 +70,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ activeArtifactId: 
     }
     setWorkspace(ws);
     setLocalContent(ws.artifacts.find((a) => a.id === ws.activeArtifactId)?.content || '');
-    setPreviewMode(false);
+    setCanvasMode('raw');
   }, [propActiveArtifactId]);
 
   useEffect(() => () => {
@@ -106,7 +106,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ activeArtifactId: 
     saveWorkspace(merged);
     setWorkspace(merged);
     setLocalContent(merged.artifacts.find((a) => a.id === id)?.content || '');
-    setPreviewMode(false);
+    setCanvasMode('raw');
     setDrawerOpen(false);
     onSelectArtifact?.(id);
   };
@@ -118,7 +118,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ activeArtifactId: 
     saveWorkspace(next);
     setWorkspace(next);
     setLocalContent('');
-    setPreviewMode(false);
+    setCanvasMode('raw');
     setNewMenuOpen(false);
     setDrawerOpen(false);
     if (next.activeArtifactId) onSelectArtifact?.(next.activeArtifactId);
@@ -214,7 +214,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ activeArtifactId: 
           </div>
           {status && <div className="truncate text-[10px] text-zinc-500">{status}</div>}
         </div>
-        {activeArtifact?.type === 'markdown' && <div className="flex rounded-lg border border-zinc-800 bg-zinc-900/80 p-0.5"><button onClick={() => setPreviewMode(false)} className={`flex h-8 items-center gap-1 rounded-md px-2 text-[11px] ${!previewMode ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500'}`}><Code2 className="h-3.5 w-3.5" />Edit</button><button onClick={() => setPreviewMode(true)} className={`flex h-8 items-center gap-1 rounded-md px-2 text-[11px] ${previewMode ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500'}`}><Eye className="h-3.5 w-3.5" />Live</button></div>}
+        {activeArtifact?.type === 'markdown' && <div className="flex shrink-0 rounded-lg border border-zinc-800 bg-zinc-900/80 p-0.5" role="group" aria-label="Canvas view mode"><button onClick={() => setCanvasMode('raw')} className={`flex h-8 items-center gap-1 rounded-md px-2 text-[11px] ${canvasMode === 'raw' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`} title="Raw Markdown"><Code2 className="h-3.5 w-3.5" />Raw</button><button onClick={() => setCanvasMode('read')} className={`flex h-8 items-center gap-1 rounded-md px-2 text-[11px] ${canvasMode === 'read' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`} title="Rendered reading view"><Eye className="h-3.5 w-3.5" />Read</button><button onClick={() => setCanvasMode('split')} className={`flex h-8 items-center gap-1 rounded-md px-2 text-[11px] ${canvasMode === 'split' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`} title="Source and reading view"><Columns3 className="h-3.5 w-3.5" />Split</button></div>}
         <button onClick={() => setNewMenuOpen((v) => !v)} className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"><Plus className="h-4 w-4" /></button>
         <button onClick={() => setHistoryOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100" title="History"><History className="h-4 w-4" /></button>
         <button onClick={() => setDrawerOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100" title="More"><MoreHorizontal className="h-4 w-4" /></button>
@@ -223,7 +223,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({ activeArtifactId: 
       {newMenuOpen && <div className="absolute right-3 top-16 z-40 w-44 rounded-xl border border-zinc-800 bg-zinc-900 p-1.5 shadow-2xl"><button onClick={() => handleCreate('markdown')} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs hover:bg-zinc-800"><FileType2 className="h-4 w-4 text-emerald-400" />New Markdown</button><button onClick={() => handleCreate('text')} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs hover:bg-zinc-800"><FileText className="h-4 w-4 text-sky-400" />New Text</button><button onClick={() => { setHistoryOpen(true); setNewMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs hover:bg-zinc-800"><Clock3 className="h-4 w-4 text-amber-400" />History</button></div>}
 
       <main className="min-h-0 flex-1 overflow-hidden">
-        {activeArtifact ? (previewMode && activeArtifact.type === 'markdown' ? <div className="min-h-0 h-full overflow-y-auto px-4 py-5 sm:px-8"><div className="mx-auto w-full max-w-3xl"><MarkdownRenderer content={localContent} /></div></div> : <textarea value={localContent} onChange={(e) => handleContentChange(e.target.value)} placeholder="Start writing…" className="h-full min-h-0 w-full resize-none bg-transparent px-4 py-5 font-mono text-[13px] leading-7 text-zinc-200 outline-none placeholder:text-zinc-700 sm:px-8" spellCheck={false} />) : <div className="flex h-full items-center justify-center p-6 text-center"><div className="space-y-4"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 text-zinc-600"><FileText className="h-7 w-7" /></div><p className="text-sm text-zinc-400">No document open.</p><button onClick={() => handleCreate('markdown')} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white">Create Markdown</button></div></div>}
+        {activeArtifact ? (activeArtifact.type !== 'markdown' || canvasMode === 'raw' ? <textarea value={localContent} onChange={(e) => handleContentChange(e.target.value)} placeholder="Start writing…" className="h-full min-h-0 w-full resize-none bg-transparent px-4 py-5 font-mono text-[13px] leading-7 text-zinc-200 outline-none placeholder:text-zinc-700 sm:px-8" spellCheck={false} /> : canvasMode === 'read' ? <div className="min-h-0 h-full overflow-y-auto px-4 py-5 sm:px-8"><div className="mx-auto w-full max-w-3xl"><MarkdownRenderer content={localContent} /></div></div> : <div className="grid h-full min-h-0 grid-rows-2 lg:grid-cols-2 lg:grid-rows-1"><div className="min-h-0 overflow-hidden border-b border-zinc-800 lg:border-b-0 lg:border-r"><textarea value={localContent} onChange={(e) => handleContentChange(e.target.value)} placeholder="Markdown source…" className="h-full min-h-0 w-full resize-none bg-transparent px-4 py-5 font-mono text-[13px] leading-7 text-zinc-200 outline-none placeholder:text-zinc-700 sm:px-6" spellCheck={false} aria-label="Markdown source" /></div><div className="min-h-0 overflow-y-auto bg-zinc-950/20 px-4 py-5 sm:px-6"><div className="mx-auto w-full max-w-3xl"><MarkdownRenderer content={localContent} /></div></div></div>) : <div className="flex h-full items-center justify-center p-6 text-center"><div className="space-y-4"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 text-zinc-600"><FileText className="h-7 w-7" /></div><p className="text-sm text-zinc-400">No document open.</p><button onClick={() => handleCreate('markdown')} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white">Create Markdown</button></div></div>}
       </main>
 
       {activeArtifact && <footer className="flex min-h-12 items-center gap-2 overflow-x-auto border-t border-zinc-800 bg-[#0d0d0f]/95 px-3 backdrop-blur-xl"><span className="shrink-0 text-[10px] text-zinc-500">{localContent.trim() ? localContent.trim().split(/\s+/).length : 0} words</span><span className="h-4 w-px shrink-0 bg-zinc-800" /><button onClick={handleCheckpoint} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-400 hover:bg-zinc-800"><Save className="h-3.5 w-3.5" />Checkpoint</button><button onClick={() => setHistoryOpen(true)} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-400 hover:bg-zinc-800"><History className="h-3.5 w-3.5" />History</button>{activeArtifact.provider === 'google_docs' && activeArtifact.url && <a href={activeArtifact.url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 rounded-lg bg-blue-950/50 px-2.5 py-1.5 text-[11px] text-blue-300">Google Docs</a>}<button disabled={busy} onClick={handleSaveKeep} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-amber-300 hover:bg-amber-950/40 disabled:opacity-40"><Download className="h-3.5 w-3.5" />Keep</button>{activeArtifact.provider === 'google_docs' && <><button disabled={busy} onClick={() => runGoogleTool('refresh_google_doc', { artifactId: activeArtifact.id })} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-400 hover:bg-zinc-800"><RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} />Refresh</button>{activeArtifact.syncStatus === 'local_ahead' && <button disabled={busy} onClick={() => runGoogleTool('sync_to_google_doc', { artifactId: activeArtifact.id, force: false })} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-emerald-300 hover:bg-emerald-950/40">Push</button>}{activeArtifact.syncStatus === 'remote_ahead' && <button disabled={busy} onClick={() => runGoogleTool('sync_from_google_doc', { artifactId: activeArtifact.id, force: false })} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-blue-300 hover:bg-blue-950/40">Pull</button>}</>}<button onClick={() => setGoogleLinkOpen(true)} className="ml-auto inline-flex shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] text-zinc-400 hover:bg-zinc-800">Link Google Doc</button></footer>}
