@@ -185,15 +185,32 @@ export async function runDirectMemoryExtraction(apiKey: string, userMessage: str
   try {
     const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
     const ctx = await buildInCharacterUtilityContext();
-    const formattedExisting = currentMemories?.length ? currentMemories.slice(0, 40).map((m: any) => `[ID: ${m.id}] [Category: ${m.category}] [Confidence: ${m.confidence}] [Importance: ${m.importance}] "${m.content}"`).join('\n') : 'No existing memories recorded yet.';
-    const prompt = `Using the system/persona above, quietly maintain Elara's persistent memory notebook in-character. Decide whether this interaction contains a durable fact, preference, relationship detail, plan, observation, or other long-lived information worth preserving. Do not invent facts. Prefer no action over weak inference. Return ONLY valid JSON matching this schema: {"actions":[{"type":"CREATE"|"UPDATE"|"DELETE","targetId":"string","memory":{"content":"concise first-person-neutral notebook note","category":"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other","importance":"core|important|normal|low","confidence":"certain|likely|uncertain","isPrivate":true,"tags":["string"],"eventDate":"optional YYYY-MM-DD"},"reason":"brief reason"}]}\n\nRECENT INTERACTION:\nUser: "${userMessage.slice(0, 1200)}"\nElara: "${assistantResponse.slice(0, 1800)}"\n\nCURRENT NOTEBOOK:\n${formattedExisting}\n\nUSER NAME: ${userName || ctx.userName}`;
+    const formattedExisting = currentMemories?.length
+      ? currentMemories.slice(0, 40).map((m) => `[ID: ${m.id}] [Kind: ${m.kind || 'context'}] [Lifecycle: ${m.lifecycle || 'persistent'}] [Category: ${m.category}] [Confidence: ${m.confidence}] [Importance: ${m.importance}] "${m.content}"`).join('\n')
+      : 'No existing memories recorded yet.';
+    const prompt = `Using the system/persona above, quietly maintain Elara's persistent memory notebook in-character. You are deciding what, if anything, is genuinely worth carrying across future sessions.
+
+Write notes as natural observations in Elara's own voice, not database labels and not robotic telemetry. Prefer a complete, human-readable sentence that records the meaning rather than merely repeating a quote. Do not invent facts, infer sensitive traits from weak evidence, or treat a one-off passing remark as a permanent preference. Prefer NO_ACTION when the information is transient, trivial, already captured, or uncertain.
+
+For a durable item, choose the most appropriate kind: fact, preference, observation, episode, project, relationship, plan, working, or context. Choose a lifecycle: working for short-lived state, contextual for temporary-but-relevant context, persistent for durable memory, or core only when it is genuinely foundational. Set source to elara for an observation produced by Elara, conversation when the memory principally records a conversational event, artifact when tied to an artifact, or user when it is an explicit user-provided fact.
+
+Return ONLY valid JSON using this schema: {"actions":[{"type":"CREATE"|"UPDATE"|"DELETE"|"NO_ACTION","targetId":"string","memory":{"content":"natural-language memory note in Elara's voice","kind":"fact|preference|observation|episode|project|relationship|plan|working|context","lifecycle":"working|contextual|persistent|core","source":"user|elara|conversation|artifact|system|imported","category":"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other","importance":"core|important|normal|low","confidence":"certain|likely|uncertain","isPrivate":true,"tags":["string"],"eventDate":"optional YYYY-MM-DD","expiresAt":"optional ISO timestamp","sourceArtifactId":"optional artifact id","relatedMemoryIds":["optional ids"]},"reason":"brief reason"}]}.
+
+RECENT INTERACTION:
+User: "${userMessage.slice(0, 1400)}"
+Elara: "${assistantResponse.slice(0, 2200)}"
+
+CURRENT NOTEBOOK:
+${formattedExisting}
+
+USER NAME: ${userName || ctx.userName}`;
     const res = await ai.models.generateContent({
       model: normalizeModel(ctx.model),
       contents: [{ role: 'user', parts: [{ text: `${ctx.systemPrompt}\n\n${prompt}` }] }],
       config: {
         temperature: 0.15,
         responseMimeType: 'application/json',
-        maxOutputTokens: 700,
+        maxOutputTokens: 900,
         safetySettings: ELARA_SAFETY_SETTINGS,
       },
     });
@@ -210,19 +227,20 @@ export async function runDirectMemoryMaintenance(apiKey: string, memories: Memor
   try {
     const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
     const ctx = await buildInCharacterUtilityContext();
-    const formattedList = memories.map((m) => `[ID: ${m.id}] [Category: ${m.category}] [Importance: ${m.importance}] [Confidence: ${m.confidence}] "${m.content}"`).join('\n');
-    const prompt = `Using the system/persona above, audit Elara's long-term memory notebook without breaking character. Identify duplicate, stale, contradictory, or superseded notes. Return ONLY valid JSON: {"summary":"Brief 1-2 sentence explanation of maintenance performed","actions":[{"type":"DELETE"|"UPDATE","targetId":"ID","memory":{"content":"updated concise text if updating","importance":"core|important|normal|low","confidence":"certain|likely|uncertain","category":"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other"},"reason":"why"}]}`;
+    const formattedList = memories.map((m) => `[ID: ${m.id}] [Kind: ${m.kind || 'context'}] [Lifecycle: ${m.lifecycle || 'persistent'}] [Category: ${m.category}] [Importance: ${m.importance}] [Confidence: ${m.confidence}] "${m.content}"`).join('\n');
+    const prompt = `Using the system/persona above, audit Elara's long-term memory notebook without breaking character. Look for genuinely duplicate notes, stale working/context material, contradictions, and notes that should be strengthened or weakened because newer information supersedes them. Preserve core and pinned memories. Do not delete solely because a memory is old; prefer an UPDATE or NO_ACTION when uncertain. Return ONLY valid JSON: {"summary":"Brief 1-2 sentence explanation of maintenance performed","actions":[{"type":"DELETE"|"UPDATE"|"MERGE"|"NO_ACTION","targetId":"ID","mergeTargetIds":["optional ids"],"memory":{"content":"updated natural-language note if updating","kind":"fact|preference|observation|episode|project|relationship|plan|working|context","lifecycle":"working|contextual|persistent|core","source":"user|elara|conversation|artifact|system|imported","importance":"core|important|normal|low","confidence":"certain|likely|uncertain","category":"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other"},"reason":"why"}]}`;
     const res = await ai.models.generateContent({
       model: normalizeModel(ctx.model),
       contents: [{ role: 'user', parts: [{ text: `${ctx.systemPrompt}\n\n${prompt}\n\nMEMORIES:\n${formattedList}\n\nUSER: ${userName || ctx.userName}` }] }],
       config: {
         temperature: 0.15,
         responseMimeType: 'application/json',
+        maxOutputTokens: 900,
         safetySettings: ELARA_SAFETY_SETTINGS,
       },
     });
     const parsed = JSON.parse(res.text || '{}');
-    return { actions: parsed?.actions || [], summary: parsed?.summary || 'Memory notebook audit complete.' };
+    return { actions: Array.isArray(parsed?.actions) ? parsed.actions : [], summary: parsed?.summary || 'Memory notebook audit complete.' };
   } catch (e) {
     console.warn('Direct memory audit error:', e);
     return { actions: [], summary: 'Audit failed.' };
