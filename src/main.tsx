@@ -10,6 +10,7 @@ import { installBackgroundSafeAbortBoundary } from './lib/backgroundSafeRuntime'
 import { installMobileViewportSync } from './lib/mobileViewport';
 import './index.css';
 import './mobile-chat.css';
+import './chat-pass1-declutter.css';
 
 installBackgroundSafeAbortBoundary();
 installMobileViewportSync();
