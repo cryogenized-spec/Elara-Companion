@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Sparkles, CheckCircle2, ChevronRight } from 'lucide-react';
 import { ThoughtStep } from '../types';
 import { ThoughtLogModal } from './ThoughtLogModal';
-import { DEFAULT_THINKING_DISPLAY_MODE, loadThinkingDisplayMode, saveThinkingDisplayMode, THINKING_DISPLAY_EVENT, type ThinkingDisplayMode } from '../lib/thinkingDisplay';
+import { DEFAULT_THINKING_DISPLAY_MODE, loadThinkingDisplayMode, THINKING_DISPLAY_EVENT, type ThinkingDisplayMode } from '../lib/thinkingDisplay';
 
 interface ThinkingScratchpadProps {
   isThinking: boolean;
@@ -64,13 +64,7 @@ export const ThinkingScratchpad: React.FC<ThinkingScratchpadProps> = ({
           }
         }}
         title={isStepOnly ? 'Thinking steps' : 'Open thinking summary'}
-        className={`w-full mb-2.5 px-3.5 py-2 rounded-xl transition-all duration-300 select-none group border backdrop-blur-md ${
-          !isStepOnly ? 'cursor-pointer' : ''
-        } ${
-          isThinking
-            ? 'bg-sky-950/40 border-sky-500/40 hover:border-sky-400/70 shadow-[0_0_15px_rgba(112,161,255,0.12)]'
-            : 'bg-zinc-900/65 border-zinc-800/80 hover:border-sky-500/30 hover:bg-zinc-900/85'
-        }`}
+        className={`w-full mb-2.5 px-3.5 py-2 rounded-xl transition-all duration-300 select-none group border backdrop-blur-md ${!isStepOnly ? 'cursor-pointer' : ''} ${isThinking ? 'bg-sky-950/40 border-sky-500/40 hover:border-sky-400/70 shadow-[0_0_15px_rgba(112,161,255,0.12)]' : 'bg-zinc-900/65 border-zinc-800/80 hover:border-sky-500/30 hover:bg-zinc-900/85'}`}
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center space-x-2 min-w-0">
