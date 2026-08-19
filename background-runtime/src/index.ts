@@ -1,5 +1,7 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers';
 import { durableWorkspaceTools, executeDurableWorkspaceTool, type DurableWorkspace } from './workspaceTools';
+import { durableGoogleTools, executeDurableGoogleReadTool } from './googleTools';
+import { getFreshGoogleAccessToken } from '../googleVault';
 
 type JobPayload = {
   message: string;
@@ -18,12 +20,19 @@ type Env = {
   ELARA_CHAT_WORKFLOW: any;
   GEMINI_API_KEY: string;
   ELARA_BACKGROUND_TOKEN: string;
+  GOOGLE_VAULT_KV: KVNamespace;
+  GOOGLE_OAUTH_CLIENT_ID: string;
+  GOOGLE_OAUTH_CLIENT_SECRET: string;
+  GOOGLE_OAUTH_REDIRECT_URI: string;
   ALLOWED_ORIGIN?: string;
 };
 
 const DEFAULT_MODEL = 'gemini-3.7-flash';
 const DEFAULT_ALLOWED_ORIGIN = '*';
 const MAX_TOOL_ROUNDS = 8;
+
+const allDurableTools = [...durableWorkspaceTools, ...durableGoogleTools];
+const googleReadToolNames = new Set(durableGoogleTools.map((tool) => tool.name));
 
 function responseJson(data: unknown, init: ResponseInit = {}, request?: Request) {
   const headers = new Headers(init.headers);
@@ -74,10 +83,6 @@ function buildContents(history: JobPayload['history'], message: string, image?: 
   return contents;
 }
 
-function asFunctionResponse(result: any) {
-  return { response: result ?? { success: true } };
-}
-
 async function callGemini(env: Env, model: string, body: Record<string, unknown>) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
   const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -86,6 +91,21 @@ async function callGemini(env: Env, model: string, body: Record<string, unknown>
   try { data = JSON.parse(raw); } catch { throw new Error(`Gemini returned non-JSON response (HTTP ${response.status}).`); }
   if (!response.ok) throw new Error(data?.error?.message || `Gemini request failed with HTTP ${response.status}.`);
   return data;
+}
+
+async function executeDurableTool(env: Env, workspace: DurableWorkspace | undefined, toolName: string, args: any, step: any) {
+  if (googleReadToolNames.has(toolName)) {
+    return step.do(`google-read-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, async () => {
+      const accessToken = await getFreshGoogleAccessToken({
+        GOOGLE_VAULT_KV: env.GOOGLE_VAULT_KV,
+        GOOGLE_OAUTH_CLIENT_ID: env.GOOGLE_OAUTH_CLIENT_ID,
+        GOOGLE_OAUTH_CLIENT_SECRET: env.GOOGLE_OAUTH_CLIENT_SECRET,
+        GOOGLE_OAUTH_REDIRECT_URI: env.GOOGLE_OAUTH_REDIRECT_URI,
+      });
+      return executeDurableGoogleReadTool(toolName, args, accessToken);
+    });
+  }
+  return executeDurableWorkspaceTool(workspace, toolName, args);
 }
 
 async function generateGeminiResponse(env: Env, job: JobPayload, step: any) {
@@ -102,7 +122,7 @@ async function generateGeminiResponse(env: Env, job: JobPayload, step: any) {
     const body: Record<string, any> = {
       system_instruction: { parts: [{ text: job.systemPrompt || '' }] },
       contents,
-      tools: [{ function_declarations: durableWorkspaceTools }],
+      tools: [{ function_declarations: allDurableTools }],
       tool_config: { function_calling_config: { mode: 'AUTO' } },
       generationConfig: {},
     };
@@ -136,15 +156,14 @@ async function generateGeminiResponse(env: Env, job: JobPayload, step: any) {
 
     for (let index = 0; index < functionCalls.length; index += 1) {
       const call = functionCalls[index].functionCall;
-      const execution = executeDurableWorkspaceTool(workspace, call.name, call.args || {});
-      workspace = execution.updatedWorkspace;
+      const execution = await executeDurableTool(env, workspace, call.name, call.args || {}, step);
+      if ('updatedWorkspace' in execution && execution.updatedWorkspace) workspace = execution.updatedWorkspace;
       if (execution.createdArtifactId) createdArtifactIds.push(execution.createdArtifactId);
       if (execution.modifiedArtifactId) modifiedArtifactIds.push(execution.modifiedArtifactId);
-      responseParts.push({ functionResponse: { name: call.name, response: asFunctionResponse(execution.result) } });
+      responseParts.push({ functionResponse: { name: call.name, response: execution.result ?? execution } });
     }
 
     contents.push({ role: 'user', parts: responseParts });
-    // The next round continues from the durable tool results.
   }
 
   const fallbackParts = lastResponse?.candidates?.[0]?.content?.parts || [];
