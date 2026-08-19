@@ -177,7 +177,7 @@ export default {
 
       return withCors(responseJson({ error: 'Not found.' }, { status: 404 }, request), request, env);
     } catch (error: any) {
-      return withCors(responseJson({ error: error?.message || 'Background runtime error.' }, { status: 500 }, request, ), request, env);
+      return withCors(responseJson({ error: error?.message || 'Background runtime error.' }, { status: 500 }, request), request, env);
     }
   },
 };
