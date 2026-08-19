@@ -149,6 +149,8 @@ async function buildInCharacterUtilityContext(): Promise<{ systemPrompt: string;
     personaProtocol: settings.personaProtocol || DEFAULT_PERSONA_PROTOCOL,
     intimacyModule: settings.intimacyModule || DEFAULT_INTIMACY_MODULE,
     runtimeRules: settings.runtimeRules || DEFAULT_RUNTIME_RULES,
+    adultFictionEnabled: settings.adultFictionEnabled !== false,
+    adultFictionModule: settings.adultFictionModule,
     activeModelId: model,
     uiSettingsSummary,
     userProfileNotes: loadUserProfileNotes(),
