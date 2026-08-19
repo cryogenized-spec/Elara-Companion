@@ -1,7 +1,20 @@
 import { strict as assert } from 'node:assert';
-import test from 'node:test';
+import test, { beforeEach } from 'node:test';
 import { compareRevisions, createRevisionForArtifact, restoreRevision } from '../revisionUtils';
 import { WorkspaceArtifact } from '../../types';
+
+class MemoryStorage {
+  private values = new Map<string, string>();
+  getItem(key: string) { return this.values.get(key) ?? null; }
+  setItem(key: string, value: string) { this.values.set(key, String(value)); }
+  removeItem(key: string) { this.values.delete(key); }
+  clear() { this.values.clear(); }
+}
+
+const storage = new MemoryStorage();
+Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true });
+
+beforeEach(() => storage.clear());
 
 function artifact(content: string): WorkspaceArtifact {
   return {
