@@ -1,0 +1,82 @@
+name: Pass 3 App cleanup
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Pass 3 branch
+        uses: actions/checkout@v6
+        with:
+          ref: fix/pass3-chat-runtime
+          fetch-depth: 0
+
+      - name: Remove legacy Google prefetch
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = 'src/App.tsx';
+          let content = fs.readFileSync(path, 'utf8');
+
+          const start = '    // Background Google Workspace Autonomous Sync Detection';
+          const end = '    const formattedSystemPrompt = buildSystemPayload({';
+          const startIndex = content.indexOf(start);
+          const endIndex = content.indexOf(end, startIndex);
+
+          if (startIndex < 0 || endIndex < 0 || endIndex <= startIndex) {
+            throw new Error('Legacy Google prefetch markers not found; refusing to rewrite App.tsx.');
+          }
+
+          content = content.slice(0, startIndex)
+            + '    // Live Google data is agent-selected through the canonical tool registry.\n\n'
+            + content.slice(endIndex);
+
+          const googleImportStart = "import { \n  isGoogleConnected,";
+          const googleImportEnd = "} from './lib/googleApi';";
+          const importStart = content.indexOf(googleImportStart);
+          const importEnd = content.indexOf(googleImportEnd, importStart);
+          if (importStart < 0 || importEnd < 0) {
+            throw new Error('Legacy googleApi import block not found; refusing to rewrite App.tsx.');
+          }
+          content = content.slice(0, importStart)
+            + "import { getAccessToken } from './lib/googleApi';\n"
+            + content.slice(importEnd + googleImportEnd.length + 1);
+
+          const forbidden = [
+            'isGoogleConnected(',
+            'getTasks(',
+            'getUpcomingCalendarEvents(',
+            'listGmailMessages(',
+            'searchContacts(',
+            'searchKeepNotes(',
+            'createKeepNote(',
+            'updateKeepNote(',
+            'getKeepNote(',
+            'createGoogleDoc(',
+            'editGoogleDoc(',
+            'getGoogleDoc(',
+            'searchGoogleDriveDocs(',
+          ];
+          for (const token of forbidden) {
+            if (content.includes(token)) throw new Error(`Legacy Google prefetch call remains: ${token}`);
+          }
+
+          fs.writeFileSync(path, content);
+          NODE
+
+      - name: Commit cleanup and remove workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/pass3-app-cleanup.yml || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.tsx
+          git commit -m "refactor: remove legacy Google prefetch from App"
+          git push origin fix/pass3-chat-runtime
