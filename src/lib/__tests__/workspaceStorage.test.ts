@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import test, { beforeEach } from 'node:test';
-import { createArtifact, getWorkspace, saveWorkspace } from '../workspaceStorage';
+import { createArtifact, getWorkspace, saveWorkspace, setActiveArtifact } from '../workspaceStorage';
 import { Workspace } from '../../types';
 
 class MemoryStorage {
@@ -45,4 +45,28 @@ test('malformed stored Workspace falls back safely', () => {
   const loaded = getWorkspace();
   assert.equal(loaded.id, 'default-workspace');
   assert.deepEqual(loaded.artifacts, []);
+});
+
+test('stored Workspace is normalized and dangling activeArtifactId is repaired', () => {
+  storage.setItem('elara_workspace_data', JSON.stringify({
+    id: 'ws',
+    name: 'Workspace',
+    activeArtifactId: 'missing',
+    artifacts: [
+      { id: 'valid', name: 'Valid.md', content: 'hello', createdAt: 1, updatedAt: 2, type: 'markdown', revisions: [] },
+      { id: 'invalid' },
+    ],
+  }));
+
+  const loaded = getWorkspace();
+  assert.equal(loaded.artifacts.length, 1);
+  assert.equal(loaded.artifacts[0].id, 'valid');
+  assert.equal(loaded.activeArtifactId, 'valid');
+});
+
+test('setActiveArtifact ignores unknown IDs instead of corrupting active state', () => {
+  const workspace = { id: 'ws', name: 'Workspace', artifacts: [], activeArtifactId: null } satisfies Workspace;
+  createArtifact(workspace, 'Notes.md', 'markdown');
+  const updated = setActiveArtifact('missing');
+  assert.notEqual(updated.activeArtifactId, 'missing');
 });
