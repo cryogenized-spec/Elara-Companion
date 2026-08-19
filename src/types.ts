@@ -40,7 +40,7 @@ export type MemoryImportance = 'low' | 'normal' | 'important' | 'core';
 export type MemoryCategory = 'User' | 'Elara' | 'Relationship' | 'Home' | 'Work' | 'Projects' | 'Preferences' | 'People' | 'Places' | 'Experiences' | 'Observations' | 'Plans' | 'Other';
 export interface MemoryItem { id: string; content: string; confidence: MemoryConfidence; importance: MemoryImportance; isPrivate: boolean; category: MemoryCategory; createdAt: string; updatedAt: string; eventDate?: string; pinned?: boolean; tags?: string[]; sourceConversationId?: string; }
 export interface MemoryScratchpadState { memories: MemoryItem[]; lastMaintenanceAt?: string; autoMaintenanceEnabled: boolean; }
-export type MemoryActionType = 'ADD' | 'UPDATE' | 'MERGE' | 'DELETE' | 'NO_ACTION';
+export type MemoryActionType = 'ADD' | 'CREATE' | 'UPDATE' | 'MERGE' | 'DELETE' | 'NO_ACTION';
 export interface MemoryAction { type: MemoryActionType; targetId?: string; mergeTargetIds?: string[]; memory?: { content: string; confidence: MemoryConfidence; importance: MemoryImportance; isPrivate: boolean; category: MemoryCategory; eventDate?: string; tags?: string[]; }; reason?: string; }
 
 export const AVAILABLE_MODELS: GeminiModelOption[] = [
