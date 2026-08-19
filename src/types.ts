@@ -1,4 +1,4 @@
-export type Role = 'user' | 'assistant';
+export type Role = 'user' | 'assistant' | 'model';
 
 export interface ThoughtStep { id: string; step_title: string; summary: string; timestamp: number; }
 export interface CanvasData { title: string; content: string; artifactId?: string; }
