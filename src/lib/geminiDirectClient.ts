@@ -11,6 +11,7 @@ import {
   mergeTouchedArtifactIds,
   MAX_AGENT_ITERATIONS,
   normalizeModel,
+  ELARA_SAFETY_SETTINGS,
 } from './chatRuntime';
 
 export interface DirectStreamParams {
@@ -39,6 +40,7 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
   const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
   const contents: any[] = buildConversationContents(history, message, image);
   const cleanModel = normalizeModel(model);
+  // Safety settings are always forced inside buildRuntimeConfig
   const config: any = buildRuntimeConfig({
     model: cleanModel,
     systemPrompt,
@@ -161,7 +163,15 @@ export async function runDirectTitleGeneration(apiKey: string, firstUserMsg: str
     const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
     const ctx = await buildInCharacterUtilityContext();
     const prompt = `Using the system/persona above, act as Elara and name this conversation naturally in-character. Produce a concise title of 2-6 words that a human would actually want to see in a conversation list. Do not use quotes, prefixes, emojis, or generic labels like "Conversation". Do not mention this instruction.\n\nConversation opening:\nUser: ${firstUserMsg.slice(0, 500)}\nElara: ${firstAssistantMsg.slice(0, 700)}\n\nReturn only the title.`;
-    const res = await ai.models.generateContent({ model: normalizeModel(ctx.model), contents: [{ role: 'user', parts: [{ text: `${ctx.systemPrompt}\n\n${prompt}` }] }], config: { maxOutputTokens: 30, temperature: 0.65 } });
+    const res = await ai.models.generateContent({
+      model: normalizeModel(ctx.model),
+      contents: [{ role: 'user', parts: [{ text: `${ctx.systemPrompt}\n\n${prompt}` }] }],
+      config: {
+        maxOutputTokens: 30,
+        temperature: 0.65,
+        safetySettings: ELARA_SAFETY_SETTINGS,
+      },
+    });
     const title = res.text?.trim().replace(/^["'`]|["'`]$/g, '');
     return title || 'New Conversation';
   } catch (e) {
@@ -177,7 +187,16 @@ export async function runDirectMemoryExtraction(apiKey: string, userMessage: str
     const ctx = await buildInCharacterUtilityContext();
     const formattedExisting = currentMemories?.length ? currentMemories.slice(0, 40).map((m: any) => `[ID: ${m.id}] [Category: ${m.category}] [Confidence: ${m.confidence}] [Importance: ${m.importance}] "${m.content}"`).join('\n') : 'No existing memories recorded yet.';
     const prompt = `Using the system/persona above, quietly maintain Elara's persistent memory notebook in-character. Decide whether this interaction contains a durable fact, preference, relationship detail, plan, observation, or other long-lived information worth preserving. Do not invent facts. Prefer no action over weak inference. Return ONLY valid JSON matching this schema: {"actions":[{"type":"CREATE"|"UPDATE"|"DELETE","targetId":"string","memory":{"content":"concise first-person-neutral notebook note","category":"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other","importance":"core|important|normal|low","confidence":"certain|likely|uncertain","isPrivate":true,"tags":["string"],"eventDate":"optional YYYY-MM-DD"},"reason":"brief reason"}]}\n\nRECENT INTERACTION:\nUser: "${userMessage.slice(0, 1200)}"\nElara: "${assistantResponse.slice(0, 1800)}"\n\nCURRENT NOTEBOOK:\n${formattedExisting}\n\nUSER NAME: ${userName || ctx.userName}`;
-    const res = await ai.models.generateContent({ model: normalizeModel(ctx.model), contents: [{ role: 'user', parts: [{ text: `${ctx.systemPrompt}\n\n${prompt}` }] }], config: { temperature: 0.15, responseMimeType: 'application/json', maxOutputTokens: 700 } });
+    const res = await ai.models.generateContent({
+      model: normalizeModel(ctx.model),
+      contents: [{ role: 'user', parts: [{ text: `${ctx.systemPrompt}\n\n${prompt}` }] }],
+      config: {
+        temperature: 0.15,
+        responseMimeType: 'application/json',
+        maxOutputTokens: 700,
+        safetySettings: ELARA_SAFETY_SETTINGS,
+      },
+    });
     const parsed = JSON.parse(res.text || '{}');
     return Array.isArray(parsed?.actions) ? parsed.actions : [];
   } catch (e) {
@@ -193,7 +212,15 @@ export async function runDirectMemoryMaintenance(apiKey: string, memories: Memor
     const ctx = await buildInCharacterUtilityContext();
     const formattedList = memories.map((m) => `[ID: ${m.id}] [Category: ${m.category}] [Importance: ${m.importance}] [Confidence: ${m.confidence}] "${m.content}"`).join('\n');
     const prompt = `Using the system/persona above, audit Elara's long-term memory notebook without breaking character. Identify duplicate, stale, contradictory, or superseded notes. Return ONLY valid JSON: {"summary":"Brief 1-2 sentence explanation of maintenance performed","actions":[{"type":"DELETE"|"UPDATE","targetId":"ID","memory":{"content":"updated concise text if updating","importance":"core|important|normal|low","confidence":"certain|likely|uncertain","category":"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other"},"reason":"why"}]}`;
-    const res = await ai.models.generateContent({ model: normalizeModel(ctx.model), contents: [{ role: 'user', parts: [{ text: `${ctx.systemPrompt}\n\n${prompt}\n\nMEMORIES:\n${formattedList}\n\nUSER: ${userName || ctx.userName}` }] }], config: { temperature: 0.15, responseMimeType: 'application/json' } });
+    const res = await ai.models.generateContent({
+      model: normalizeModel(ctx.model),
+      contents: [{ role: 'user', parts: [{ text: `${ctx.systemPrompt}\n\n${prompt}\n\nMEMORIES:\n${formattedList}\n\nUSER: ${userName || ctx.userName}` }] }],
+      config: {
+        temperature: 0.15,
+        responseMimeType: 'application/json',
+        safetySettings: ELARA_SAFETY_SETTINGS,
+      },
+    });
     const parsed = JSON.parse(res.text || '{}');
     return { actions: parsed?.actions || [], summary: parsed?.summary || 'Memory notebook audit complete.' };
   } catch (e) {

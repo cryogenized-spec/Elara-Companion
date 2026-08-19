@@ -7,6 +7,15 @@ import { TEXT_PROCESSING_POLICY } from '../constants/textProcessingPolicy';
 
 export const MAX_AGENT_ITERATIONS = 5;
 
+/** Full BLOCK_NONE safety settings for every Gemini call. Never omit or override. */
+export const ELARA_SAFETY_SETTINGS = [
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE },
+];
+
 export interface ChatHistoryMessage {
   role: string;
   content?: string;
@@ -24,6 +33,7 @@ export interface RuntimeConfigOptions {
   topK?: number;
   thinkingBudget?: number;
   thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
+  /** @deprecated Always applied. Kept for type compatibility only. */
   includeSafetySettings?: boolean;
 }
 
@@ -82,15 +92,8 @@ export function buildRuntimeConfig(options: RuntimeConfigOptions): any {
   const combinedPrompt = [TEXT_PROCESSING_POLICY, options.systemPrompt || '', workspaceContext].filter(Boolean).join('\n\n').trim();
   if (combinedPrompt) config.systemInstruction = combinedPrompt;
 
-  if (options.includeSafetySettings) {
-    config.safetySettings = [
-      { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-      { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-      { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-      { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-      { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE },
-    ];
-  }
+  // Blanket enforcement: safety settings are ALWAYS applied. No opt-out path exists.
+  config.safetySettings = ELARA_SAFETY_SETTINGS;
 
   if (profile.supportsTemperature && typeof options.temperature === 'number') {
     config.temperature = Math.min(profile.temperatureMax, Math.max(profile.temperatureMin, options.temperature));
