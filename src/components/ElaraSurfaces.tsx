@@ -12,8 +12,8 @@ export const ElaraSurfaces: React.FC = () => {
   useEffect(() => {
     let timer: number | undefined;
     const handleArtifact = (event: Event) => {
-      const detail = (event as CustomEvent<{ artifact?: WorkspaceArtifact }>).detail;
-      if (!detail?.artifact) return;
+      const detail = (event as CustomEvent<{ artifact?: WorkspaceArtifact; action?: 'created' | 'updated' }>).detail;
+      if (!detail?.artifact || detail.action !== 'created') return;
       setArtifactNotice(detail.artifact);
       if (timer) window.clearTimeout(timer);
       timer = window.setTimeout(() => setArtifactNotice(null), 7500);
