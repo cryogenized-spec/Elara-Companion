@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
 import { normalizeMemoryItem, normalizeMemoryState } from '../memoryStorage';
 
 describe('memory schema normalization', () => {
@@ -14,15 +15,15 @@ describe('memory schema normalization', () => {
       updatedAt: '2026-08-19T00:00:00.000Z',
     });
 
-    expect(memory).not.toBeNull();
-    expect(memory?.kind).toBe('preference');
-    expect(memory?.lifecycle).toBe('persistent');
-    expect(memory?.source).toBe('system');
-    expect(memory?.tags).toEqual([]);
-    expect(memory?.relatedMemoryIds).toEqual([]);
-    expect(memory?.links).toEqual([]);
-    expect(memory?.reinforcementCount).toBe(0);
-    expect(memory?.pinned).toBe(false);
+    assert.ok(memory);
+    assert.equal(memory.kind, 'preference');
+    assert.equal(memory.lifecycle, 'persistent');
+    assert.equal(memory.source, 'system');
+    assert.deepEqual(memory.tags, []);
+    assert.deepEqual(memory.relatedMemoryIds, []);
+    assert.deepEqual(memory.links, []);
+    assert.equal(memory.reinforcementCount, 0);
+    assert.equal(memory.pinned, false);
   });
 
   it('preserves explicit canonical metadata', () => {
@@ -44,12 +45,13 @@ describe('memory schema normalization', () => {
       pinned: true,
     });
 
-    expect(memory?.kind).toBe('episode');
-    expect(memory?.lifecycle).toBe('contextual');
-    expect(memory?.source).toBe('conversation');
-    expect(memory?.links).toEqual([{ type: 'artifact', id: 'art-1', label: 'Canvas' }]);
-    expect(memory?.reinforcementCount).toBe(3);
-    expect(memory?.pinned).toBe(true);
+    assert.ok(memory);
+    assert.equal(memory.kind, 'episode');
+    assert.equal(memory.lifecycle, 'contextual');
+    assert.equal(memory.source, 'conversation');
+    assert.deepEqual(memory.links, [{ type: 'artifact', id: 'art-1', label: 'Canvas' }]);
+    assert.equal(memory.reinforcementCount, 3);
+    assert.equal(memory.pinned, true);
   });
 
   it('returns a versioned state and filters malformed memory entries', () => {
@@ -61,9 +63,9 @@ describe('memory schema normalization', () => {
       autoMaintenanceEnabled: false,
     });
 
-    expect(state.schemaVersion).toBe(2);
-    expect(state.autoMaintenanceEnabled).toBe(false);
-    expect(state.memories).toHaveLength(1);
-    expect(state.memories[0].id).toBe('valid');
+    assert.equal(state.schemaVersion, 2);
+    assert.equal(state.autoMaintenanceEnabled, false);
+    assert.equal(state.memories.length, 1);
+    assert.equal(state.memories[0].id, 'valid');
   });
 });
