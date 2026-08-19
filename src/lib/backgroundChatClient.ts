@@ -31,8 +31,26 @@ export interface BackgroundJobStatus {
   error?: unknown;
 }
 
+export interface PersistedBackgroundJob {
+  conversationId: string;
+  assistantMessageId: string;
+  jobId: string;
+  createdAt: number;
+}
+
 const URL_KEY = 'elara_background_runtime_url_v1';
 const TOKEN_KEY = 'elara_background_runtime_token_v1';
+const ENABLED_KEY = 'elara_background_runtime_enabled_v1';
+const JOBS_KEY = 'elara_background_jobs_v1';
+
+function readJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) as T : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export function getBackgroundRuntimeConfig(): BackgroundRuntimeConfig | null {
   try {
@@ -58,6 +76,49 @@ export function saveBackgroundRuntimeConfig(config: BackgroundRuntimeConfig | nu
   }
 }
 
+export function isBackgroundRuntimeConfigured(): boolean {
+  return Boolean(getBackgroundRuntimeConfig());
+}
+
+export function isBackgroundRuntimeEnabled(): boolean {
+  try {
+    return localStorage.getItem(ENABLED_KEY) === 'true' && isBackgroundRuntimeConfigured();
+  } catch {
+    return false;
+  }
+}
+
+export function setBackgroundRuntimeEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(ENABLED_KEY, String(enabled));
+  } catch {
+    // Best effort only.
+  }
+}
+
+export function loadPersistedBackgroundJobs(): PersistedBackgroundJob[] {
+  return readJson<PersistedBackgroundJob[]>(JOBS_KEY, []);
+}
+
+export function persistBackgroundJob(record: PersistedBackgroundJob): void {
+  try {
+    const current = loadPersistedBackgroundJobs().filter((item) => item.conversationId !== record.conversationId);
+    current.push(record);
+    localStorage.setItem(JOBS_KEY, JSON.stringify(current));
+  } catch {
+    // Best effort only.
+  }
+}
+
+export function removePersistedBackgroundJob(conversationId: string): void {
+  try {
+    const next = loadPersistedBackgroundJobs().filter((item) => item.conversationId !== conversationId);
+    localStorage.setItem(JOBS_KEY, JSON.stringify(next));
+  } catch {
+    // Best effort only.
+  }
+}
+
 async function runtimeFetch(path: string, init: RequestInit = {}) {
   const config = getBackgroundRuntimeConfig();
   if (!config) throw new Error('Elara background runtime is not configured.');
@@ -72,10 +133,6 @@ async function runtimeFetch(path: string, init: RequestInit = {}) {
   try { data = JSON.parse(raw); } catch { data = { error: raw }; }
   if (!response.ok) throw new Error(data?.error || `Background runtime returned HTTP ${response.status}.`);
   return data;
-}
-
-export function isBackgroundRuntimeConfigured(): boolean {
-  return Boolean(getBackgroundRuntimeConfig());
 }
 
 export async function createBackgroundChatJob(request: BackgroundChatJobRequest): Promise<{ id: string }> {
@@ -93,8 +150,8 @@ export async function getBackgroundChatJob(id: string): Promise<BackgroundJobSta
 export async function waitForBackgroundChatJob(
   id: string,
   onStatus?: (status: BackgroundJobStatus) => void,
-  intervalMs = 1000,
-  timeoutMs = 15 * 60 * 1000,
+  intervalMs = 1500,
+  timeoutMs = 30 * 60 * 1000,
 ): Promise<BackgroundJobStatus> {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
