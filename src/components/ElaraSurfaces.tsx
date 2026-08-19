@@ -4,7 +4,6 @@ import { ArtifactsPanel } from './ArtifactsPanel';
 import { GoogleWorkspaceSettingsPanel } from './GoogleWorkspaceSettingsPanel';
 import { DurableBackgroundPanel } from './DurableBackgroundPanel';
 import { ScratchpadPanel } from './ScratchpadPanel';
-import { BackgroundRuntimePanel } from './BackgroundRuntimePanel';
 import { WorkspaceArtifact } from '../types';
 
 export const ElaraSurfaces: React.FC = () => {
@@ -36,9 +35,7 @@ export const ElaraSurfaces: React.FC = () => {
             <div className="min-w-0 flex-1">
               <div className="text-xs font-semibold text-zinc-100">Elara created an artifact</div>
               <div className="mt-0.5 truncate text-[11px] text-zinc-400">{artifactNotice.name}</div>
-              <button onClick={() => { setSurface('artifacts'); setArtifactNotice(null); }} className="mt-2 inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white hover:bg-violet-500">
-                <Grid2X2 className="h-3.5 w-3.5" /> View in Artifacts
-              </button>
+              <button onClick={() => { setSurface('artifacts'); setArtifactNotice(null); }} className="mt-2 inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white hover:bg-violet-500"><Grid2X2 className="h-3.5 w-3.5" /> View in Artifacts</button>
             </div>
             <button onClick={() => setArtifactNotice(null)} className="h-7 w-7 rounded-lg text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300" aria-label="Dismiss">×</button>
           </div>
@@ -46,18 +43,10 @@ export const ElaraSurfaces: React.FC = () => {
       )}
 
       <div className="fixed bottom-4 right-4 z-30 flex max-w-[calc(100vw-2rem)] items-center gap-2 overflow-x-auto sm:bottom-5 sm:right-5">
-        <button onClick={() => setSurface('artifacts')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-violet-500/40 hover:text-white" title="Artifacts">
-          <Grid2X2 className="h-4 w-4 text-violet-400" /> Artifacts
-        </button>
-        <button onClick={() => setSurface('scratchpad')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-amber-500/40 hover:text-white" title="Scratchpad">
-          <BookOpen className="h-4 w-4 text-amber-400" /> Scratchpad
-        </button>
-        <button onClick={() => setSurface('google')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-sky-500/40 hover:text-white" title="Google Workspace">
-          <Cloud className="h-4 w-4 text-sky-400" /> Google
-        </button>
-        <button onClick={() => setSurface('background')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-violet-500/40 hover:text-white" title="Durable background runtime">
-          <CloudCog className="h-4 w-4 text-violet-400" /> Background
-        </button>
+        <button onClick={() => setSurface('artifacts')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-violet-500/40 hover:text-white" title="Artifacts"><Grid2X2 className="h-4 w-4 text-violet-400" /> Artifacts</button>
+        <button onClick={() => setSurface('scratchpad')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-amber-500/40 hover:text-white" title="Scratchpad"><BookOpen className="h-4 w-4 text-amber-400" /> Scratchpad</button>
+        <button onClick={() => setSurface('google')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-sky-500/40 hover:text-white" title="Google Workspace"><Cloud className="h-4 w-4 text-sky-400" /> Google</button>
+        <button onClick={() => setSurface('background')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-violet-500/40 hover:text-white" title="Durable background runtime"><CloudCog className="h-4 w-4 text-violet-400" /> Background</button>
       </div>
 
       {surface === 'artifacts' && <ArtifactsPanel onBack={() => setSurface(null)} />}
@@ -71,7 +60,6 @@ export const ElaraSurfaces: React.FC = () => {
           <main className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5"><DurableBackgroundPanel /></main>
         </div>
       )}
-      {surface === 'background' && <BackgroundRuntimePanel onClose={() => setSurface(null)} />}
 
       {surface === 'google' && (
         <div className="fixed inset-0 z-30 flex h-[100dvh] w-full flex-col bg-[#09090b] text-zinc-100">
