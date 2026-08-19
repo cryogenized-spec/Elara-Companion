@@ -1,0 +1,103 @@
+name: Maintenance - runtime refactor
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-branch:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Patch dedicated branch
+        shell: bash
+        run: |
+          git fetch origin refactor/remove-google-prefetch
+          git checkout refactor/remove-google-prefetch
+
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/App.tsx')
+          text = path.read_text()
+
+          old_import = '''import { \n  isGoogleConnected,
+  getAccessToken,
+  getTasks, 
+  getUpcomingCalendarEvents, 
+  listGmailMessages, 
+  searchContacts, 
+  searchKeepNotes,
+  createKeepNote,
+  updateKeepNote,
+  getKeepNote,
+  createGoogleDoc,
+  editGoogleDoc,
+  getGoogleDoc,
+  searchGoogleDriveDocs
+} from './lib/googleApi';'''
+          new_import = "import { getAccessToken } from './lib/googleApi';"
+          if old_import not in text:
+              raise SystemExit('Expected legacy googleApi import block was not found')
+          text = text.replace(old_import, new_import, 1)
+
+          start_marker = '    // Background Google Workspace Autonomous Sync Detection'
+          end_marker = '    const formattedSystemPrompt = buildSystemPayload({'
+          start = text.find(start_marker)
+          end = text.find(end_marker, start)
+          if start == -1 or end == -1:
+              raise SystemExit('Expected legacy Google prefetch block was not found')
+
+          text = text[:start] + text[end:]
+          text = text.replace('      baseSystemInstruction: effectiveBaseSystemInstruction,', '      baseSystemInstruction,', 1)
+          path.write_text(text)
+          PY
+
+          rm -f .github/workflows/maintenance-remove-google-prefetch.yml maintenance-trigger.txt
+
+      - name: Verify source boundary
+        run: |
+          ! grep -n "Background Google Workspace Autonomous Sync Detection" src/App.tsx
+          ! grep -n "AUTONOMOUS BACKGROUND TOOL SYNC" src/App.tsx
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Commit refactor branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.tsx .github/workflows/maintenance-remove-google-prefetch.yml maintenance-trigger.txt
+          git commit -m "refactor: remove legacy Google background prefetch"
+          git push origin refactor/remove-google-prefetch
+
+      - name: Remove maintenance workflow from main
+        run: |
+          git checkout main
+          rm -f .github/workflows/maintenance-runtime-refactor.yml
+          git add .github/workflows/maintenance-runtime-refactor.yml
+          git commit -m "chore: remove temporary runtime maintenance workflow [skip ci]"
+          git push origin main
