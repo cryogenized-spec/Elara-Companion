@@ -12,8 +12,8 @@
     "allowJs": true,
     "jsx": "react-jsx",
     "paths": { "@/*": ["./*"] },
-    "types": ["@cloudflare/workers-types", "node"],
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": ["background-runtime"]
 }
