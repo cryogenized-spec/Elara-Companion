@@ -16,6 +16,8 @@ import { getActiveThoughtSentence, parseThoughtSteps, extractThoughtsAndContent 
 import { extractCanvases } from './utils/canvasUtils';
 import { runDirectGeminiStream, runDirectMemoryExtraction, runDirectTitleGeneration } from './lib/geminiDirectClient';
 import { applyMemoryActions } from './lib/memoryProcessor';
+import { createBackgroundChatJob, isBackgroundRuntimeEnabled, loadPersistedBackgroundJobs, persistBackgroundJob, removePersistedBackgroundJob, waitForBackgroundChatJob } from './lib/backgroundChatClient';
+import { notifyBackgroundCompletion } from './lib/backgroundService';
 
 import { 
   getDbConversations, setDbConversations,
@@ -80,6 +82,41 @@ export default function App() {
       setIsLoaded(true);
     });
   }, []);
+
+  // Resume durable background jobs after page reload
+  useEffect(() => {
+    if (!isLoaded) return;
+    let cancelled = false;
+    const resumeJobs = async () => {
+      const jobs = loadPersistedBackgroundJobs();
+      for (const job of jobs) {
+        try {
+          const status = await waitForBackgroundChatJob(job.jobId);
+          if (cancelled) return;
+          if (['complete', 'completed'].includes(status.status)) {
+            const text = status.output?.result?.text || '';
+            setConversations((prev) => prev.map((c) => c.id !== job.conversationId ? c : ({
+              ...c,
+              updatedAt: Date.now(),
+              messages: c.messages.map((m) => m.id === job.assistantMessageId ? { ...m, content: text, isStreaming: false, isThinking: false, backgroundJobId: undefined } : m),
+            })));
+            removePersistedBackgroundJob(job.conversationId);
+            void notifyBackgroundCompletion('Elara finished', text.slice(0, 160) || 'Your background response is ready.');
+          } else if (['errored', 'failed', 'terminated'].includes(status.status)) {
+            setConversations((prev) => prev.map((c) => c.id !== job.conversationId ? c : ({
+              ...c,
+              messages: c.messages.map((m) => m.id === job.assistantMessageId ? { ...m, isStreaming: false, isThinking: false, isError: true, errorMessage: 'Background execution failed. Please retry.' , backgroundJobId: undefined } : m),
+            })));
+            removePersistedBackgroundJob(job.conversationId);
+          }
+        } catch (error) {
+          console.warn('Durable background job resume deferred:', error);
+        }
+      }
+    };
+    void resumeJobs();
+    return () => { cancelled = true; };
+  }, [isLoaded]);
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -335,6 +372,7 @@ export default function App() {
 
     let lastChunkTime = Date.now();
     let isDone = false;
+    let durableJobAccepted = false;
 
     // Watchdog interval to catch stalled background processes on mobile
     const WATCHDOG_TIMEOUT_MS = 20000;
@@ -477,8 +515,34 @@ export default function App() {
       // Increment API rate limit
       incrementRateLimit(settings.model || 'gemini-3.7-flash');
 
-      // If user configured a direct API Key, run direct client streaming
-      if (settings.apiKey && settings.apiKey.trim()) {
+      // Optional durable server-side execution. Once accepted, never fall back to another Gemini call.
+      if (isBackgroundRuntimeEnabled()) {
+        const durableJob = await createBackgroundChatJob({
+          message: messageText,
+          image: attachedImage,
+          history: historyPayload.map((item) => ({ role: item.role === 'model' ? 'assistant' : 'user', content: item.content, image: item.image })),
+          systemPrompt: formattedSystemPrompt,
+          model: settings.model || 'gemini-3.7-flash',
+          temperature: settings.temperature,
+          maxOutputTokens: settings.maxOutputTokens,
+          topP: settings.topP,
+          topK: settings.topK,
+        });
+        durableJobAccepted = true;
+        persistBackgroundJob({ conversationId: targetConvId, assistantMessageId: assistantMsgId, jobId: durableJob.id, createdAt: Date.now() });
+        setConversations((prev) => prev.map((c) => c.id !== targetConvId ? c : ({
+          ...c,
+          messages: c.messages.map((m) => m.id === assistantMsgId ? { ...m, backgroundJobId: durableJob.id, currentThoughtSentence: 'Elara is working in the background…' } : m),
+        })));
+        const durableStatus = await waitForBackgroundChatJob(durableJob.id);
+        if (!['complete', 'completed'].includes(durableStatus.status)) {
+          throw new Error(durableStatus.error ? String(durableStatus.error) : `Background execution ended with status ${durableStatus.status}.`);
+        }
+        const durableText = durableStatus.output?.result?.text || '';
+        accumulatedText = durableText;
+        handleChunkArrival({ text: durableText, finishReason: durableStatus.output?.result?.finishReason || undefined });
+        removePersistedBackgroundJob(targetConvId);
+      } else if (settings.apiKey && settings.apiKey.trim()) {
         await runDirectGeminiStream({
           apiKey: settings.apiKey.trim(),
           model: settings.model || 'gemini-3.7-flash',
@@ -704,6 +768,9 @@ export default function App() {
       }
 
     } catch (err: any) {
+      if (durableJobAccepted) {
+        console.error('Durable background execution failed after acceptance:', err);
+      }
       if (err.name === 'AbortError' && !err.message?.includes('Connection lost')) {
         console.log('Stream generation stopped by user');
       } else {

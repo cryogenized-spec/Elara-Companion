@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Bell, Cloud, CloudCog, Grid2X2, X, BookOpen } from 'lucide-react';
 import { ArtifactsPanel } from './ArtifactsPanel';
 import { GoogleWorkspaceSettingsPanel } from './GoogleWorkspaceSettingsPanel';
+import { DurableBackgroundPanel } from './DurableBackgroundPanel';
 import { ScratchpadPanel } from './ScratchpadPanel';
 import { BackgroundRuntimePanel } from './BackgroundRuntimePanel';
 import { WorkspaceArtifact } from '../types';
@@ -61,6 +62,15 @@ export const ElaraSurfaces: React.FC = () => {
 
       {surface === 'artifacts' && <ArtifactsPanel onBack={() => setSurface(null)} />}
       {surface === 'scratchpad' && <ScratchpadPanel onBack={() => setSurface(null)} />}
+      {surface === 'background' && (
+        <div className="fixed inset-0 z-30 flex h-[100dvh] w-full flex-col bg-[#09090b] text-zinc-100">
+          <header className="flex min-h-14 items-center gap-3 border-b border-zinc-800 bg-[#0d0d0f]/95 px-3 backdrop-blur-xl">
+            <button onClick={() => setSurface(null)} className="h-9 w-9 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100">←</button>
+            <div><div className="text-sm font-semibold">Background runtime</div><div className="text-[10px] text-zinc-500">Continue supported work after the page closes</div></div>
+          </header>
+          <main className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5"><DurableBackgroundPanel /></main>
+        </div>
+      )}
       {surface === 'background' && <BackgroundRuntimePanel onClose={() => setSurface(null)} />}
 
       {surface === 'google' && (
