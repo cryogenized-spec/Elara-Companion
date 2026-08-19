@@ -1,5 +1,5 @@
 import express from "express";
-import { getGeminiClient, formatApiErrorDetails, normalizeModel, HarmCategory, HarmBlockThreshold } from "../services/gemini";
+import { getGeminiClient, formatApiErrorDetails, normalizeModelName, HarmCategory, HarmBlockThreshold } from "../services/gemini";
 import {
   buildConversationContents,
   buildRuntimeConfig,
@@ -16,7 +16,7 @@ export function setupChatRoutes(app: express.Express) {
 
     const { message, image, history = [], systemPrompt, model, temperature, maxOutputTokens, topP, topK, thinkingBudget, thinkingLevel, workspace, googleToken } = req.body;
     const requestedModelStr = (typeof model === 'string' && model.trim()) ? model.trim() : (process.env.GEMINI_MODEL || 'gemini-3.7-flash');
-    const selectedModel = normalizeModel(requestedModelStr);
+    const selectedModel = normalizeModelName(requestedModelStr);
 
     try {
       if (!message && !image && history.length === 0) {
