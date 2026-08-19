@@ -52,11 +52,8 @@ edit('src/App.tsx', (source) => {
   const importLine = "import { prepareBackgroundService, notifyBackgroundCompletion } from './lib/backgroundService';";
   if (!next.includes(importLine)) next = next.replace(importAnchor, `${importAnchor}\n${importLine}`);
 
-  const startStream = "  const streamAssistantResponse = async (\n";
-  if (next.includes(startStream) && !next.includes('void prepareBackgroundService();')) {
-    next = next.replace(startStream, `${startStream}`);
-    const signatureEnd = "  ) => {\n    setIsStreaming(true);";
-    if (!next.includes(signatureEnd)) throw new Error('streamAssistantResponse start marker not found');
+  const signatureEnd = "  ) => {\n    setIsStreaming(true);";
+  if (next.includes(signatureEnd) && !next.includes('void prepareBackgroundService();')) {
     next = next.replace(signatureEnd, "  ) => {\n    void prepareBackgroundService();\n    setIsStreaming(true);");
   }
 
@@ -64,15 +61,16 @@ edit('src/App.tsx', (source) => {
   const watchdogEnd = '    const streamArtifactIds: string[] = [];';
   const wi = next.indexOf(watchdogStart);
   const wj = next.indexOf(watchdogEnd, wi);
-  if (wi < 0 || wj < 0 || wj <= wi) throw new Error('watchdog block markers not found');
-  next = next.slice(0, wi) + '    // Background-safe streaming: do not abort simply because the document is hidden.\n\n' + next.slice(wj);
+  if (wi >= 0 && wj > wi) {
+    next = next.slice(0, wi) + '    // Background-safe streaming: do not abort simply because the document is hidden.\n\n' + next.slice(wj);
+  }
 
-  next = next.replace('      clearInterval(watchdogInterval);\n      document.removeEventListener(\'visibilitychange\', handleVisibilityChange);\n', '');
   next = next.replace('      clearInterval(watchdogInterval);\n      document.removeEventListener(\'visibilitychange\', handleVisibilityChange);\n', '');
 
   const successAnchor = '      // Autonomous Background Long-Term Memory Extraction';
-  if (!next.includes('notifyBackgroundCompletion')) {
-    next = next.replace(successAnchor, "      void notifyBackgroundCompletion(\n        'Elara finished thinking',\n        finalCleanContent.trim().slice(0, 180) || 'Your response is ready.',\n      );\n\n" + successAnchor);
+  const completionCall = '      void notifyBackgroundCompletion(\n        \'Elara finished thinking\',\n        finalCleanContent.trim().slice(0, 180) || \'Your response is ready.\',\n      );\n\n';
+  if (!next.includes('void notifyBackgroundCompletion(') && next.includes(successAnchor)) {
+    next = next.replace(successAnchor, completionCall + successAnchor);
   }
   return next;
 }, 'App');
