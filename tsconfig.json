@@ -12,6 +12,7 @@
     "allowJs": true,
     "jsx": "react-jsx",
     "paths": { "@/*": ["./*"] },
+    "types": ["node"],
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
