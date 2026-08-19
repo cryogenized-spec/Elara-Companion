@@ -35,7 +35,60 @@ jobs:
           text = text.replace(old_state, new_state, 1)
 
           marker = "  useEffect(() => () => {\n    if (debounceRef.current) clearTimeout(debounceRef.current);\n    persistCurrent('user');\n  }, [persistCurrent]);"
-          addition = r'''\n\n  useEffect(() => {\n    const refreshFromEvent = (event: Event) => {\n      const detail = (event as CustomEvent<{ artifact?: WorkspaceArtifact; action?: string }>).detail;\n      const next = getWorkspace();\n      setWorkspace(next);\n      const targetId = detail?.artifact?.id;\n      const latest = targetId ? next.artifacts.find((artifact) => artifact.id === targetId) : null;\n      if (latest && latest.id === next.activeArtifactId) {\n        contentRef.current = latest.content;\n        setLocalContent(latest.content);\n      }\n    };\n    window.addEventListener('elara:artifact-created', refreshFromEvent);\n    window.addEventListener('storage', refreshFromEvent);\n    return () => {\n      window.removeEventListener('elara:artifact-created', refreshFromEvent);\n      window.removeEventListener('storage', refreshFromEvent);\n    };\n  }, []);\n\n  const headings = useMemo(() => {\n    return localContent.split('\\n').flatMap((line, index) => {\n      const match = /^(#{1,4})\\s+(.+?)\\s*$/.exec(line);\n      if (!match) return [];\n      return [{ level: match[1].length, text: match[2].replace(/[*_`]/g, ''), line: index }];\n    });\n  }, [localContent]);\n\n  const findCount = useMemo(() => {\n    const needle = findQuery.trim().toLowerCase();\n    if (!needle) return 0;\n    return localContent.toLowerCase().split(needle).length - 1;\n  }, [findQuery, localContent]);\n\n  const focusFindMatch = (direction: 1 | -1) => {\n    const query = findQuery.trim();\n    const textarea = textareaRef.current;\n    if (!query || !textarea) return;\n    const source = textarea.value.toLowerCase();\n    const needle = query.toLowerCase();\n    const start = direction > 0 ? textarea.selectionEnd : Math.max(0, textarea.selectionStart - 1);\n    const index = direction > 0 ? source.indexOf(needle, start) : source.lastIndexOf(needle, start);\n    const target = index >= 0 ? index : (direction > 0 ? source.indexOf(needle) : source.lastIndexOf(needle));\n    if (target >= 0) {\n      setCanvasMode('raw');\n      requestAnimationFrame(() => {\n        textarea.focus();\n        textarea.setSelectionRange(target, target + needle.length);\n      });\n    }\n  };\n'''
+          addition = '''
+
+  useEffect(() => {
+    const refreshFromEvent = (event: Event) => {
+      const detail = (event as CustomEvent<{ artifact?: WorkspaceArtifact; action?: string }>).detail;
+      const next = getWorkspace();
+      setWorkspace(next);
+      const targetId = detail?.artifact?.id;
+      const latest = targetId ? next.artifacts.find((artifact) => artifact.id === targetId) : null;
+      if (latest && latest.id === next.activeArtifactId) {
+        contentRef.current = latest.content;
+        setLocalContent(latest.content);
+      }
+    };
+    window.addEventListener('elara:artifact-created', refreshFromEvent);
+    window.addEventListener('storage', refreshFromEvent);
+    return () => {
+      window.removeEventListener('elara:artifact-created', refreshFromEvent);
+      window.removeEventListener('storage', refreshFromEvent);
+    };
+  }, []);
+
+  const headings = useMemo(() => {
+    return localContent.split('\\n').flatMap((line, index) => {
+      const match = /^(#{1,4})\\s+(.+?)\\s*$/.exec(line);
+      if (!match) return [];
+      return [{ level: match[1].length, text: match[2].replace(/[*_`]/g, ''), line: index }];
+    });
+  }, [localContent]);
+
+  const findCount = useMemo(() => {
+    const needle = findQuery.trim().toLowerCase();
+    if (!needle) return 0;
+    return localContent.toLowerCase().split(needle).length - 1;
+  }, [findQuery, localContent]);
+
+  const focusFindMatch = (direction: 1 | -1) => {
+    const query = findQuery.trim();
+    const textarea = textareaRef.current;
+    if (!query || !textarea) return;
+    const source = textarea.value.toLowerCase();
+    const needle = query.toLowerCase();
+    const start = direction > 0 ? textarea.selectionEnd : Math.max(0, textarea.selectionStart - 1);
+    const index = direction > 0 ? source.indexOf(needle, start) : source.lastIndexOf(needle, start);
+    const target = index >= 0 ? index : (direction > 0 ? source.indexOf(needle) : source.lastIndexOf(needle));
+    if (target >= 0) {
+      setCanvasMode('raw');
+      requestAnimationFrame(() => {
+        textarea.focus();
+        textarea.setSelectionRange(target, target + needle.length);
+      });
+    }
+  };
+'''
           assert marker in text
           text = text.replace(marker, marker + addition, 1)
 
@@ -53,7 +106,11 @@ jobs:
           text = text.replace(history_marker, history_replacement, 1)
 
           insert_before = '      {historyOpen && activeArtifact &&'
-          panels = '''      {outlineOpen && <div className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm" onClick={() => setOutlineOpen(false)}><section className="absolute inset-x-3 bottom-3 max-h-[75dvh] overflow-hidden rounded-2xl border border-zinc-800 bg-[#111113] shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3"><div><div className="text-sm font-semibold">Document outline</div><div className="text-[10px] text-zinc-500">{headings.length} headings</div></div><button onClick={() => setOutlineOpen(false)} className="rounded-lg p-1.5 text-zinc-500"><X className="h-4 w-4" /></button></div><div className="max-h-[60dvh] overflow-y-auto p-3">{headings.length === 0 ? <div className="p-4 text-xs text-zinc-600">No Markdown headings found.</div> : headings.map((heading, index) => <button key={`${heading.line}-${index}`} onClick={() => { setOutlineOpen(false); setFindQuery(heading.text); setFindOpen(true); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-zinc-300 hover:bg-zinc-900"><span className="w-5 shrink-0 text-[10px] text-zinc-600">H{heading.level}</span><span className="truncate" style={{ paddingLeft: `${Math.max(0, heading.level - 1) * 10}px` }}>{heading.text}</span></button>)}</div></section></div>}\n\n      {findOpen && <div className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm" onClick={() => setFindOpen(false)}><section className="absolute inset-x-3 top-16 rounded-2xl border border-zinc-800 bg-[#111113] p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="mb-3 flex items-center justify-between"><div><div className="text-sm font-semibold">Find in document</div><div className="text-[10px] text-zinc-500">{findCount} match{findCount === 1 ? '' : 'es'}</div></div><button onClick={() => setFindOpen(false)} className="rounded-lg p-1.5 text-zinc-500"><X className="h-4 w-4" /></button></div><input autoFocus value={findQuery} onChange={(e) => setFindQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') focusFindMatch(e.shiftKey ? -1 : 1); }} placeholder="Search this artifact…" className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-xs outline-none focus:border-sky-500/50" /><div className="mt-3 flex gap-2"><button onClick={() => focusFindMatch(-1)} disabled={!findQuery.trim()} className="flex-1 rounded-xl border border-zinc-800 px-3 py-2 text-xs text-zinc-300 disabled:opacity-40">Previous</button><button onClick={() => focusFindMatch(1)} disabled={!findQuery.trim()} className="flex-1 rounded-xl bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-900 disabled:opacity-40">Next</button></div></section></div>}\n\n'''
+          panels = '''      {outlineOpen && <div className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm" onClick={() => setOutlineOpen(false)}><section className="absolute inset-x-3 bottom-3 max-h-[75dvh] overflow-hidden rounded-2xl border border-zinc-800 bg-[#111113] shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3"><div><div className="text-sm font-semibold">Document outline</div><div className="text-[10px] text-zinc-500">{headings.length} headings</div></div><button onClick={() => setOutlineOpen(false)} className="rounded-lg p-1.5 text-zinc-500"><X className="h-4 w-4" /></button></div><div className="max-h-[60dvh] overflow-y-auto p-3">{headings.length === 0 ? <div className="p-4 text-xs text-zinc-600">No Markdown headings found.</div> : headings.map((heading, index) => <button key={`${heading.line}-${index}`} onClick={() => { setOutlineOpen(false); setFindQuery(heading.text); setFindOpen(true); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-zinc-300 hover:bg-zinc-900"><span className="w-5 shrink-0 text-[10px] text-zinc-600">H{heading.level}</span><span className="truncate" style={{ paddingLeft: `${Math.max(0, heading.level - 1) * 10}px` }}>{heading.text}</span></button>)}</div></section></div>}
+
+      {findOpen && <div className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm" onClick={() => setFindOpen(false)}><section className="absolute inset-x-3 top-16 rounded-2xl border border-zinc-800 bg-[#111113] p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}><div className="mb-3 flex items-center justify-between"><div><div className="text-sm font-semibold">Find in document</div><div className="text-[10px] text-zinc-500">{findCount} match{findCount === 1 ? '' : 'es'}</div></div><button onClick={() => setFindOpen(false)} className="rounded-lg p-1.5 text-zinc-500"><X className="h-4 w-4" /></button></div><input autoFocus value={findQuery} onChange={(e) => setFindQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') focusFindMatch(e.shiftKey ? -1 : 1); }} placeholder="Search this artifact…" className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-xs outline-none focus:border-sky-500/50" /><div className="mt-3 flex gap-2"><button onClick={() => focusFindMatch(-1)} disabled={!findQuery.trim()} className="flex-1 rounded-xl border border-zinc-800 px-3 py-2 text-xs text-zinc-300 disabled:opacity-40">Previous</button><button onClick={() => focusFindMatch(1)} disabled={!findQuery.trim()} className="flex-1 rounded-xl bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-900 disabled:opacity-40">Next</button></div></section></div>}
+
+'''
           assert insert_before in text
           text = text.replace(insert_before, panels + insert_before, 1)
 
