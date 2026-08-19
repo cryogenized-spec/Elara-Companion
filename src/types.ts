@@ -12,6 +12,10 @@ export interface Conversation { id: string; title: string; createdAt: number; up
 
 export interface ElaraSettings {
   systemPrompt: string; personaProtocol: string; intimacyModule: string; runtimeRules: string;
+  /** When true, injects adultFictionModule into the system payload. Default true. */
+  adultFictionEnabled?: boolean;
+  /** Framing text that treats adult/NSFW content as consensual fiction & roleplay. */
+  adultFictionModule?: string;
   userName: string; model: string;
   temperature: number; maxOutputTokens: number; topP: number; topK: number; includeHistory: boolean;
   theme: 'dark' | 'light'; themeMode?: 'dark' | 'light' | 'system';
@@ -62,4 +66,4 @@ export type RevisionSource = 'user' | 'agent' | 'google_sync' | 'restore' | 'sys
 export interface ArtifactRevision { id: string; artifactId: string; revisionNumber: number; content: string; createdAt: number; author: 'user' | 'agent' | 'system'; source: RevisionSource; contentHash: string; }
 export interface WorkspaceArtifact { id: string; name: string; content: string; createdAt: number; updatedAt: number; type: string; provider?: ArtifactProvider; externalId?: string; url?: string; linkedAt?: number; lastSyncedAt?: number; syncStatus?: SyncStatus; syncBaselineHash?: string; revisions?: ArtifactRevision[]; }
 export interface Workspace { id: string; name: string; artifacts: WorkspaceArtifact[]; activeArtifactId: string | null; }
-export interface PersonaSnapshot { id: string; name: string; timestamp: number; systemPrompt: string; personaProtocol: string; intimacyModule: string; runtimeRules: string; }
+export interface PersonaSnapshot { id: string; name: string; timestamp: number; systemPrompt: string; personaProtocol: string; intimacyModule: string; runtimeRules: string; adultFictionEnabled?: boolean; adultFictionModule?: string; }
