@@ -1,3 +1,5 @@
+import { WorkflowEntrypoint } from 'cloudflare:workers';
+
 type JobPayload = {
   message: string;
   image?: string;
@@ -21,22 +23,16 @@ const DEFAULT_MODEL = 'gemini-3.7-flash';
 const DEFAULT_ALLOWED_ORIGIN = '*';
 
 function responseJson(data: unknown, init: ResponseInit = {}, request?: Request) {
-  const origin = request?.headers.get('Origin');
-  const allowedOrigin = (init.headers as Record<string, string> | undefined)?.['Access-Control-Allow-Origin']
-    || origin
-    || DEFAULT_ALLOWED_ORIGIN;
-
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json; charset=utf-8');
-  headers.set('Access-Control-Allow-Origin', allowedOrigin);
+  headers.set('Access-Control-Allow-Origin', request?.headers.get('Origin') || DEFAULT_ALLOWED_ORIGIN);
   headers.set('Vary', 'Origin');
   return new Response(JSON.stringify(data), { ...init, headers });
 }
 
 function withCors(response: Response, request: Request, env: Env) {
   const headers = new Headers(response.headers);
-  const requestOrigin = request.headers.get('Origin');
-  headers.set('Access-Control-Allow-Origin', requestOrigin || env.ALLOWED_ORIGIN || DEFAULT_ALLOWED_ORIGIN);
+  headers.set('Access-Control-Allow-Origin', request.headers.get('Origin') || env.ALLOWED_ORIGIN || DEFAULT_ALLOWED_ORIGIN);
   headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
   headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   headers.set('Vary', 'Origin');
@@ -81,7 +77,6 @@ async function generateGeminiResponse(env: Env, job: JobPayload) {
 
   const model = normalizeModel(job.model);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
-
   const body: Record<string, any> = {
     system_instruction: { parts: [{ text: job.systemPrompt || '' }] },
     contents: buildContents(job.history, job.message, job.image),
@@ -98,24 +93,20 @@ async function generateGeminiResponse(env: Env, job: JobPayload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-
   const raw = await response.text();
-  let data: any = null;
+
+  let data: any;
   try { data = JSON.parse(raw); } catch {
     throw new Error(`Gemini returned non-JSON response (HTTP ${response.status}).`);
   }
 
   if (!response.ok) {
-    const message = data?.error?.message || `Gemini request failed with HTTP ${response.status}.`;
-    throw new Error(message);
+    throw new Error(data?.error?.message || `Gemini request failed with HTTP ${response.status}.`);
   }
 
   const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
   const parts = candidates[0]?.content?.parts || [];
-  const text = parts
-    .filter((part: any) => typeof part?.text === 'string')
-    .map((part: any) => part.text)
-    .join('');
+  const text = parts.filter((part: any) => typeof part?.text === 'string').map((part: any) => part.text).join('');
 
   return {
     text,
@@ -125,14 +116,9 @@ async function generateGeminiResponse(env: Env, job: JobPayload) {
   };
 }
 
-export class ElaraChatWorkflow {
-  constructor(public env: Env, public ctx: ExecutionContext) {}
-
+export class ElaraChatWorkflow extends WorkflowEntrypoint<Env, JobPayload> {
   async run(event: { payload: JobPayload }, step: any) {
-    const result = await step.do('generate-elara-response', async () => {
-      return generateGeminiResponse(this.env, event.payload);
-    });
-
+    const result = await step.do('generate-elara-response', async () => generateGeminiResponse(this.env, event.payload));
     return {
       status: 'completed',
       completedAt: new Date().toISOString(),
@@ -143,9 +129,7 @@ export class ElaraChatWorkflow {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (request.method === 'OPTIONS') {
-      return withCors(new Response(null, { status: 204 }), request, env);
-    }
+    if (request.method === 'OPTIONS') return withCors(new Response(null, { status: 204 }), request, env);
 
     if (!isAuthorized(request, env)) {
       return withCors(responseJson({ error: 'Unauthorized background runtime request.' }, { status: 401 }, request), request, env);
@@ -193,7 +177,7 @@ export default {
 
       return withCors(responseJson({ error: 'Not found.' }, { status: 404 }, request), request, env);
     } catch (error: any) {
-      return withCors(responseJson({ error: error?.message || 'Background runtime error.' }, { status: 500 }, request), request, env);
+      return withCors(responseJson({ error: error?.message || 'Background runtime error.' }, { status: 500 }, request, ), request, env);
     }
   },
 };
