@@ -18,10 +18,10 @@ test('agent registry exposes a single combined tool declaration surface', () => 
 
 test('external Google write declarations require explicit confirmation', () => {
   const writeTools = agentToolDeclarations.filter((tool: any) =>
-    ['create_calendar_event', 'create_google_sheet', 'write_google_sheet_range', 'delete_google_keep_note'].includes(tool.name),
+    ['create_calendar_event', 'create_google_sheet', 'write_google_sheet_range', 'delete_google_keep_note', 'create_google_doc', 'update_google_doc', 'sync_to_google_doc', 'sync_from_google_doc'].includes(tool.name),
   );
 
-  assert.equal(writeTools.length, 4);
+  assert.equal(writeTools.length, 8);
   for (const tool of writeTools) {
     assert.ok(tool.parameters.required.includes('userConfirmed'));
     assert.equal(tool.parameters.properties.userConfirmed.type, 'BOOLEAN');
@@ -34,6 +34,20 @@ test('agent registry blocks unconfirmed Google writes before network dispatch', 
     workspace,
     'create_google_sheet',
     { title: 'Unsafe test write' },
+    'token',
+  );
+
+  assert.equal(result.updatedWorkspace, workspace);
+  assert.equal(result.result.allowed, false);
+  assert.equal(result.result.errorCode, 'GOOGLE_ACTION_CONFIRMATION_REQUIRED');
+});
+
+test('agent registry blocks Workspace-backed Google document writes before dispatch', async () => {
+  const workspace = { id: 'test', name: 'Test', artifacts: [], activeArtifactId: null } as any;
+  const result = await executeAgentTool(
+    workspace,
+    'update_google_doc',
+    { documentId: 'doc-1', content: 'unsafe' },
     'token',
   );
 
