@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Elara Automation State",
+  "type": "object",
+  "properties": {
+    "automations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "prompt", "enabled", "frequency", "date", "time", "timezone", "retryAttempts", "retryDelaySeconds", "nextRunAt"],
+        "properties": {
+          "id": {"type": "string"},
+          "name": {"type": "string"},
+          "prompt": {"type": "string"},
+          "enabled": {"type": "boolean"},
+          "frequency": {"enum": ["once", "daily", "weekly", "monthly"]},
+          "date": {"type": "string"},
+          "time": {"type": "string"},
+          "timezone": {"type": "string"},
+          "retryAttempts": {"type": "integer", "minimum": 1, "maximum": 3},
+          "retryDelaySeconds": {"type": "integer", "minimum": 5, "maximum": 60},
+          "nextRunAt": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "runtime": {
+      "type": "object"
+    }
+  }
+}
