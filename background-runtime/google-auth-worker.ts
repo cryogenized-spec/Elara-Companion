@@ -4,6 +4,7 @@ import {
   consumeOAuthState,
   createOAuthState,
   exchangeAuthorizationCode,
+  getFreshGoogleAccessToken,
   getGoogleConnectionStatus,
   type GoogleVaultEnv,
 } from './googleVault';
@@ -53,6 +54,15 @@ export default {
 
     if (request.method === 'GET' && path === '/google/status') {
       return json(await getGoogleConnectionStatus(env));
+    }
+
+    if (request.method === 'POST' && path === '/google/access') {
+      try {
+        const accessToken = await getFreshGoogleAccessToken(env);
+        return json({ accessToken, tokenType: 'Bearer' });
+      } catch (e: any) {
+        return json({ error: e?.message || 'Google access token unavailable.' }, 401);
+      }
     }
 
     if (request.method === 'POST' && path === '/google/disconnect') {
