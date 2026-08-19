@@ -1,0 +1,43 @@
+name: Elara Automation Executor
+
+on:
+  workflow_dispatch:
+    inputs:
+      automation_id:
+        description: 'Automation id'
+        required: true
+        type: string
+      execution_key:
+        description: 'Idempotent execution key'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elara-automation-${{ inputs.execution_key }}
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Accept automation execution
+        env:
+          ELARA_STATE_REPO: ${{ vars.ELARA_STATE_REPO }}
+          ELARA_STATE_TOKEN: ${{ secrets.ELARA_STATE_TOKEN }}
+          AUTOMATION_ID: ${{ inputs.automation_id }}
+          EXECUTION_KEY: ${{ inputs.execution_key }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: node scripts/automation-executor.mjs
