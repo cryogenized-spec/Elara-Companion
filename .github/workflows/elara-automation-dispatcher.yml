@@ -1,0 +1,38 @@
+name: Elara Automation Dispatcher
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      automation_id:
+        description: 'Optional automation id to dispatch immediately'
+        required: false
+        type: string
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: elara-automation-dispatcher
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Run automation dispatcher
+        env:
+          ELARA_STATE_REPO: ${{ vars.ELARA_STATE_REPO }}
+          ELARA_STATE_TOKEN: ${{ secrets.ELARA_STATE_TOKEN }}
+          AUTOMATION_ID: ${{ inputs.automation_id || '' }}
+        run: node scripts/automation-dispatcher.mjs
