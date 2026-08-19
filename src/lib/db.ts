@@ -1,8 +1,9 @@
 import { get, set, del } from 'idb-keyval';
 import { Conversation, ElaraSettings, WorldState, MemoryScratchpadState, Folder, PersonaSnapshot } from '../types';
 import { DEFAULT_SETTINGS } from './storage';
-import { loadAgentOperatingPolicy, saveAgentOperatingPolicy } from './agentPolicy';
-import { saveActiveScratchpad } from './contextManager';
+import { loadAgentOperatingPolicy, saveAgentOperatingPolicy, AGENT_OPERATING_POLICY_KEY } from './agentPolicy';
+import { saveActiveScratchpad, clearActiveScratchpad, clearUserProfileNotes, USER_PROFILE_NOTES_KEY, ACTIVE_SCRATCHPAD_KEY } from './contextManager';
+import { clearWorkspace } from './workspaceStorage';
 import { DEFAULT_WORLD_STATE } from '../constants/defaultWorldState';
 import { applySettingsAppearance } from './themeManager';
 
@@ -12,57 +13,90 @@ const PORTRAIT_KEY = 'elara_custom_portrait_v2';
 const FOLDERS_KEY = 'elara_folders_v2';
 const WORLD_STATE_KEY = 'elara_world_state_v2';
 const MEMORY_STATE_KEY = 'elara_memory_state_v2';
+const SNAPSHOTS_KEY = 'elara_persona_snapshots_v1';
+const MIGRATION_KEY = 'elara_idb_migrated';
 
-export async function migrateFromLocalStorage() {
-  const isMigrated = await get('elara_idb_migrated');
-  if (isMigrated) return;
-  console.log('Migrating data from localStorage to IndexedDB...');
+const LEGACY_KEYS = [
+  'elara_conversations_v1',
+  'elara_settings_v1',
+  'elara_custom_portrait_v1',
+  'elara_folders_v1',
+  'elara_world_state',
+  'elara_memory_state',
+];
+
+function getLocalStorage(): Storage | null {
+  return typeof localStorage !== 'undefined' ? localStorage : null;
+}
+
+function readLegacy(key: string): string | null {
+  try { return getLocalStorage()?.getItem(key) ?? null; } catch { return null; }
+}
+
+async function migrateValue(idbKey: string, legacyKey: string, transform: (value: unknown) => unknown = (value) => value): Promise<boolean> {
+  const raw = readLegacy(legacyKey);
+  if (!raw) return false;
   try {
-    const rawConvs = localStorage.getItem('elara_conversations_v1');
-    if (rawConvs) await set(CONVERSATIONS_KEY, JSON.parse(rawConvs));
-    const rawSettings = localStorage.getItem('elara_settings_v1');
-    if (rawSettings) await set(SETTINGS_KEY, JSON.parse(rawSettings));
-    const rawPortrait = localStorage.getItem('elara_custom_portrait_v1');
-    if (rawPortrait) await set(PORTRAIT_KEY, rawPortrait);
-    const rawFolders = localStorage.getItem('elara_folders_v1');
-    if (rawFolders) await set(FOLDERS_KEY, JSON.parse(rawFolders));
-    const rawWorld = localStorage.getItem('elara_world_state');
-    if (rawWorld) await set(WORLD_STATE_KEY, JSON.parse(rawWorld));
-    const rawMemory = localStorage.getItem('elara_memory_state');
-    if (rawMemory) await set(MEMORY_STATE_KEY, JSON.parse(rawMemory));
-    await set('elara_idb_migrated', true);
-    console.log('Migration complete.');
-  } catch (err) {
-    console.error('Migration failed:', err);
+    await set(idbKey, transform(JSON.parse(raw)));
+    return true;
+  } catch (error) {
+    console.error(`Failed to migrate ${legacyKey}:`, error);
+    return false;
   }
+}
+
+export async function migrateFromLocalStorage(): Promise<{ migrated: boolean; failures: string[] }> {
+  const isMigrated = await get(MIGRATION_KEY);
+  if (isMigrated) return { migrated: false, failures: [] };
+
+  console.log('Migrating data from localStorage to IndexedDB...');
+  const failures: string[] = [];
+  const migrations: Array<[string, string, ((value: unknown) => unknown) | undefined]> = [
+    [CONVERSATIONS_KEY, 'elara_conversations_v1', (value) => Array.isArray(value) ? value : []],
+    [SETTINGS_KEY, 'elara_settings_v1', (value) => value && typeof value === 'object' ? value : {}],
+    [PORTRAIT_KEY, 'elara_custom_portrait_v1', undefined],
+    [FOLDERS_KEY, 'elara_folders_v1', (value) => Array.isArray(value) ? value : []],
+    [WORLD_STATE_KEY, 'elara_world_state', (value) => value && typeof value === 'object' ? value : DEFAULT_WORLD_STATE],
+    [MEMORY_STATE_KEY, 'elara_memory_state', (value) => value && typeof value === 'object' ? value : { memories: [] }],
+  ];
+
+  for (const [idbKey, legacyKey, transform] of migrations) {
+    const migrated = await migrateValue(idbKey, legacyKey, transform);
+    if (!migrated && readLegacy(legacyKey)) failures.push(legacyKey);
+  }
+
+  if (failures.length === 0) {
+    await set(MIGRATION_KEY, true);
+    console.log('Migration complete.');
+  } else {
+    console.warn('Migration completed with recoverable failures:', failures);
+  }
+
+  return { migrated: failures.length === 0, failures };
 }
 
 export async function getDbConversations(): Promise<Conversation[]> {
   const data = await get(CONVERSATIONS_KEY);
   return Array.isArray(data) ? data : [];
 }
-export async function setDbConversations(data: Conversation[]) { await set(CONVERSATIONS_KEY, data); }
+export async function setDbConversations(data: Conversation[]) { await set(CONVERSATIONS_KEY, Array.isArray(data) ? data : []); }
 
 export async function getDbSettings(): Promise<ElaraSettings> {
   const data = await get(SETTINGS_KEY);
-  const settings = data ? { ...DEFAULT_SETTINGS, ...data } : DEFAULT_SETTINGS;
+  const settings = data && typeof data === 'object' ? { ...DEFAULT_SETTINGS, ...data } : DEFAULT_SETTINGS;
 
-  // Migrate the temporary V3 agentBehaviorPolicy field into the canonical runtime store once.
   const legacyPolicy = data && typeof data === 'object' && typeof (data as any).agentBehaviorPolicy === 'string'
     ? String((data as any).agentBehaviorPolicy).trim()
     : '';
-  if (legacyPolicy) {
-    saveAgentOperatingPolicy(legacyPolicy);
-  } else {
-    loadAgentOperatingPolicy();
-  }
+  if (legacyPolicy) saveAgentOperatingPolicy(legacyPolicy);
+  else loadAgentOperatingPolicy();
 
   applySettingsAppearance(settings);
   return settings;
 }
 
 export async function setDbSettings(data: ElaraSettings) {
-  await set(SETTINGS_KEY, data);
+  await set(SETTINGS_KEY, { ...DEFAULT_SETTINGS, ...(data || {}) });
   applySettingsAppearance(data);
 }
 
@@ -71,23 +105,23 @@ export async function setDbPortrait(data: string | null) { if (data) await set(P
 
 export async function getDbFolders(): Promise<Folder[]> {
   const data = await get(FOLDERS_KEY);
-  return Array.isArray(data) ? data : [{ id: 'default', name: 'General', isExpanded: true }];
+  return Array.isArray(data) && data.length > 0 ? data : [{ id: 'default', name: 'General', isExpanded: true }];
 }
-export async function setDbFolders(data: Folder[]) { await set(FOLDERS_KEY, data); }
+export async function setDbFolders(data: Folder[]) { await set(FOLDERS_KEY, Array.isArray(data) ? data : []); }
 
 export async function getDbWorldState(): Promise<WorldState> {
   const data = await get(WORLD_STATE_KEY);
-  return data && typeof data === 'object' ? data as WorldState : DEFAULT_WORLD_STATE;
+  return data && typeof data === 'object' ? { ...DEFAULT_WORLD_STATE, ...data } as WorldState : { ...DEFAULT_WORLD_STATE };
 }
 export async function setDbWorldState(data: WorldState) { await set(WORLD_STATE_KEY, data); }
 
 export async function getDbMemoryState(): Promise<MemoryScratchpadState> {
   const data = await get(MEMORY_STATE_KEY);
-  const state: MemoryScratchpadState = data && Array.isArray(data.memories)
+  const state: MemoryScratchpadState = data && Array.isArray((data as any).memories)
     ? {
-        memories: data.memories,
-        lastMaintenanceAt: data.lastMaintenanceAt || new Date().toISOString(),
-        autoMaintenanceEnabled: data.autoMaintenanceEnabled ?? true,
+        memories: (data as any).memories,
+        lastMaintenanceAt: (data as any).lastMaintenanceAt || new Date().toISOString(),
+        autoMaintenanceEnabled: (data as any).autoMaintenanceEnabled ?? true,
       }
     : { memories: [], lastMaintenanceAt: new Date().toISOString(), autoMaintenanceEnabled: true };
 
@@ -107,18 +141,33 @@ export async function getDbMemoryState(): Promise<MemoryScratchpadState> {
 export async function setDbMemoryState(data: MemoryScratchpadState) { await set(MEMORY_STATE_KEY, data); }
 
 export async function clearDbStorage() {
-  await del(CONVERSATIONS_KEY);
-  await del(SETTINGS_KEY);
-  await del(PORTRAIT_KEY);
-  await del(FOLDERS_KEY);
-  await del(WORLD_STATE_KEY);
-  await del(MEMORY_STATE_KEY);
-  await del('elara_idb_migrated');
+  await Promise.all([
+    del(CONVERSATIONS_KEY),
+    del(SETTINGS_KEY),
+    del(PORTRAIT_KEY),
+    del(FOLDERS_KEY),
+    del(WORLD_STATE_KEY),
+    del(MEMORY_STATE_KEY),
+    del(SNAPSHOTS_KEY),
+    del(MIGRATION_KEY),
+  ]);
+
+  clearWorkspace();
+  clearActiveScratchpad();
+  clearUserProfileNotes();
+  try {
+    const storage = getLocalStorage();
+    LEGACY_KEYS.forEach((key) => storage?.removeItem(key));
+    storage?.removeItem(AGENT_OPERATING_POLICY_KEY);
+    storage?.removeItem(USER_PROFILE_NOTES_KEY);
+    storage?.removeItem(ACTIVE_SCRATCHPAD_KEY);
+  } catch (error) {
+    console.error('Failed to clear browser persistence:', error);
+  }
 }
 
-const SNAPSHOTS_KEY = 'elara_persona_snapshots_v1';
 export async function getDbSnapshots(): Promise<PersonaSnapshot[]> {
   const data = await get(SNAPSHOTS_KEY);
   return Array.isArray(data) ? data : [];
 }
-export async function setDbSnapshots(data: PersonaSnapshot[]) { await set(SNAPSHOTS_KEY, data); }
+export async function setDbSnapshots(data: PersonaSnapshot[]) { await set(SNAPSHOTS_KEY, Array.isArray(data) ? data : []); }
