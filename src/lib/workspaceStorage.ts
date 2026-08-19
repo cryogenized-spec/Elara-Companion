@@ -5,6 +5,7 @@ import { createCheckpoint } from './revisionUtils';
 const WORKSPACE_STORAGE_KEY = 'elara_workspace_data';
 const WORKSPACE_SCHEMA_KEY = 'elara_workspace_schema_v1';
 const WORKSPACE_SCHEMA_VERSION = 1;
+const ARTIFACT_EVENT = 'elara:artifact-created';
 
 const EMPTY_WORKSPACE: Workspace = {
   id: 'default-workspace',
@@ -107,6 +108,14 @@ export const getArtifactById = (id: string): WorkspaceArtifact | null => {
   return ws.artifacts.find((a) => a.id === id) || null;
 };
 
+function announceArtifact(artifact: WorkspaceArtifact, action: 'created' | 'updated'): void {
+  try {
+    window.dispatchEvent(new CustomEvent(ARTIFACT_EVENT, { detail: { artifact, action } }));
+  } catch {
+    // Best-effort UI signal only; persistence remains authoritative.
+  }
+}
+
 export const setActiveArtifact = (id: string): Workspace => {
   const ws = getWorkspace();
   const updated = { ...ws, activeArtifactId: ws.artifacts.some((artifact) => artifact.id === id) ? id : ws.activeArtifactId };
@@ -131,7 +140,9 @@ export const saveAgentArtifact = (
         type: type || existing.type,
       });
       updatedWs = createCheckpoint(updatedWs, existingId, 'agent', 'agent');
-      return updatedWs.artifacts.find((a) => a.id === existingId)!;
+      const updatedArtifact = updatedWs.artifacts.find((a) => a.id === existingId)!;
+      announceArtifact(updatedArtifact, 'updated');
+      return updatedArtifact;
     }
   }
 
@@ -152,7 +163,9 @@ export const saveAgentArtifact = (
   };
   updated = createCheckpoint(updated, newArtifact.id, 'agent', 'agent');
   saveWorkspace(updated);
-  return updated.artifacts.find((a) => a.id === newArtifact.id) || newArtifact;
+  const artifact = updated.artifacts.find((a) => a.id === newArtifact.id) || newArtifact;
+  announceArtifact(artifact, 'created');
+  return artifact;
 };
 
 export const createArtifact = (workspace: Workspace, name: string = 'Untitled', type: string = 'text'): Workspace => {
@@ -168,6 +181,7 @@ export const createArtifact = (workspace: Workspace, name: string = 'Untitled', 
 
   const updated = { ...workspace, artifacts: [...workspace.artifacts, newArtifact], activeArtifactId: newArtifact.id };
   saveWorkspace(updated);
+  announceArtifact(newArtifact, 'created');
   return updated;
 };
 
