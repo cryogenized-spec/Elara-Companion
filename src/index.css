@@ -45,8 +45,6 @@ html, body, #root { height: 100vh; height: 100dvh; width: 100%; overflow: hidden
 body { background-color: var(--elara-bg); color: var(--elara-text); font-family: var(--elara-user-font); color-scheme: dark; transition: background-color 160ms ease, color 160ms ease; }
 :root[data-theme="light"] body { color-scheme: light; }
 
-/* The chat component predates the token layer, so these narrow selectors apply the
-   configured user/Elara typography without rewriting the large message component. */
 main [class*="rounded-tr-none"] { font-family: var(--elara-user-font) !important; font-size: var(--elara-user-size) !important; font-weight: var(--elara-user-weight) !important; color: var(--elara-user-color) !important; }
 main .group > div[class*="overflow-hidden"][class*="w-full"] { font-family: var(--elara-assistant-font) !important; font-size: var(--elara-assistant-size) !important; font-weight: var(--elara-assistant-weight) !important; color: var(--elara-assistant-color) !important; }
 main [class*="rounded-tr-none"] textarea { font-family: var(--elara-user-font) !important; font-size: var(--elara-user-size) !important; font-weight: var(--elara-user-weight) !important; }
@@ -66,5 +64,12 @@ main .group > div[class*="overflow-hidden"][class*="w-full"] th { font-family: i
 :root[data-theme="light"] .text-zinc-500 { color: var(--elara-text-muted) !important; }
 :root[data-theme="light"] .border-zinc-800,
 :root[data-theme="light"] .border-zinc-700 { border-color: var(--elara-border) !important; }
+
+/* Mobile chat ergonomics: keep the composer anchored to the visible viewport and
+   remove the decorative floating portrait that otherwise steals finger/touch space. */
+main > .relative.z-10 { position: sticky; bottom: 0; z-index: 40; }
+@media (max-width: 639px) {
+  main > div > .absolute.top-20.z-20 { display: none !important; }
+}
 
 button, input, textarea, select { font: inherit; }
