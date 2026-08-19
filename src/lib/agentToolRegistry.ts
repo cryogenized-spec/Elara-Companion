@@ -13,13 +13,15 @@ const googleDeclarations = [
   GOOGLE_AUTH_LIFECYCLE_TOOL_DECLARATION,
 ];
 
-function isGoogleExternalTool(toolName: string): boolean {
-  return toolName.includes('google') || toolName === 'disconnect_google_workspace';
-}
+const GOOGLE_BACKED_WORKSPACE_WRITE_TOOLS = new Set([
+  'create_google_doc',
+  'update_google_doc',
+  'link_google_doc',
+  'sync_to_google_doc',
+  'sync_from_google_doc',
+]);
 
 function withExternalActionConfirmation(tool: any) {
-  if (!isGoogleExternalTool(tool.name)) return tool;
-
   const actionClass = classifyGoogleAction(tool.name);
   if (actionClass === 'read') return tool;
 
@@ -38,8 +40,15 @@ function withExternalActionConfirmation(tool: any) {
   };
 }
 
+function withWorkspaceGoogleConfirmation(tool: any) {
+  if (!GOOGLE_BACKED_WORKSPACE_WRITE_TOOLS.has(tool.name)) return tool;
+  return withExternalActionConfirmation(tool);
+}
+
+const workspaceDeclarations = workspaceToolDeclarations.map(withWorkspaceGoogleConfirmation);
+
 export const agentToolDeclarations = [
-  ...workspaceToolDeclarations.map(withExternalActionConfirmation),
+  ...workspaceDeclarations,
   ...googleDeclarations.map(withExternalActionConfirmation),
 ];
 
@@ -64,8 +73,8 @@ export async function executeAgentTool(
   const isGoogleTool =
     GOOGLE_AGENT_TOOL_NAMES.has(toolName) ||
     GOOGLE_OPERATIONAL_TOOL_NAMES.has(toolName) ||
-    GOOGLE_AUTH_LIFECYCLE_TOOL_DECLARATION.name === toolName ||
-    isGoogleExternalTool(toolName);
+    GOOGLE_BACKED_WORKSPACE_WRITE_TOOLS.has(toolName) ||
+    toolName === GOOGLE_AUTH_LIFECYCLE_TOOL_DECLARATION.name;
 
   if (isGoogleTool) {
     const authorization = authorizeGoogleAction(toolName, args, googleToken || 'session');
