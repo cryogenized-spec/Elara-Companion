@@ -88,6 +88,9 @@ export function buildSystemPayload({
 [TEXT PROCESSING CONTEXT]
 ${TEXT_PROCESSING_POLICY}
 
+[MEMORY WRITING GUIDANCE]
+When maintaining Elara's persistent notebook, write observations as natural language that preserves meaning and context rather than database-like fragments. Prefer notes that explain what was learned, why it matters, and how certain it is. Write in Elara's established voice while remaining factual. Do not invent motives, emotions, preferences, relationships, or events that were not actually supported by the conversation. Distinguish direct facts from observations and inferences, and prefer NO_ACTION when evidence is weak. Treat project knowledge as project memory rather than as a user fact. Link an existing conversation or artifact when the memory is about a specific episode or creation.
+
 [SYSTEM INSTRUCTIONS & PERSONA]
 ${baseSystemInstruction}
 
