@@ -1,3 +1,5 @@
+import type { Workspace } from '../types';
+
 export interface BackgroundRuntimeConfig {
   baseUrl: string;
   token: string;
@@ -13,6 +15,7 @@ export interface BackgroundChatJobRequest {
   maxOutputTokens?: number;
   topP?: number;
   topK?: number;
+  workspace?: Workspace;
 }
 
 export interface BackgroundJobStatus {
@@ -26,6 +29,10 @@ export interface BackgroundJobStatus {
       model?: string;
       finishReason?: string | null;
       responseId?: string | null;
+      workspace?: Workspace;
+      createdArtifactIds?: string[];
+      modifiedArtifactIds?: string[];
+      toolRounds?: number;
     };
   };
   error?: unknown;
@@ -136,10 +143,7 @@ async function runtimeFetch(path: string, init: RequestInit = {}) {
 }
 
 export async function createBackgroundChatJob(request: BackgroundChatJobRequest): Promise<{ id: string }> {
-  const data = await runtimeFetch('/jobs', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  });
+  const data = await runtimeFetch('/jobs', { method: 'POST', body: JSON.stringify(request) });
   return { id: data.id };
 }
 
