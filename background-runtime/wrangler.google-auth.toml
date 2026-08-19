@@ -1,0 +1,13 @@
+name = "elara-google-auth"
+main = "google-auth-worker.ts"
+compatibility_date = "2026-08-07"
+
+[[kv_namespaces]]
+binding = "GOOGLE_VAULT_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[vars]
+# Set GOOGLE_OAUTH_REDIRECT_URI as a Worker secret or dashboard variable to the exact /google/callback URL.
+
+[observability]
+enabled = true
