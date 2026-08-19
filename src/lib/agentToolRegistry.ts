@@ -1,8 +1,7 @@
-import { Workspace } from '../types';
 import { workspaceToolDeclarations, executeAnyWorkspaceTool } from './workspaceTools';
 import { googleAgentToolDeclarations, GOOGLE_AGENT_TOOL_NAMES, executeGoogleAgentTool } from './googleAgentTools';
 import { googleOperationalToolDeclarations, GOOGLE_OPERATIONAL_TOOL_NAMES, executeGoogleOperationalTool } from './googleAgentOperationalTools';
-import { getGoogleRuntimeStatus } from './googleRuntime';
+import { Workspace } from '../types';
 
 export const agentToolDeclarations = [
   ...workspaceToolDeclarations,
@@ -17,10 +16,6 @@ export type AgentToolExecution = {
   modifiedArtifactId?: string;
   externalDocUrl?: string;
 };
-
-export function getAgentConnectionContext(): string {
-  return getGoogleRuntimeStatus().hint;
-}
 
 export async function executeAgentTool(
   workspace: Workspace,
