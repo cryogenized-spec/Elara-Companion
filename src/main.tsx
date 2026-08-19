@@ -7,9 +7,12 @@ import { AgentBehaviorPolicyPanel } from './components/AgentBehaviorPolicyPanel'
 import { ElaraSurfaces } from './components/ElaraSurfaces';
 import { BackgroundNotificationsControl } from './components/BackgroundNotificationsControl';
 import { installBackgroundSafeAbortBoundary } from './lib/backgroundSafeRuntime';
+import { installMobileViewportSync } from './lib/mobileViewport';
 import './index.css';
+import './mobile-chat.css';
 
 installBackgroundSafeAbortBoundary();
+installMobileViewportSync();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
