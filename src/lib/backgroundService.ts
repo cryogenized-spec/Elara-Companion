@@ -27,7 +27,7 @@ export async function prepareBackgroundService(): Promise<void> {
   if (!registrationPromise && !registrationAttempted) {
     registrationAttempted = true;
     registrationPromise = navigator.serviceWorker
-      .register('./elara-background-sw.js', { scope: './elara-bg/' })
+      .register('./elara-background-sw.js')
       .then((registration) => registration)
       .catch(() => null);
   }
