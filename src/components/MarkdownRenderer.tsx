@@ -2,6 +2,7 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
+import { MermaidBlock } from './MermaidBlock';
 
 interface MarkdownRendererProps {
   content: string;
@@ -27,6 +28,14 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
           blockquote: ({ children }) => <blockquote className="my-6 max-w-[72ch] border-l-2 border-emerald-500/60 bg-zinc-900/50 px-5 py-3 text-zinc-400 [&>p]:mb-0">{children}</blockquote>,
           hr: () => <hr className="my-8 border-zinc-800" />,
           code: ({ className, children, ...props }) => {
+            const match = /language-([\w-]+)/.exec(className || '');
+            const language = match?.[1]?.toLowerCase();
+            const source = String(children).replace(/\n$/, '');
+
+            if (language === 'mermaid') {
+              return <MermaidBlock content={source} />;
+            }
+
             const isBlock = Boolean(className);
             return isBlock ? (
               <pre className="my-6 max-w-full overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-[12px] leading-6 text-zinc-200 shadow-inner sm:text-[13px]">
@@ -38,7 +47,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
               </code>
             );
           },
-          pre: ({ children }) => <pre className="my-6 max-w-full overflow-x-auto">{children}</pre>,
+          pre: ({ children }) => <>{children}</>,
           a: ({ node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" className="break-words text-emerald-400 underline decoration-emerald-500/30 underline-offset-2 hover:text-emerald-300" />,
           table: ({ node, ...props }) => (
             <div className="my-6 max-w-full overflow-x-auto rounded-2xl border border-zinc-800">
