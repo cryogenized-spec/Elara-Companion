@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "elara-background-runtime",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "workflows": [
+    {
+      "name": "elara-chat-workflow",
+      "binding": "ELARA_CHAT_WORKFLOW",
+      "class_name": "ElaraChatWorkflow"
+    }
+  ]
+}
