@@ -1,6 +1,7 @@
 import { MemoryAction, MemoryItem, MemoryScratchpadState } from '../types';
 
 const ACTIVE_SCRATCHPAD_KEY = 'elara_active_scratchpad_v1';
+const SCRATCHPAD_EVENT = 'elara:scratchpad-updated';
 
 function buildPersistentScratchpad(memories: MemoryItem[]): string {
   const ranked = [...memories].sort((a, b) => {
@@ -16,8 +17,10 @@ function buildPersistentScratchpad(memories: MemoryItem[]): string {
 }
 
 function persistScratchpad(memories: MemoryItem[]): void {
+  const scratchpad = buildPersistentScratchpad(memories);
   try {
-    localStorage.setItem(ACTIVE_SCRATCHPAD_KEY, buildPersistentScratchpad(memories));
+    localStorage.setItem(ACTIVE_SCRATCHPAD_KEY, scratchpad);
+    window.dispatchEvent(new CustomEvent(SCRATCHPAD_EVENT, { detail: { scratchpad } }));
   } catch (err) {
     console.warn('Persistent scratchpad mirror unavailable:', err);
   }
@@ -39,7 +42,7 @@ export function applyMemoryActions(
   for (const action of actions) {
     if (!action || action.type === 'NO_ACTION') continue;
 
-    if (action.type === 'ADD' && action.memory && action.memory.content) {
+    if ((action.type === 'ADD' || action.type === 'CREATE') && action.memory && action.memory.content) {
       const newMem: MemoryItem = {
         id: `mem_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         content: action.memory.content,
