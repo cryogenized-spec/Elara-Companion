@@ -4,21 +4,26 @@ export type GoogleAuthorizationDecision =
   | { allowed: true }
   | { allowed: false; errorCode: 'GOOGLE_AUTH_REQUIRED' | 'GOOGLE_ACTION_CONFIRMATION_REQUIRED'; message: string; requiresUserAuth?: boolean };
 
-export function classifyGoogleAction(toolName: string): GoogleActionClass {
-  const destructive = new Set([
-    'delete_google_keep_note',
-  ]);
-  const writes = new Set([
-    'create_google_sheet',
-    'write_google_sheet_range',
-    'append_google_sheet_row',
-    'batch_update_google_sheet',
-    'create_google_keep_note',
-    'create_calendar_event',
-  ]);
+const destructiveTools = new Set([
+  'delete_google_keep_note',
+]);
 
-  if (destructive.has(toolName)) return 'destructive';
-  if (writes.has(toolName)) return 'write';
+const writeTools = new Set([
+  'create_google_sheet',
+  'write_google_sheet_range',
+  'append_google_sheet_row',
+  'batch_update_google_sheet',
+  'create_google_keep_note',
+  'create_calendar_event',
+  'create_google_doc',
+  'update_google_doc',
+  'sync_to_google_doc',
+  'sync_from_google_doc',
+]);
+
+export function classifyGoogleAction(toolName: string): GoogleActionClass {
+  if (destructiveTools.has(toolName)) return 'destructive';
+  if (writeTools.has(toolName)) return 'write';
   return 'read';
 }
 
