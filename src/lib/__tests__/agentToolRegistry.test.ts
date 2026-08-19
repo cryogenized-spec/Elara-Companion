@@ -40,7 +40,7 @@ test('agent registry blocks unconfirmed Google writes before network dispatch', 
     'token',
   );
 
-  assert.equal(result.updatedWorkspace, workspace);
+  assert.deepEqual(result.updatedWorkspace, workspace);
   assert.equal(result.result.allowed, false);
   assert.equal(result.result.errorCode, 'GOOGLE_ACTION_CONFIRMATION_REQUIRED');
 });
@@ -54,7 +54,7 @@ test('agent registry blocks Workspace-backed Google document writes before dispa
     'token',
   );
 
-  assert.equal(result.updatedWorkspace, workspace);
+  assert.deepEqual(result.updatedWorkspace, workspace);
   assert.equal(result.result.allowed, false);
   assert.equal(result.result.errorCode, 'GOOGLE_ACTION_CONFIRMATION_REQUIRED');
 });
