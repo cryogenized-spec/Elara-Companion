@@ -4,22 +4,32 @@ export type GoogleAuthorizationDecision =
   | { allowed: true }
   | { allowed: false; errorCode: 'GOOGLE_AUTH_REQUIRED' | 'GOOGLE_ACTION_CONFIRMATION_REQUIRED'; message: string; requiresUserAuth?: boolean };
 
-export function classifyGoogleAction(toolName: string): GoogleActionClass {
-  const destructive = new Set([
-    'delete_google_keep_note',
-    'disconnect_google_workspace',
-  ]);
-  const writes = new Set([
-    'create_google_sheet',
-    'write_google_sheet_range',
-    'append_google_sheet_row',
-    'batch_update_google_sheet',
-    'create_google_keep_note',
-    'create_calendar_event',
-  ]);
+const DESTRUCTIVE_TOOLS = new Set([
+  'disconnect_google_workspace',
+]);
 
-  if (destructive.has(toolName)) return 'destructive';
-  if (writes.has(toolName)) return 'write';
+const DESTRUCTIVE_PREFIXES = ['delete_'];
+const WRITE_PREFIXES = [
+  'create_',
+  'update_',
+  'write_',
+  'append_',
+  'batch_update_',
+  'send_',
+  'post_',
+  'sync_to_',
+  'sync_from_',
+];
+
+export function classifyGoogleAction(toolName: string): GoogleActionClass {
+  if (DESTRUCTIVE_TOOLS.has(toolName) || DESTRUCTIVE_PREFIXES.some((prefix) => toolName.startsWith(prefix))) {
+    return 'destructive';
+  }
+
+  if (WRITE_PREFIXES.some((prefix) => toolName.startsWith(prefix))) {
+    return 'write';
+  }
+
   return 'read';
 }
 
