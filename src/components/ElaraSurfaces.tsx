@@ -1,13 +1,48 @@
-import React, { useState } from 'react';
-import { Grid2X2, X, Cloud } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Bell, Cloud, Grid2X2, X, BookOpen } from 'lucide-react';
 import { ArtifactsPanel } from './ArtifactsPanel';
 import { GoogleWorkspaceSettingsPanel } from './GoogleWorkspaceSettingsPanel';
+import { ScratchpadPanel } from './ScratchpadPanel';
+import { WorkspaceArtifact } from '../types';
 
 export const ElaraSurfaces: React.FC = () => {
-  const [surface, setSurface] = useState<'artifacts' | 'google' | null>(null);
+  const [surface, setSurface] = useState<'artifacts' | 'google' | 'scratchpad' | null>(null);
+  const [artifactNotice, setArtifactNotice] = useState<WorkspaceArtifact | null>(null);
+
+  useEffect(() => {
+    let timer: number | undefined;
+    const handleArtifact = (event: Event) => {
+      const detail = (event as CustomEvent<{ artifact?: WorkspaceArtifact }>).detail;
+      if (!detail?.artifact) return;
+      setArtifactNotice(detail.artifact);
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => setArtifactNotice(null), 7500);
+    };
+    window.addEventListener('elara:artifact-created', handleArtifact);
+    return () => {
+      window.removeEventListener('elara:artifact-created', handleArtifact);
+      if (timer) window.clearTimeout(timer);
+    };
+  }, []);
 
   return (
     <>
+      {artifactNotice && (
+        <div className="fixed left-3 right-3 top-3 z-[95] mx-auto max-w-xl rounded-2xl border border-violet-500/20 bg-[#111114]/95 px-4 py-3 shadow-2xl backdrop-blur-xl sm:left-auto sm:right-5 sm:w-[26rem]">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300"><Grid2X2 className="h-4 w-4" /></div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-semibold text-zinc-100">Elara created an artifact</div>
+              <div className="mt-0.5 truncate text-[11px] text-zinc-400">{artifactNotice.name}</div>
+              <button onClick={() => { setSurface('artifacts'); setArtifactNotice(null); }} className="mt-2 inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-semibold text-white hover:bg-violet-500">
+                <Grid2X2 className="h-3.5 w-3.5" /> View in Artifacts
+              </button>
+            </div>
+            <button onClick={() => setArtifactNotice(null)} className="h-7 w-7 rounded-lg text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300" aria-label="Dismiss">×</button>
+          </div>
+        </div>
+      )}
+
       <div className="fixed bottom-4 right-4 z-30 flex items-center gap-2 sm:bottom-5 sm:right-5">
         <button
           onClick={() => setSurface('artifacts')}
@@ -16,6 +51,14 @@ export const ElaraSurfaces: React.FC = () => {
         >
           <Grid2X2 className="h-4 w-4 text-violet-400" />
           Artifacts
+        </button>
+        <button
+          onClick={() => setSurface('scratchpad')}
+          className="inline-flex min-h-10 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-amber-500/40 hover:text-white"
+          title="Scratchpad"
+        >
+          <BookOpen className="h-4 w-4 text-amber-400" />
+          Scratchpad
         </button>
         <button
           onClick={() => setSurface('google')}
@@ -27,9 +70,8 @@ export const ElaraSurfaces: React.FC = () => {
         </button>
       </div>
 
-      {surface === 'artifacts' && (
-        <ArtifactsPanel onBack={() => setSurface(null)} />
-      )}
+      {surface === 'artifacts' && <ArtifactsPanel onBack={() => setSurface(null)} />}
+      {surface === 'scratchpad' && <ScratchpadPanel onBack={() => setSurface(null)} />}
 
       {surface === 'google' && (
         <div className="fixed inset-0 z-30 flex h-[100dvh] w-full flex-col bg-[#09090b] text-zinc-100">
@@ -42,9 +84,7 @@ export const ElaraSurfaces: React.FC = () => {
               <div className="text-[10px] text-zinc-500">Master authentication and refresh controls</div>
             </div>
           </header>
-          <main className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5">
-            <GoogleWorkspaceSettingsPanel />
-          </main>
+          <main className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5"><GoogleWorkspaceSettingsPanel /></main>
         </div>
       )}
     </>
