@@ -6,7 +6,13 @@ Google authorization uses the OAuth 2.0 authorization-code flow with `access_typ
 
 ## Cloudflare components
 
-Create one Workers KV namespace and bind it to the background runtime and the `elara-google-auth` Worker as `GOOGLE_VAULT_KV`.
+Create one Workers KV namespace and bind it to both the background chat Worker and the `elara-google-auth` Worker as `GOOGLE_VAULT_KV`.
+
+For `background-runtime/wrangler.jsonc`, replace:
+
+`REPLACE_WITH_GOOGLE_VAULT_KV_NAMESPACE_ID`
+
+with the real KV namespace ID.
 
 Keep these as Worker secrets:
 
@@ -14,6 +20,7 @@ Keep these as Worker secrets:
 - `GOOGLE_OAUTH_CLIENT_SECRET`
 - `GOOGLE_OAUTH_REDIRECT_URI`
 - `ELARA_BACKGROUND_TOKEN`
+- `GEMINI_API_KEY` on the chat Worker
 
 `GOOGLE_OAUTH_REDIRECT_URI` must exactly match the Google Cloud OAuth redirect URI and point at the deployed auth Worker, for example:
 
@@ -37,6 +44,20 @@ The scope set deliberately mirrors Elara's current Google Workspace provider. Re
 
 `/google/status` reports connection state.
 
+`/google/access` returns a fresh short-lived access token to the authenticated background runtime. It is intentionally `no-store` and is not written into Workflow state.
+
 `/google/disconnect` revokes the stored refresh token and removes it from KV.
 
-The durable agent should obtain a short-lived access token on demand from the vault and must never put the refresh token into a Workflow payload or browser storage.
+## Durable tool execution
+
+The durable agent now exposes Google read tools for Calendar, Tasks, Gmail, Drive, and Docs. Each Google tool execution obtains a fresh access token inside a Workflow step, performs the API call, and returns only the tool result to the agent. The access token and refresh token are not returned as Workflow output.
+
+Local artifact tools remain available in the same durable function-calling loop.
+
+## Google writes
+
+Durable Google writes are intentionally not auto-authorized. The model must never self-authorize a write simply by emitting `userConfirmed: true`. A future confirmation-card/approval grant will create the server-side authorization record needed for durable Google writes.
+
+## Deployment
+
+Deploy the Google auth Worker first, then deploy the background chat Worker. Both Workers must reference the same KV namespace and the same `ELARA_BACKGROUND_TOKEN` for their private single-user control plane.
