@@ -10,7 +10,7 @@ export type DurableWorkspace = {
     provider?: string;
     createdAt: number;
     updatedAt: number;
-    revisions?: Array<{ id: string; revisionNumber: number; content: string; createdAt: number; author: 'agent' }>; 
+    revisions?: Array<{ id: string; revisionNumber: number; content: string; createdAt: number; author: 'agent' }>;
   }>;
 };
 
@@ -18,105 +18,33 @@ const now = () => Date.now();
 const id = (prefix: string) => `${prefix}_${now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
 export const durableWorkspaceTools = [
-  {
-    name: 'create_artifact',
-    description: 'Create a persistent local Workspace document. Use for documents, SOPs, guides, plans, checklists, scripts, templates, or other saved work.',
-    parameters: { type: 'OBJECT', properties: { name: { type: 'STRING' }, type: { type: 'STRING', description: 'markdown or text' }, content: { type: 'STRING' } }, required: ['name', 'content'] },
-  },
-  {
-    name: 'read_artifact',
-    description: 'Read an existing local Workspace artifact by artifactId.',
-    parameters: { type: 'OBJECT', properties: { artifactId: { type: 'STRING' } }, required: ['artifactId'] },
-  },
-  {
-    name: 'update_artifact',
-    description: 'Replace the full content of an existing local Workspace artifact.',
-    parameters: { type: 'OBJECT', properties: { artifactId: { type: 'STRING' }, content: { type: 'STRING' } }, required: ['artifactId', 'content'] },
-  },
-  {
-    name: 'list_artifacts',
-    description: 'List the local Workspace artifacts available to Elara.',
-    parameters: { type: 'OBJECT', properties: {} },
-  },
-  {
-    name: 'rename_artifact',
-    description: 'Rename a local Workspace artifact without changing its ID or content.',
-    parameters: { type: 'OBJECT', properties: { artifactId: { type: 'STRING' }, name: { type: 'STRING' } }, required: ['artifactId', 'name'] },
-  },
-  {
-    name: 'generate_canvas',
-    description: 'Create a long-form document/canvas as a persistent local artifact.',
-    parameters: { type: 'OBJECT', properties: { title: { type: 'STRING' }, content: { type: 'STRING' } }, required: ['title', 'content'] },
-  },
+  { name:'create_artifact', description:'Create a persistent local Workspace document. Use for documents, SOPs, guides, plans, checklists, scripts, templates, or other saved work.', parameters:{type:'OBJECT',properties:{name:{type:'STRING'},type:{type:'STRING',description:'markdown or text'},content:{type:'STRING'}},required:['name','content']} },
+  { name:'read_artifact', description:'Read an existing local Workspace artifact by artifactId.', parameters:{type:'OBJECT',properties:{artifactId:{type:'STRING'}},required:['artifactId']} },
+  { name:'update_artifact', description:'Replace the full content of an existing local Workspace artifact.', parameters:{type:'OBJECT',properties:{artifactId:{type:'STRING'},content:{type:'STRING'}},required:['artifactId','content']} },
+  { name:'list_artifacts', description:'List the local Workspace artifacts available to Elara.', parameters:{type:'OBJECT',properties:{}} },
+  { name:'rename_artifact', description:'Rename a local Workspace artifact without changing its ID or content.', parameters:{type:'OBJECT',properties:{artifactId:{type:'STRING'},name:{type:'STRING'}},required:['artifactId','name']} },
+  { name:'generate_canvas', description:'Create a long-form document/canvas as a persistent local artifact.', parameters:{type:'OBJECT',properties:{title:{type:'STRING'},content:{type:'STRING'}},required:['title','content']} },
 ] as const;
 
-function normalizeWorkspace(workspace?: Partial<DurableWorkspace>): DurableWorkspace {
-  return {
-    id: workspace?.id || 'default-workspace',
-    name: workspace?.name || 'My Workspace',
-    activeArtifactId: workspace?.activeArtifactId || null,
-    artifacts: Array.isArray(workspace?.artifacts) ? workspace!.artifacts!.map((a) => ({ ...a })) : [],
-  };
-}
+function normalizeWorkspace(workspace?: Partial<DurableWorkspace>): DurableWorkspace { return { id:workspace?.id||'default-workspace', name:workspace?.name||'My Workspace', activeArtifactId:workspace?.activeArtifactId||null, artifacts:Array.isArray(workspace?.artifacts)?workspace.artifacts.map(a=>({...a})):[] }; }
+function revision(artifact: DurableWorkspace['artifacts'][number], content:string){ return [...(artifact.revisions||[]),{id:id('rev'),revisionNumber:(artifact.revisions?.length||0)+1,content,createdAt:now(),author:'agent' as const}]; }
 
-function revision(artifact: DurableWorkspace['artifacts'][number], content: string) {
-  const entry = {
-    id: id('rev'),
-    revisionNumber: (artifact.revisions?.length || 0) + 1,
-    content,
-    createdAt: now(),
-    author: 'agent' as const,
-  };
-  return [...(artifact.revisions || []), entry];
-}
-
-export function executeDurableWorkspaceTool(workspaceInput: Partial<DurableWorkspace> | undefined, toolName: string, args: any) {
-  const workspace = normalizeWorkspace(workspaceInput);
-  const safeArgs = args && typeof args === 'object' ? args : {};
-  const result = (payload: any, updatedWorkspace = workspace, extra: Record<string, unknown> = {}) => ({ result: payload, updatedWorkspace, ...extra });
-
-  switch (toolName) {
-    case 'create_artifact': {
-      const name = typeof safeArgs.name === 'string' ? safeArgs.name.trim() : '';
-      if (!name) return result({ success: false, error: 'A document name is required.' });
-      const content = typeof safeArgs.content === 'string' ? safeArgs.content : String(safeArgs.content || '');
-      const artifactId = id('art');
-      const artifact = { id: artifactId, name, content, type: safeArgs.type === 'text' ? 'text' : 'markdown', provider: 'local', createdAt: now(), updatedAt: now() };
-      artifact.revisions = revision(artifact, content);
-      const updatedWorkspace = { ...workspace, artifacts: [...workspace.artifacts, artifact], activeArtifactId: artifactId };
-      return result({ success: true, artifactId, name, type: artifact.type }, updatedWorkspace, { createdArtifactId: artifactId });
+export function executeDurableWorkspaceTool(workspaceInput: Partial<DurableWorkspace>|undefined, toolName:string, args:any){
+  const workspace=normalizeWorkspace(workspaceInput); const safeArgs=args&&typeof args==='object'?args:{};
+  const result=(payload:any,updatedWorkspace=workspace,extra:Record<string,unknown>={})=>({result:payload,updatedWorkspace,...extra});
+  switch(toolName){
+    case 'create_artifact':{
+      const name=typeof safeArgs.name==='string'?safeArgs.name.trim():''; if(!name)return result({success:false,error:'A document name is required.'});
+      const content=typeof safeArgs.content==='string'?safeArgs.content:String(safeArgs.content||''); const artifactId=id('art');
+      const artifact:DurableWorkspace['artifacts'][number]={id:artifactId,name,content,type:safeArgs.type==='text'?'text':'markdown',provider:'local',createdAt:now(),updatedAt:now()};
+      artifact.revisions=revision(artifact,content); const updatedWorkspace={...workspace,artifacts:[...workspace.artifacts,artifact],activeArtifactId:artifactId};
+      return result({success:true,artifactId,name,type:artifact.type},updatedWorkspace,{createdArtifactId:artifactId});
     }
-    case 'read_artifact': {
-      const artifact = workspace.artifacts.find((item) => item.id === safeArgs.artifactId);
-      if (!artifact) return result({ success: false, error: `Artifact ${safeArgs.artifactId || '(missing)'} was not found.` });
-      return result({ success: true, artifact });
-    }
-    case 'update_artifact': {
-      const index = workspace.artifacts.findIndex((item) => item.id === safeArgs.artifactId);
-      if (index < 0) return result({ success: false, error: `Artifact ${safeArgs.artifactId || '(missing)'} was not found.` });
-      const content = typeof safeArgs.content === 'string' ? safeArgs.content : String(safeArgs.content || '');
-      const artifact = { ...workspace.artifacts[index], content, updatedAt: now() };
-      artifact.revisions = revision(artifact, content);
-      const artifacts = [...workspace.artifacts];
-      artifacts[index] = artifact;
-      return result({ success: true, artifactId: artifact.id, name: artifact.name, updatedAt: artifact.updatedAt }, { ...workspace, artifacts, activeArtifactId: artifact.id }, { modifiedArtifactId: artifact.id });
-    }
-    case 'list_artifacts':
-      return result({ success: true, artifacts: workspace.artifacts.map((artifact) => ({ artifactId: artifact.id, name: artifact.name, type: artifact.type, provider: artifact.provider || 'local', updatedAt: artifact.updatedAt })) });
-    case 'rename_artifact': {
-      const index = workspace.artifacts.findIndex((item) => item.id === safeArgs.artifactId);
-      if (index < 0) return result({ success: false, error: `Artifact ${safeArgs.artifactId || '(missing)'} was not found.` });
-      const name = typeof safeArgs.name === 'string' ? safeArgs.name.trim() : '';
-      if (!name) return result({ success: false, error: 'A new artifact name is required.' });
-      const artifacts = [...workspace.artifacts];
-      artifacts[index] = { ...artifacts[index], name, updatedAt: now() };
-      return result({ success: true, artifactId: artifacts[index].id, name }, { ...workspace, artifacts }, { modifiedArtifactId: artifacts[index].id });
-    }
-    case 'generate_canvas': {
-      const name = typeof safeArgs.title === 'string' && safeArgs.title.trim() ? safeArgs.title.trim() : 'Canvas';
-      return executeDurableWorkspaceTool(workspace, 'create_artifact', { name, type: 'markdown', content: typeof safeArgs.content === 'string' ? safeArgs.content : String(safeArgs.content || '') });
-    }
-    default:
-      return result({ success: false, error: `Unsupported durable tool: ${toolName}` });
+    case 'read_artifact':{const artifact=workspace.artifacts.find(item=>item.id===safeArgs.artifactId);if(!artifact)return result({success:false,error:`Artifact ${safeArgs.artifactId||'(missing)'} was not found.`});return result({success:true,artifact});}
+    case 'update_artifact':{const index=workspace.artifacts.findIndex(item=>item.id===safeArgs.artifactId);if(index<0)return result({success:false,error:`Artifact ${safeArgs.artifactId||'(missing)'} was not found.`});const content=typeof safeArgs.content==='string'?safeArgs.content:String(safeArgs.content||'');const artifact:DurableWorkspace['artifacts'][number]={...workspace.artifacts[index],content,updatedAt:now()};artifact.revisions=revision(artifact,content);const artifacts=[...workspace.artifacts];artifacts[index]=artifact;return result({success:true,artifactId:artifact.id,name:artifact.name,updatedAt:artifact.updatedAt},{...workspace,artifacts,activeArtifactId:artifact.id},{modifiedArtifactId:artifact.id});}
+    case 'list_artifacts':return result({success:true,artifacts:workspace.artifacts.map(artifact=>({artifactId:artifact.id,name:artifact.name,type:artifact.type,provider:artifact.provider||'local',updatedAt:artifact.updatedAt}))});
+    case 'rename_artifact':{const index=workspace.artifacts.findIndex(item=>item.id===safeArgs.artifactId);if(index<0)return result({success:false,error:`Artifact ${safeArgs.artifactId||'(missing)'} was not found.`});const name=typeof safeArgs.name==='string'?safeArgs.name.trim():'';if(!name)return result({success:false,error:'A new artifact name is required.'});const artifacts=[...workspace.artifacts];artifacts[index]={...artifacts[index],name,updatedAt:now()};return result({success:true,artifactId:artifacts[index].id,name},{...workspace,artifacts},{modifiedArtifactId:artifacts[index].id});}
+    case 'generate_canvas':{const name=typeof safeArgs.title==='string'&&safeArgs.title.trim()?safeArgs.title.trim():'Canvas';return executeDurableWorkspaceTool(workspace,'create_artifact',{name,type:'markdown',content:typeof safeArgs.content==='string'?safeArgs.content:String(safeArgs.content||'')});}
+    default:return result({success:false,error:`Unsupported durable tool: ${toolName}`});
   }
 }
