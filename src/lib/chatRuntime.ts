@@ -122,7 +122,18 @@ export async function executeAgentToolCall(
   args: any,
   googleToken?: string,
 ): Promise<AgentToolExecution> {
-  return executeAgentTool(workspace, toolName, args, googleToken);
+  const execution = await executeAgentTool(workspace, toolName, args, googleToken);
+  if (typeof window !== 'undefined' && execution.createdArtifactId) {
+    const artifact = execution.updatedWorkspace.artifacts.find((item) => item.id === execution.createdArtifactId);
+    if (artifact) {
+      try {
+        window.dispatchEvent(new CustomEvent('elara:artifact-created', { detail: { artifact, action: 'created' } }));
+      } catch {
+        // Best effort UI notification only.
+      }
+    }
+  }
+  return execution;
 }
 
 export function mergeTouchedArtifactIds(current: string[], execution: AgentToolExecution): string[] {
