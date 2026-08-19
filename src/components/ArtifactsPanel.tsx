@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { WorkspaceArtifact } from '../types';
 import { getWorkspace, setActiveArtifact, deleteArtifact, saveWorkspace } from '../lib/workspaceStorage';
 import { FileText, FileType2, Grid2X2, Link2, MoreHorizontal, Search, Trash2 } from 'lucide-react';
@@ -22,6 +22,16 @@ export const ArtifactsPanel: React.FC<ArtifactsPanelProps> = ({ onOpenArtifact, 
   const [filter, setFilter] = useState<'all' | 'document' | 'canvas' | 'google'>('all');
   const [workspace, setWorkspace] = useState(() => getWorkspace());
 
+  useEffect(() => {
+    const refresh = () => setWorkspace(getWorkspace());
+    window.addEventListener('elara:artifact-created', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('elara:artifact-created', refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
+
   const artifacts = useMemo(() => {
     const q = query.trim().toLowerCase();
     return workspace.artifacts
@@ -43,7 +53,8 @@ export const ArtifactsPanel: React.FC<ArtifactsPanelProps> = ({ onOpenArtifact, 
 
   const remove = (id: string) => {
     if (!window.confirm('Delete this local artifact?')) return;
-    const next = { ...getWorkspace(), artifacts: getWorkspace().artifacts.filter((artifact) => artifact.id !== id) };
+    const current = getWorkspace();
+    const next = { ...current, artifacts: current.artifacts.filter((artifact) => artifact.id !== id) };
     next.activeArtifactId = next.activeArtifactId === id ? (next.artifacts[0]?.id || null) : next.activeArtifactId;
     saveWorkspace(next);
     setWorkspace(next);
