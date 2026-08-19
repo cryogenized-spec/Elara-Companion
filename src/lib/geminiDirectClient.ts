@@ -1,7 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
 import { Workspace, MemoryItem } from '../types';
-import { parseDataUrl } from '../../server/services/gemini';
-import { getModelProfile } from './modelRegistry';
 import { classifyApiError } from './apiError';
 import {
   buildConversationContents,
@@ -36,7 +34,7 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
   if (!apiKey || !apiKey.trim()) throw new Error('Please enter your Gemini API Key in Settings (Model & API tab) to chat on GitHub Pages.');
 
   const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
-  const contents: any[] = buildConversationContents(history, message, image, parseDataUrl);
+  const contents: any[] = buildConversationContents(history, message, image);
   const cleanModel = normalizeModel(model);
   const config: any = buildRuntimeConfig({
     model: cleanModel,
