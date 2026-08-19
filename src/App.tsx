@@ -305,7 +305,7 @@ export default function App() {
     // Live Google data is agent-selected through the canonical tool registry.
 
     const formattedSystemPrompt = buildSystemPayload({
-      baseSystemInstruction: effectiveBaseSystemInstruction,
+      baseSystemInstruction,
       personaProtocol: settings.personaProtocol || DEFAULT_PERSONA_PROTOCOL,
       intimacyModule: settings.intimacyModule || DEFAULT_INTIMACY_MODULE,
       runtimeRules: settings.runtimeRules || DEFAULT_RUNTIME_RULES,
