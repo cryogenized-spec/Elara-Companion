@@ -2,6 +2,7 @@ import express from "express";
 import { HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { getGeminiClient } from "../services/gemini";
 import { parseDataUrl, sanitizeAudioMime } from "../utils/helpers";
+import { ELARA_SAFETY_SETTINGS } from "../../src/lib/chatRuntime";
 
 export function setupAudioRoutes(app: express.Express) {
 
@@ -62,13 +63,7 @@ Formatting rules:
           config: {
             temperature: 0.1,
             maxOutputTokens: 1500,
-            safetySettings: [
-              { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-              { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-              { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-              { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-              { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE },
-            ],
+            safetySettings: ELARA_SAFETY_SETTINGS,
           },
         });
 

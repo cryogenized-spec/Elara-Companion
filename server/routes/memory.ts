@@ -1,5 +1,6 @@
 import express from "express";
 import { getGeminiClient, formatApiErrorDetails, HarmCategory, HarmBlockThreshold } from "../services/gemini";
+import { ELARA_SAFETY_SETTINGS } from "../../src/lib/chatRuntime";
 
 export function setupMemoryRoutes(app: express.Express) {
 
@@ -62,13 +63,7 @@ INSTRUCTIONS & RULES:
               temperature: 0.2,
               maxOutputTokens: 1000,
               responseMimeType: 'application/json',
-              safetySettings: [
-                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE },
-              ],
+              safetySettings: ELARA_SAFETY_SETTINGS,
             },
           });
 
@@ -142,13 +137,7 @@ Return a JSON payload listing proposed actions to clean and consolidate her note
               temperature: 0.1,
               maxOutputTokens: 1500,
               responseMimeType: 'application/json',
-              safetySettings: [
-                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE },
-              ],
+              safetySettings: ELARA_SAFETY_SETTINGS,
             },
           });
 
