@@ -12,7 +12,8 @@ function buildPersistentScratchpad(memories: MemoryItem[]): string {
   if (ranked.length === 0) return '';
   return ranked.map((memory) => {
     const privateTag = memory.isPrivate ? 'PRIVATE OBSERVATION' : 'SHARED FACT';
-    return `- [${privateTag}] [${memory.category}] [${memory.confidence}] ${memory.content}`;
+    const kind = memory.kind ? ` [${memory.kind}]` : '';
+    return `- [${privateTag}] [${memory.category}]${kind} [${memory.confidence}] ${memory.content}`;
   }).join('\n');
 }
 
@@ -43,19 +44,27 @@ export function applyMemoryActions(
     if (!action || action.type === 'NO_ACTION') continue;
 
     if ((action.type === 'ADD' || action.type === 'CREATE') && action.memory && action.memory.content) {
+      const now = new Date().toISOString();
       const newMem: MemoryItem = {
         id: `mem_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         content: action.memory.content,
+        kind: action.memory.kind || 'observation',
+        lifecycle: action.memory.lifecycle || (action.memory.kind === 'working' ? 'working' : 'persistent'),
+        source: action.memory.source || 'elara',
         confidence: action.memory.confidence || 'certain',
         importance: action.memory.importance || 'normal',
         isPrivate: action.memory.isPrivate ?? true,
         category: action.memory.category || 'Observations',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
         eventDate: action.memory.eventDate,
+        expiresAt: action.memory.expiresAt,
         pinned: false,
         tags: action.memory.tags || [],
         sourceConversationId: conversationId,
+        sourceArtifactId: action.memory.sourceArtifactId,
+        relatedMemoryIds: action.memory.relatedMemoryIds,
+        links: action.memory.links,
       };
       currentMemories.unshift(newMem);
       stateModified = true;
@@ -65,13 +74,20 @@ export function applyMemoryActions(
         currentMemories[index] = {
           ...currentMemories[index],
           content: action.memory.content || currentMemories[index].content,
+          kind: action.memory.kind || currentMemories[index].kind,
+          lifecycle: action.memory.lifecycle || currentMemories[index].lifecycle,
+          source: action.memory.source || currentMemories[index].source,
           confidence: action.memory.confidence || currentMemories[index].confidence,
           importance: action.memory.importance || currentMemories[index].importance,
           isPrivate: action.memory.isPrivate ?? currentMemories[index].isPrivate,
           category: action.memory.category || currentMemories[index].category,
           updatedAt: new Date().toISOString(),
           eventDate: action.memory.eventDate || currentMemories[index].eventDate,
+          expiresAt: action.memory.expiresAt || currentMemories[index].expiresAt,
           tags: action.memory.tags || currentMemories[index].tags,
+          sourceArtifactId: action.memory.sourceArtifactId || currentMemories[index].sourceArtifactId,
+          relatedMemoryIds: action.memory.relatedMemoryIds || currentMemories[index].relatedMemoryIds,
+          links: action.memory.links || currentMemories[index].links,
         };
         stateModified = true;
       }
@@ -82,24 +98,31 @@ export function applyMemoryActions(
     } else if (action.type === 'MERGE' && action.mergeTargetIds?.length && action.memory) {
       const mergeSet = new Set(action.mergeTargetIds);
       currentMemories = currentMemories.filter((m) => !mergeSet.has(m.id));
+      const now = new Date().toISOString();
       currentMemories.unshift({
         id: `mem_merged_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         content: action.memory.content,
+        kind: action.memory.kind || 'observation',
+        lifecycle: action.memory.lifecycle || 'persistent',
+        source: action.memory.source || 'elara',
         confidence: action.memory.confidence || 'certain',
         importance: action.memory.importance || 'important',
         isPrivate: action.memory.isPrivate ?? false,
         category: action.memory.category || 'Observations',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
         tags: action.memory.tags || ['merged'],
         sourceConversationId: conversationId,
+        sourceArtifactId: action.memory.sourceArtifactId,
+        relatedMemoryIds: action.memory.relatedMemoryIds,
+        links: action.memory.links,
       });
       stateModified = true;
     }
   }
 
   const nextState = stateModified
-    ? { ...state, memories: currentMemories, lastMaintenanceAt: new Date().toISOString() }
+    ? { ...state, memories: currentMemories, lastMaintenanceAt: new Date().toISOString(), schemaVersion: state.schemaVersion || 2 }
     : state;
 
   persistScratchpad(nextState.memories);
