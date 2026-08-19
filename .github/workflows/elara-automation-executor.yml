@@ -31,13 +31,19 @@ jobs:
         with:
           node-version: 24
 
-      - name: Accept automation execution
+      - name: Install dependencies
+        run: npm install
+
+      - name: Execute Elara agent
         env:
           ELARA_STATE_REPO: ${{ vars.ELARA_STATE_REPO }}
           ELARA_STATE_TOKEN: ${{ secrets.ELARA_STATE_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ELARA_GOOGLE_TOKEN: ${{ secrets.ELARA_GOOGLE_TOKEN }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           AUTOMATION_ID: ${{ inputs.automation_id }}
           EXECUTION_KEY: ${{ inputs.execution_key }}
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-        run: node scripts/automation-executor.mjs
+        run: node --import tsx scripts/automation-executor.mjs
