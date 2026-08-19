@@ -26,6 +26,11 @@ export interface RuntimeConfigOptions {
   includeSafetySettings?: boolean;
 }
 
+export function parseRuntimeDataUrl(value: string): { mimeType: string; data: string } | null {
+  const match = value.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+  return match ? { mimeType: match[1], data: match[2] } : null;
+}
+
 export function deriveThinkingLevel(explicitLevel: RuntimeConfigOptions['thinkingLevel'], budget?: number): 'minimal' | 'low' | 'medium' | 'high' {
   if (explicitLevel) return explicitLevel;
   if (typeof budget !== 'number' || budget < 0) return 'medium';
@@ -43,13 +48,12 @@ export function buildConversationContents(
   history: ChatHistoryMessage[] = [],
   message?: string,
   image?: string,
-  parseDataUrl?: (value: string) => { mimeType: string; data: string } | null,
 ) {
   const contents: any[] = [];
   for (const item of history) {
     const parts: any[] = [];
-    if (item.image && parseDataUrl) {
-      const parsed = parseDataUrl(item.image);
+    if (item.image) {
+      const parsed = parseRuntimeDataUrl(item.image);
       if (parsed) parts.push({ inlineData: { mimeType: parsed.mimeType, data: parsed.data } });
     }
     if (item.content) parts.push({ text: item.content });
@@ -58,8 +62,8 @@ export function buildConversationContents(
 
   if (message || image) {
     const parts: any[] = [];
-    if (image && parseDataUrl) {
-      const parsed = parseDataUrl(image);
+    if (image) {
+      const parsed = parseRuntimeDataUrl(image);
       if (parsed) parts.push({ inlineData: { mimeType: parsed.mimeType, data: parsed.data } });
     }
     parts.push({ text: message || 'Please look at this image and share your thoughts as Elara.' });
