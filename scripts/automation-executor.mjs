@@ -17,7 +17,11 @@ async function getStateFile(path) {
   if (response.status === 404) return { exists: false, sha: null, value: null };
   if (!response.ok) throw new Error(`Failed to read ${path}: HTTP ${response.status}`);
   const body = await response.json();
-  return { exists: true, sha: body.sha, value: JSON.parse(Buffer.from(body.content, 'base64').toString('utf8')) };
+  return {
+    exists: true,
+    sha: body.sha,
+    value: JSON.parse(Buffer.from(body.content, 'base64').toString('utf8')),
+  };
 }
 
 async function putStateFile(path, value, sha, message) {
@@ -27,18 +31,108 @@ async function putStateFile(path, value, sha, message) {
     branch: 'main',
   };
   if (sha) payload.sha = sha;
+
   const response = await fetch(`${GH_API}/repos/${stateRepo}/contents/${path}`, {
     method: 'PUT',
     headers: { ...headers(), 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!response.ok) throw new Error(`Failed to write ${path}: HTTP ${response.status}`);
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`Failed to write ${path}: HTTP ${response.status}${text ? ` ${text}` : ''}`);
+  }
+}
+
+function truncate(value, max = 12000) {
+  const text = typeof value === 'string' ? value : JSON.stringify(value ?? '');
+  return text.length > max ? `${text.slice(0, max)}\n…[truncated]` : text;
+}
+
+async function executeElaraAutomation(prompt, workspace, googleToken) {
+  const { getGeminiClient, normalizeModelName } = await import('../server/services/gemini.ts');
+  const {
+    buildConversationContents,
+    buildRuntimeConfig,
+    executeAgentToolCall,
+    mergeTouchedArtifactIds,
+    MAX_AGENT_ITERATIONS,
+  } = await import('../src/lib/chatRuntime.ts');
+
+  const model = normalizeModelName(process.env.GEMINI_MODEL || 'gemini-3.6-flash');
+  const ai = getGeminiClient();
+  const systemPrompt = [
+    '[SCHEDULED AUTOMATION CONTEXT]',
+    'You are Elara executing a scheduled automation.',
+    'There is no interactive user present. Follow the automation prompt faithfully.',
+    'You may use read-only Google tools and local Workspace tools when appropriate.',
+    'Do not attempt Google writes, deletes, sends, or authentication changes unless the automation explicitly provides an authorized confirmation context.',
+    'Keep the final result concise, useful, and directly tied to the automation objective.',
+  ].join('\n');
+
+  const contents = buildConversationContents([], prompt);
+  const config = buildRuntimeConfig({
+    model,
+    systemPrompt,
+    workspace,
+    googleToken,
+    includeSafetySettings: true,
+  });
+
+  let currentWorkspace = workspace;
+  let touchedArtifactIds = [];
+  let finalText = '';
+  let iteration = 0;
+
+  while (iteration < MAX_AGENT_ITERATIONS) {
+    iteration += 1;
+    const response = await ai.models.generateContent({ model, contents, config });
+    const responseParts = response.candidates?.[0]?.content?.parts || [];
+    const functionCalls = responseParts
+      .map((part) => part?.functionCall)
+      .filter(Boolean);
+    const textParts = responseParts
+      .map((part) => part?.text)
+      .filter((value) => typeof value === 'string');
+
+    if (textParts.length) finalText += `${textParts.join('')}\n`;
+    if (!functionCalls.length) break;
+
+    contents.push({ role: 'model', parts: responseParts });
+    const toolResponseParts = [];
+
+    for (const fc of functionCalls) {
+      const execution = await executeAgentToolCall(currentWorkspace, fc.name, fc.args, googleToken);
+      currentWorkspace = execution.updatedWorkspace;
+      touchedArtifactIds = mergeTouchedArtifactIds(touchedArtifactIds, execution);
+      toolResponseParts.push({
+        functionResponse: {
+          name: fc.name,
+          response: execution.result,
+          id: fc.id,
+        },
+      });
+    }
+
+    contents.push({ role: 'tool', parts: toolResponseParts });
+  }
+
+  return {
+    model,
+    text: finalText.trim(),
+    workspace: currentWorkspace,
+    touchedArtifactIds,
+    iterations: iteration,
+  };
 }
 
 async function main() {
   if (!stateRepo || !token || !automationId || !executionKey) {
     console.log('Automation executor is not configured or was invoked without a job.');
     return;
+  }
+
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY is required for Pass 3 automation execution.');
   }
 
   const automationsFile = await getStateFile('automations.json');
@@ -54,25 +148,74 @@ async function main() {
   runtime.jobs ||= {};
   runtime.schedules ||= {};
 
-  const job = runtime.jobs[executionKey] || {
+  const existingJob = runtime.jobs[executionKey] || {
     automationId,
     scheduledFor: automation.nextRunAt || new Date().toISOString(),
     attempts: 0,
   };
 
+  const now = new Date().toISOString();
   runtime.jobs[executionKey] = {
-    ...job,
-    status: 'awaiting_agent_runtime',
+    ...existingJob,
+    status: 'running',
     workerRunId: process.env.GITHUB_RUN_ID || null,
     workerUrl: process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY
       ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
       : null,
-    updatedAt: new Date().toISOString(),
+    startedAt: existingJob.startedAt || now,
+    updatedAt: now,
+  };
+  await putStateFile('runtime.json', runtime, runtimeFile.sha, `automation: running ${executionKey}`);
+
+  // Automation executions intentionally start with an in-memory workspace.
+  // Pass 4 will persist/bridge this workspace and automation output properly.
+  const workspace = {
+    id: `automation-${automationId}`,
+    name: automation.name || 'Automation Workspace',
+    artifacts: [],
+    activeArtifactId: null,
   };
 
-  await putStateFile('runtime.json', runtime, runtimeFile.sha, `automation: accepted ${executionKey}`);
-  console.log(`Automation ${automationId} accepted by the GitHub worker.`);
-  console.log('Agent execution is intentionally deferred to Pass 3.');
+  try {
+    const result = await executeElaraAutomation(String(automation.prompt || ''), workspace, process.env.ELARA_GOOGLE_TOKEN);
+    const refreshedRuntime = await getStateFile('runtime.json');
+    const refreshed = refreshedRuntime.value && typeof refreshedRuntime.value === 'object'
+      ? refreshedRuntime.value
+      : { version: 1, jobs: {}, schedules: {} };
+    refreshed.version = 1;
+    refreshed.jobs ||= {};
+    refreshed.schedules ||= {};
+    refreshed.jobs[executionKey] = {
+      ...refreshed.jobs[executionKey],
+      status: 'success',
+      completedAt: new Date().toISOString(),
+      result: truncate(result.text),
+      model: result.model,
+      iterations: result.iterations,
+      touchedArtifactIds: result.touchedArtifactIds,
+      updatedAt: new Date().toISOString(),
+    };
+    await putStateFile('runtime.json', refreshed, refreshedRuntime.sha, `automation: completed ${executionKey}`);
+    console.log(`Automation ${automationId} completed successfully.`);
+    console.log(truncate(result.text, 2000));
+  } catch (error) {
+    const refreshedRuntime = await getStateFile('runtime.json');
+    const refreshed = refreshedRuntime.value && typeof refreshedRuntime.value === 'object'
+      ? refreshedRuntime.value
+      : { version: 1, jobs: {}, schedules: {} };
+    refreshed.version = 1;
+    refreshed.jobs ||= {};
+    refreshed.schedules ||= {};
+    refreshed.jobs[executionKey] = {
+      ...refreshed.jobs[executionKey],
+      status: 'failed',
+      completedAt: new Date().toISOString(),
+      error: String(error?.message || error),
+      updatedAt: new Date().toISOString(),
+    };
+    await putStateFile('runtime.json', refreshed, refreshedRuntime.sha, `automation: failed ${executionKey}`);
+    throw error;
+  }
 }
 
 main().catch((error) => {
