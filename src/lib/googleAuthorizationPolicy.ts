@@ -4,26 +4,22 @@ export type GoogleAuthorizationDecision =
   | { allowed: true }
   | { allowed: false; errorCode: 'GOOGLE_AUTH_REQUIRED' | 'GOOGLE_ACTION_CONFIRMATION_REQUIRED'; message: string; requiresUserAuth?: boolean };
 
-const destructiveTools = new Set([
-  'delete_google_keep_note',
-]);
-
-const writeTools = new Set([
-  'create_google_sheet',
-  'write_google_sheet_range',
-  'append_google_sheet_row',
-  'batch_update_google_sheet',
-  'create_google_keep_note',
-  'create_calendar_event',
-  'create_google_doc',
-  'update_google_doc',
-  'sync_to_google_doc',
-  'sync_from_google_doc',
-]);
-
 export function classifyGoogleAction(toolName: string): GoogleActionClass {
-  if (destructiveTools.has(toolName)) return 'destructive';
-  if (writeTools.has(toolName)) return 'write';
+  const destructive = new Set([
+    'delete_google_keep_note',
+    'disconnect_google_workspace',
+  ]);
+  const writes = new Set([
+    'create_google_sheet',
+    'write_google_sheet_range',
+    'append_google_sheet_row',
+    'batch_update_google_sheet',
+    'create_google_keep_note',
+    'create_calendar_event',
+  ]);
+
+  if (destructive.has(toolName)) return 'destructive';
+  if (writes.has(toolName)) return 'write';
   return 'read';
 }
 
@@ -32,7 +28,7 @@ export function authorizeGoogleAction(
   args: unknown,
   accessToken?: string,
 ): GoogleAuthorizationDecision {
-  if (!accessToken?.trim()) {
+  if (!accessToken?.trim() && toolName !== 'disconnect_google_workspace') {
     return {
       allowed: false,
       errorCode: 'GOOGLE_AUTH_REQUIRED',
@@ -48,7 +44,7 @@ export function authorizeGoogleAction(
     return {
       allowed: false,
       errorCode: 'GOOGLE_ACTION_CONFIRMATION_REQUIRED',
-      message: 'This Google operation changes external data. Explicit user confirmation is required before it can run.',
+      message: 'This Google operation changes external data or authentication state. Explicit user confirmation is required before it can run.',
     };
   }
 
