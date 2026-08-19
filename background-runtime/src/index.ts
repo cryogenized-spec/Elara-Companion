@@ -1,4 +1,5 @@
 import { WorkflowEntrypoint } from 'cloudflare:workers';
+import { durableWorkspaceTools, executeDurableWorkspaceTool, type DurableWorkspace } from './workspaceTools';
 
 type JobPayload = {
   message: string;
@@ -10,6 +11,7 @@ type JobPayload = {
   maxOutputTokens?: number;
   topP?: number;
   topK?: number;
+  workspace?: DurableWorkspace;
 };
 
 type Env = {
@@ -21,6 +23,7 @@ type Env = {
 
 const DEFAULT_MODEL = 'gemini-3.7-flash';
 const DEFAULT_ALLOWED_ORIGIN = '*';
+const MAX_TOOL_ROUNDS = 8;
 
 function responseJson(data: unknown, init: ResponseInit = {}, request?: Request) {
   const headers = new Headers(init.headers);
@@ -61,7 +64,6 @@ function buildContents(history: JobPayload['history'], message: string, image?: 
     if (item.content) parts.push({ text: item.content });
     if (parts.length) contents.push({ role: item.role === 'assistant' ? 'model' : item.role, parts });
   }
-
   const currentParts: any[] = [];
   if (image) {
     const match = image.match(/^data:([^;]+);base64,(.+)$/);
@@ -72,65 +74,102 @@ function buildContents(history: JobPayload['history'], message: string, image?: 
   return contents;
 }
 
-async function generateGeminiResponse(env: Env, job: JobPayload) {
+function asFunctionResponse(result: any) {
+  return { response: result ?? { success: true } };
+}
+
+async function callGemini(env: Env, model: string, body: Record<string, unknown>) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
+  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const raw = await response.text();
+  let data: any;
+  try { data = JSON.parse(raw); } catch { throw new Error(`Gemini returned non-JSON response (HTTP ${response.status}).`); }
+  if (!response.ok) throw new Error(data?.error?.message || `Gemini request failed with HTTP ${response.status}.`);
+  return data;
+}
+
+async function generateGeminiResponse(env: Env, job: JobPayload, step: any) {
   if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not configured on the background runtime.');
 
   const model = normalizeModel(job.model);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
-  const body: Record<string, any> = {
-    system_instruction: { parts: [{ text: job.systemPrompt || '' }] },
-    contents: buildContents(job.history, job.message, job.image),
-    generationConfig: {},
-  };
+  const contents = buildContents(job.history, job.message, job.image);
+  let workspace = job.workspace;
+  const createdArtifactIds: string[] = [];
+  const modifiedArtifactIds: string[] = [];
+  let lastResponse: any = null;
 
-  if (typeof job.temperature === 'number') body.generationConfig.temperature = job.temperature;
-  if (typeof job.maxOutputTokens === 'number' && job.maxOutputTokens > 0) body.generationConfig.maxOutputTokens = job.maxOutputTokens;
-  if (typeof job.topP === 'number') body.generationConfig.topP = job.topP;
-  if (typeof job.topK === 'number') body.generationConfig.topK = job.topK;
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    const body: Record<string, any> = {
+      system_instruction: { parts: [{ text: job.systemPrompt || '' }] },
+      contents,
+      tools: [{ function_declarations: durableWorkspaceTools }],
+      tool_config: { function_calling_config: { mode: 'AUTO' } },
+      generationConfig: {},
+    };
+    if (typeof job.temperature === 'number') body.generationConfig.temperature = job.temperature;
+    if (typeof job.maxOutputTokens === 'number' && job.maxOutputTokens > 0) body.generationConfig.maxOutputTokens = job.maxOutputTokens;
+    if (typeof job.topP === 'number') body.generationConfig.topP = job.topP;
+    if (typeof job.topK === 'number') body.generationConfig.topK = job.topK;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const raw = await response.text();
+    const data = await step.do(`gemini-round-${round + 1}`, () => callGemini(env, model, body));
+    lastResponse = data;
+    const candidate = data?.candidates?.[0];
+    const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
+    const functionCalls = parts.filter((part: any) => part?.functionCall?.name);
 
-  let data: any;
-  try { data = JSON.parse(raw); } catch {
-    throw new Error(`Gemini returned non-JSON response (HTTP ${response.status}).`);
+    if (functionCalls.length === 0) {
+      const text = parts.filter((part: any) => typeof part?.text === 'string').map((part: any) => part.text).join('');
+      return {
+        text,
+        model,
+        finishReason: candidate?.finishReason || null,
+        responseId: data?.responseId || null,
+        workspace,
+        createdArtifactIds: Array.from(new Set(createdArtifactIds)),
+        modifiedArtifactIds: Array.from(new Set(modifiedArtifactIds)),
+        toolRounds: round + 1,
+      };
+    }
+
+    contents.push({ role: 'model', parts });
+    const responseParts: any[] = [];
+
+    for (let index = 0; index < functionCalls.length; index += 1) {
+      const call = functionCalls[index].functionCall;
+      const execution = executeDurableWorkspaceTool(workspace, call.name, call.args || {});
+      workspace = execution.updatedWorkspace;
+      if (execution.createdArtifactId) createdArtifactIds.push(execution.createdArtifactId);
+      if (execution.modifiedArtifactId) modifiedArtifactIds.push(execution.modifiedArtifactId);
+      responseParts.push({ functionResponse: { name: call.name, response: asFunctionResponse(execution.result) } });
+    }
+
+    contents.push({ role: 'user', parts: responseParts });
+    // The next round continues from the durable tool results.
   }
 
-  if (!response.ok) {
-    throw new Error(data?.error?.message || `Gemini request failed with HTTP ${response.status}.`);
-  }
-
-  const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
-  const parts = candidates[0]?.content?.parts || [];
-  const text = parts.filter((part: any) => typeof part?.text === 'string').map((part: any) => part.text).join('');
-
+  const fallbackParts = lastResponse?.candidates?.[0]?.content?.parts || [];
   return {
-    text,
+    text: fallbackParts.filter((part: any) => typeof part?.text === 'string').map((part: any) => part.text).join(''),
     model,
-    finishReason: candidates[0]?.finishReason || null,
-    responseId: data?.responseId || null,
+    finishReason: lastResponse?.candidates?.[0]?.finishReason || null,
+    responseId: lastResponse?.responseId || null,
+    workspace,
+    createdArtifactIds: Array.from(new Set(createdArtifactIds)),
+    modifiedArtifactIds: Array.from(new Set(modifiedArtifactIds)),
+    toolRounds: MAX_TOOL_ROUNDS,
   };
 }
 
 export class ElaraChatWorkflow extends WorkflowEntrypoint<Env, JobPayload> {
   async run(event: { payload: JobPayload }, step: any) {
-    const result = await step.do('generate-elara-response', async () => generateGeminiResponse(this.env, event.payload));
-    return {
-      status: 'completed',
-      completedAt: new Date().toISOString(),
-      result,
-    };
+    const result = await generateGeminiResponse(this.env, event.payload, step);
+    return { status: 'completed', completedAt: new Date().toISOString(), result };
   }
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS') return withCors(new Response(null, { status: 204 }), request, env);
-
     if (!isAuthorized(request, env)) {
       return withCors(responseJson({ error: 'Unauthorized background runtime request.' }, { status: 401 }, request), request, env);
     }
@@ -141,12 +180,8 @@ export default {
     try {
       if (request.method === 'POST' && path === '/jobs') {
         const body = await request.json() as Partial<JobPayload>;
-        if (!body.message || typeof body.message !== 'string') {
-          return withCors(responseJson({ error: 'message is required.' }, { status: 400 }, request), request, env);
-        }
-        if (!body.systemPrompt || typeof body.systemPrompt !== 'string') {
-          return withCors(responseJson({ error: 'systemPrompt is required.' }, { status: 400 }, request), request, env);
-        }
+        if (!body.message || typeof body.message !== 'string') return withCors(responseJson({ error: 'message is required.' }, { status: 400 }, request), request, env);
+        if (!body.systemPrompt || typeof body.systemPrompt !== 'string') return withCors(responseJson({ error: 'systemPrompt is required.' }, { status: 400 }, request), request, env);
 
         const id = crypto.randomUUID();
         await env.ELARA_CHAT_WORKFLOW.create({
@@ -161,6 +196,7 @@ export default {
             maxOutputTokens: body.maxOutputTokens,
             topP: body.topP,
             topK: body.topK,
+            workspace: body.workspace,
           } satisfies JobPayload,
         });
 
