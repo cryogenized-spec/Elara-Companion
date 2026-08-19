@@ -78,7 +78,7 @@ export const getWorkspace = (): Workspace => {
     }
     return workspace;
   } catch (error) {
-    console.error('Failed to load workspace data:', error);
+    console.warn('Failed to load workspace data; falling back to an empty workspace.', error);
     return { ...EMPTY_WORKSPACE, artifacts: [] };
   }
 };
