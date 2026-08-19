@@ -1,21 +1,23 @@
 name: Apply Canvas Pass 1
 
 on:
-  push:
+  pull_request:
     branches:
-      - feat/canvas-pass1-modes
+      - main
 
 jobs:
   patch:
-    if: ${{ !contains(github.event.head_commit.message, '[canvas-pass1]') }}
+    if: ${{ !contains(github.event.pull_request.title, '[canvas-pass1]') && github.head_ref == 'feat/canvas-pass1-modes' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:
-      - name: Checkout
+      - name: Checkout branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
 
       - name: Patch Canvas modes
         run: |
@@ -60,9 +62,9 @@ jobs:
 
       - name: Commit real source and remove patcher
         run: |
-          rm -f .github/workflows/canvas-pass1-patcher.yml
+          rm -f .github/workflows/canvas-pass1-patcher.yml .canvas-pass1-trigger
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/components/WorkspaceView.tsx .github/workflows/canvas-pass1-patcher.yml
+          git add src/components/WorkspaceView.tsx .github/workflows/canvas-pass1-patcher.yml .canvas-pass1-trigger
           git commit -m "feat: add Canvas raw read split modes [canvas-pass1]"
-          git push
+          git push origin HEAD:${{ github.head_ref }}
