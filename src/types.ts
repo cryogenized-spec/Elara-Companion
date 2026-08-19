@@ -39,13 +39,75 @@ export interface PreferenceEntry { id: string; category: string; detail: string;
 export interface WorldState { house: HouseStructure; elaraBelongings: InventoryItem[]; userBelongings: InventoryItem[]; sharedPossessions: InventoryItem[]; elaraRoutine: RoutineEntry[]; userRoutine: RoutineEntry[]; liveState: LiveState; temporaryEvents: TemporaryEvent[]; sharedMemories: SharedMemory[]; elaraPersonalLife: ElaraPersonalLife; preferences: PreferenceEntry[]; }
 
 export interface GeminiModelOption { id: string; name: string; description: string; isDefault?: boolean; }
+
+/** Canonical taxonomy for Elara's persistent memory layer. */
+export type MemoryKind = 'fact' | 'preference' | 'observation' | 'episode' | 'project' | 'relationship' | 'plan' | 'working' | 'context';
+export type MemoryLifecycle = 'working' | 'contextual' | 'persistent' | 'core' | 'archived';
+export type MemorySource = 'user' | 'elara' | 'conversation' | 'artifact' | 'system' | 'imported';
 export type MemoryConfidence = 'certain' | 'likely' | 'uncertain';
 export type MemoryImportance = 'low' | 'normal' | 'important' | 'core';
 export type MemoryCategory = 'User' | 'Elara' | 'Relationship' | 'Home' | 'Work' | 'Projects' | 'Preferences' | 'People' | 'Places' | 'Experiences' | 'Observations' | 'Plans' | 'Other';
-export interface MemoryItem { id: string; content: string; confidence: MemoryConfidence; importance: MemoryImportance; isPrivate: boolean; category: MemoryCategory; createdAt: string; updatedAt: string; eventDate?: string; pinned?: boolean; tags?: string[]; sourceConversationId?: string; }
-export interface MemoryScratchpadState { memories: MemoryItem[]; lastMaintenanceAt?: string; autoMaintenanceEnabled: boolean; }
+
+export interface MemoryLink {
+  type: 'conversation' | 'artifact' | 'memory';
+  id: string;
+  label?: string;
+}
+
+export interface MemoryItem {
+  id: string;
+  content: string;
+  kind?: MemoryKind;
+  lifecycle?: MemoryLifecycle;
+  source?: MemorySource;
+  confidence: MemoryConfidence;
+  importance: MemoryImportance;
+  isPrivate: boolean;
+  category: MemoryCategory;
+  createdAt: string;
+  updatedAt: string;
+  eventDate?: string;
+  expiresAt?: string;
+  lastRecalledAt?: string;
+  reinforcementCount?: number;
+  pinned?: boolean;
+  tags?: string[];
+  sourceConversationId?: string;
+  sourceArtifactId?: string;
+  relatedMemoryIds?: string[];
+  links?: MemoryLink[];
+}
+
+export interface MemoryScratchpadState {
+  memories: MemoryItem[];
+  lastMaintenanceAt?: string;
+  autoMaintenanceEnabled: boolean;
+  schemaVersion?: number;
+}
+
 export type MemoryActionType = 'ADD' | 'CREATE' | 'UPDATE' | 'MERGE' | 'DELETE' | 'NO_ACTION';
-export interface MemoryAction { type: MemoryActionType; targetId?: string; mergeTargetIds?: string[]; memory?: { content: string; confidence: MemoryConfidence; importance: MemoryImportance; isPrivate: boolean; category: MemoryCategory; eventDate?: string; tags?: string[]; }; reason?: string; }
+export interface MemoryAction {
+  type: MemoryActionType;
+  targetId?: string;
+  mergeTargetIds?: string[];
+  memory?: {
+    content: string;
+    kind?: MemoryKind;
+    lifecycle?: MemoryLifecycle;
+    source?: MemorySource;
+    confidence: MemoryConfidence;
+    importance: MemoryImportance;
+    isPrivate: boolean;
+    category: MemoryCategory;
+    eventDate?: string;
+    expiresAt?: string;
+    sourceArtifactId?: string;
+    relatedMemoryIds?: string[];
+    tags?: string[];
+    links?: MemoryLink[];
+  };
+  reason?: string;
+}
 
 export const AVAILABLE_MODELS: GeminiModelOption[] = [
   { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', description: 'Latest stable Flash for fast multimodal, general-purpose and agentic work.', isDefault: true },
