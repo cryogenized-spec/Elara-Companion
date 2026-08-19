@@ -3,6 +3,7 @@ import { Workspace } from '../types';
 import { getModelProfile } from './modelRegistry';
 import { agentToolDeclarations, executeAgentTool, AgentToolExecution } from './agentToolRegistry';
 import { buildWorkspaceContextPrompt } from './workspaceTools';
+import { TEXT_PROCESSING_POLICY } from '../constants/textProcessingPolicy';
 
 export const MAX_AGENT_ITERATIONS = 5;
 
@@ -78,7 +79,7 @@ export function buildRuntimeConfig(options: RuntimeConfigOptions): any {
   const workspaceContext = buildWorkspaceContextPrompt(options.workspace, Boolean(options.googleToken));
   const config: any = {};
 
-  const combinedPrompt = `${options.systemPrompt || ''}\n${workspaceContext}`.trim();
+  const combinedPrompt = [TEXT_PROCESSING_POLICY, options.systemPrompt || '', workspaceContext].filter(Boolean).join('\n\n').trim();
   if (combinedPrompt) config.systemInstruction = combinedPrompt;
 
   if (options.includeSafetySettings) {

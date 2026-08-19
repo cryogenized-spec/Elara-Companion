@@ -1,4 +1,5 @@
 import { loadAgentOperatingPolicy } from './agentPolicy';
+import { TEXT_PROCESSING_POLICY } from '../constants/textProcessingPolicy';
 
 export const USER_PROFILE_NOTES_KEY = 'elara_user_profile_notes_v1';
 export const ACTIVE_SCRATCHPAD_KEY = 'elara_active_scratchpad_v1';
@@ -84,6 +85,9 @@ export function buildSystemPayload({
   const agentOperatingPolicy = loadAgentOperatingPolicy();
 
   return `--- BEGIN SYSTEM PAYLOAD TEMPLATE ---
+[TEXT PROCESSING CONTEXT]
+${TEXT_PROCESSING_POLICY}
+
 [SYSTEM INSTRUCTIONS & PERSONA]
 ${baseSystemInstruction}
 
