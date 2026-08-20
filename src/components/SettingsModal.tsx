@@ -45,25 +45,34 @@ const VoicePanelBridge: React.FC<{
     let hiddenContainer: HTMLElement | null = null;
     let overlay: HTMLDivElement | null = null;
 
+    const ensureLegacyVoiceTab = () => {
+      const voiceButton = Array.from(document.querySelectorAll('button')).find((node) => {
+        if (node.closest('[data-elara-unified-settings="true"]')) return false;
+        return node.textContent?.replace(/\s+/g, ' ').trim() === 'Voice & Speech';
+      }) as HTMLButtonElement | undefined;
+
+      if (voiceButton) {
+        const label = Array.from(voiceButton.querySelectorAll('span')).find((node) => node.textContent?.trim() === 'Voice & Speech');
+        if (label) label.textContent = 'Voice & Chat';
+      }
+
+      return voiceButton;
+    };
+
     const sync = () => {
       if (disposed) return;
+
       const marker = Array.from(document.querySelectorAll('span')).find(
         (node) => node.textContent?.trim() === 'Live Speech-to-Text & Voice Dictation',
       );
-      const container = marker?.closest('div.space-y-6') as HTMLElement | null;
 
-      if (!container) {
-        if (hiddenContainer) {
-          hiddenContainer.style.visibility = '';
-          hiddenContainer = null;
-        }
-        if (overlay) {
-          overlay.remove();
-          overlay = null;
-        }
-        setHost(null);
+      if (!marker) {
+        ensureLegacyVoiceTab()?.click();
         return;
       }
+
+      const container = marker.closest('div.space-y-6') as HTMLElement | null;
+      if (!container) return;
 
       if (!hiddenContainer) {
         hiddenContainer = container;
@@ -88,6 +97,7 @@ const VoicePanelBridge: React.FC<{
       overlay.style.top = `${rect.top}px`;
       overlay.style.width = `${rect.width}px`;
       overlay.style.height = `${rect.height}px`;
+      ensureLegacyVoiceTab();
     };
 
     const observer = new MutationObserver(sync);
