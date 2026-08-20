@@ -39,13 +39,14 @@ export interface ModelResilienceStateStore {
   set(state: ModelHealthState): void;
 }
 
+let defaultModelHealthState: ModelHealthState = createModelHealthState();
+
 const defaultStateStore: ModelResilienceStateStore = {
-  let state: ModelHealthState = createModelHealthState();
   get() {
-    return state;
+    return defaultModelHealthState;
   },
   set(next) {
-    state = next;
+    defaultModelHealthState = next;
   },
 };
 
@@ -75,7 +76,7 @@ export async function runWithModelResilience<T>(
   const fallbackModels = options.fallbackModels || [...DEFAULT_FALLBACK_MODELS];
   const failoverEnabled = options.failoverEnabled !== false;
   const cooldownMs = options.cooldownMs ?? DEFAULT_MODEL_COOLDOWN_MS;
-  let attemptedModels = new Set<string>();
+  const attemptedModels = new Set<string>();
   let state = stateStore.get();
 
   while (true) {
@@ -96,20 +97,10 @@ export async function runWithModelResilience<T>(
     try {
       const result = await runWithRetry(
         async (attempt) => {
-          try {
-            const turn = await executeTurn(selectedModel, attempt);
-            state = recordModelSuccess(state, selectedModel);
-            stateStore.set(state);
-            return turn;
-          } catch (error) {
-            const classified = getErrorFromThrown(error, selectedModel);
-            if ((error as any)?.retryableOverride === false) {
-              throw Object.assign(new Error(classified.message), {
-                apiError: { ...classified, retryable: false },
-              });
-            }
-            throw error;
-          }
+          const turn = await executeTurn(selectedModel, attempt);
+          state = recordModelSuccess(state, selectedModel);
+          stateStore.set(state);
+          return turn;
         },
         {
           policy: options.retryPolicy || DEFAULT_RETRY_POLICY,
