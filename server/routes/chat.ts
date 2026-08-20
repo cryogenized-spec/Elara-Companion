@@ -58,7 +58,6 @@ export function setupChatRoutes(app: express.Express) {
             if (chunk.functionCall) return;
             res.write(`data: ${JSON.stringify(chunk)}\n\n`);
           },
-          signal: req.signal,
         });
 
         const functionCalls = turn.functionCalls;
