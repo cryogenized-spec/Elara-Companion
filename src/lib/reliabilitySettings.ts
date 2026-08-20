@@ -1,6 +1,11 @@
 import type { ElaraApiErrorCode } from './apiError';
-import { DEFAULT_FALLBACK_MODELS } from './modelResilience';
 import type { RetryPolicy } from './retryPolicy';
+
+export const RELIABILITY_FALLBACK_MODELS = [
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-3.5-flash-lite',
+] as const;
 
 export interface ReliabilitySettings {
   autoRetryEnabled: boolean;
@@ -25,7 +30,7 @@ export const DEFAULT_RELIABILITY_SETTINGS: ReliabilitySettings = {
   jitterRatio: 0.2,
   honorRetryAfter: true,
   autoFailoverEnabled: true,
-  fallbackModels: [...DEFAULT_FALLBACK_MODELS],
+  fallbackModels: [...RELIABILITY_FALLBACK_MODELS],
   cooldownMs: 60_000,
   autoRestorePreferredModel: true,
   retryableErrorCodes: [
@@ -48,7 +53,7 @@ export const DEFAULT_RELIABILITY_SETTINGS: ReliabilitySettings = {
   ],
 };
 
-const AVAILABLE_FALLBACKS = new Set<string>(DEFAULT_FALLBACK_MODELS);
+const AVAILABLE_FALLBACKS = new Set<string>(RELIABILITY_FALLBACK_MODELS);
 
 function clampInt(value: unknown, fallback: number, min: number, max: number): number {
   const numeric = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
