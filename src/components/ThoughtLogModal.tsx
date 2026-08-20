@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   X,
   Brain,
@@ -28,6 +28,7 @@ export const ThoughtLogModal: React.FC<ThoughtLogModalProps> = ({
   thoughtDurationMs,
 }) => {
   const [copied, setCopied] = useState(false);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -36,6 +37,11 @@ export const ThoughtLogModal: React.FC<ThoughtLogModalProps> = ({
     if (isOpen) window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (!isOpen || !isStreaming || !scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [isOpen, isStreaming, thoughts.length]);
 
   if (!isOpen) return null;
 
@@ -52,30 +58,29 @@ export const ThoughtLogModal: React.FC<ThoughtLogModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md transition-all animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md transition-all animate-in fade-in duration-200"
       onClick={onClose}
+      role="presentation"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-zinc-950 border border-sky-500/30 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh] text-zinc-100 ring-1 ring-sky-500/20 animate-in zoom-in-95 duration-200"
+        className="bg-zinc-950 border border-sky-500/30 w-full h-[100dvh] sm:h-auto sm:max-h-[88dvh] sm:max-w-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col text-zinc-100 ring-1 ring-sky-500/20 animate-in zoom-in-95 duration-200"
       >
-        <div className="p-4 sm:p-5 border-b border-zinc-800/80 bg-zinc-900/60 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-xl bg-sky-950/80 border border-sky-500/40 flex items-center justify-center text-sky-400 shadow-inner">
+        <div className="p-4 sm:p-5 pt-[max(1rem,env(safe-area-inset-top))] border-b border-zinc-800/80 bg-zinc-900/60 flex items-center justify-between shrink-0">
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-sky-950/80 border border-sky-500/40 flex items-center justify-center text-sky-400 shadow-inner shrink-0">
               <Brain className="w-5 h-5 text-[#70A1FF] animate-pulse" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm sm:text-base font-semibold text-zinc-100 flex items-center gap-2">
-                  <span>Thinking Summary</span>
-                </h2>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <h2 className="text-sm sm:text-base font-semibold text-zinc-100 truncate">Thinking Summary</h2>
                 {isStreaming ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-sky-500/20 text-[#70A1FF] border border-sky-400/30 animate-pulse">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-sky-500/20 text-[#70A1FF] border border-sky-400/30 animate-pulse shrink-0">
                     <Sparkles className="w-2.5 h-2.5 animate-spin" />
                     <span>Live</span>
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shrink-0">
                     <CheckCircle2 className="w-2.5 h-2.5" />
                     <span>Completed</span>
                   </span>
@@ -96,21 +101,27 @@ export const ThoughtLogModal: React.FC<ThoughtLogModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center space-x-1.5">
+          <div className="flex items-center space-x-1.5 shrink-0">
             <button
               onClick={handleCopyAll}
-              className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors"
+              className="min-w-10 min-h-10 p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors flex items-center justify-center touch-manipulation"
               title="Copy thinking summary"
+              aria-label="Copy thinking summary"
             >
               {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
             </button>
-            <button onClick={onClose} className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors" title="Close modal (Esc)">
+            <button
+              onClick={onClose}
+              className="min-w-10 min-h-10 p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors flex items-center justify-center touch-manipulation"
+              title="Close modal (Esc)"
+              aria-label="Close thinking summary"
+            >
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        <div className="px-4 py-2 bg-zinc-950/90 border-b border-zinc-800/80 flex items-center justify-between text-xs">
+        <div className="px-4 py-2 bg-zinc-950/90 border-b border-zinc-800/80 flex items-center justify-between text-xs shrink-0">
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-950/70 text-[#70A1FF] border border-sky-800/50 shadow-sm">
             <ListTree className="w-3.5 h-3.5" />
             <span>Summary Steps</span>
@@ -118,7 +129,7 @@ export const ThoughtLogModal: React.FC<ThoughtLogModalProps> = ({
           <span className="text-[11px] font-mono text-zinc-500 hidden sm:inline">User-facing reasoning summary</span>
         </div>
 
-        <div className="p-4 sm:p-5 overflow-y-auto flex-1 custom-scrollbar">
+        <div ref={scrollRef} className="p-4 sm:p-5 overflow-y-auto overscroll-contain flex-1 min-h-0 custom-scrollbar">
           {thoughts.length === 0 ? (
             <div className="py-12 text-center text-zinc-400 space-y-2">
               <Brain className="w-8 h-8 mx-auto text-zinc-600 animate-pulse" />
@@ -133,13 +144,13 @@ export const ThoughtLogModal: React.FC<ThoughtLogModalProps> = ({
                   </div>
                   <div className="bg-zinc-900/70 hover:bg-zinc-900 border border-zinc-800/90 hover:border-sky-500/40 rounded-xl p-3.5 transition-all shadow-sm">
                     <div className="flex items-start justify-between gap-2 mb-1.5">
-                      <h4 className="text-xs sm:text-sm font-semibold text-zinc-100 flex items-center gap-1.5">
+                      <h4 className="text-xs sm:text-sm font-semibold text-zinc-100 flex items-center gap-1.5 min-w-0">
                         <ChevronRight className="w-3.5 h-3.5 text-[#70A1FF] shrink-0" />
-                        <span>{step.step_title}</span>
+                        <span className="break-words">{step.step_title}</span>
                       </h4>
                       <span className="text-[10px] font-mono text-zinc-500 shrink-0">Step {idx + 1}</span>
                     </div>
-                    <div className="pl-5 border-l-2 border-sky-500/30 mt-2 py-0.5 text-xs text-zinc-300 font-sans leading-relaxed whitespace-pre-wrap">
+                    <div className="pl-5 border-l-2 border-sky-500/30 mt-2 py-0.5 text-xs text-zinc-300 font-sans leading-relaxed whitespace-pre-wrap break-words">
                       {step.summary}
                     </div>
                   </div>
@@ -149,9 +160,9 @@ export const ThoughtLogModal: React.FC<ThoughtLogModalProps> = ({
           )}
         </div>
 
-        <div className="p-3.5 bg-zinc-900/40 border-t border-zinc-800/80 flex items-center justify-between gap-3 text-xs text-zinc-400">
+        <div className="p-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] bg-zinc-900/40 border-t border-zinc-800/80 flex items-center justify-between gap-3 text-xs text-zinc-400 shrink-0">
           <span className="text-[11px]">Only concise user-facing summaries are shown here.</span>
-          <button onClick={onClose} className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium transition-colors">
+          <button onClick={onClose} className="min-h-10 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium transition-colors touch-manipulation">
             Close
           </button>
         </div>
