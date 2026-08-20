@@ -1,11 +1,24 @@
 const VIEWPORT_HEIGHT_VAR = '--elara-viewport-height';
+export const MOBILE_VIEWPORT_EVENT = 'elara:mobile-viewport-changed';
+
+export interface MobileViewportChangeDetail {
+  height: number;
+  isKeyboardLikelyOpen: boolean;
+}
 
 export function installMobileViewportSync(): () => void {
   if (typeof window === 'undefined' || typeof document === 'undefined') return () => {};
 
   const update = () => {
-    const height = window.visualViewport?.height || window.innerHeight;
-    document.documentElement.style.setProperty(VIEWPORT_HEIGHT_VAR, `${Math.round(height)}px`);
+    const viewport = window.visualViewport;
+    const height = Math.round(viewport?.height || window.innerHeight);
+    const layoutHeight = Math.round(window.innerHeight);
+    const isKeyboardLikelyOpen = viewport ? height < layoutHeight - 48 : false;
+
+    document.documentElement.style.setProperty(VIEWPORT_HEIGHT_VAR, `${height}px`);
+    window.dispatchEvent(new CustomEvent<MobileViewportChangeDetail>(MOBILE_VIEWPORT_EVENT, {
+      detail: { height, isKeyboardLikelyOpen },
+    }));
   };
 
   update();
