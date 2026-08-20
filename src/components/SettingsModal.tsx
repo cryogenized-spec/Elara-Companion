@@ -9,6 +9,7 @@ import { DEFAULT_RELIABILITY_SETTINGS, normalizeReliabilitySettings } from '../l
 import { SettingsModal as LegacySettingsModal } from './SettingsModalLegacy';
 import { VoiceSettingsPanel } from './VoiceSettingsPanel';
 import { ReliabilitySettingsPanel } from './ReliabilitySettingsPanel';
+import { ResilienceStatusBanner } from './ResilienceStatusBanner';
 
 export interface SettingsModalProps {
   isOpen: boolean;
@@ -155,6 +156,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   return (
     <>
       <LegacySettingsModal {...props} onSaveSettings={handleSaveSettings} />
+      <ResilienceStatusBanner />
 
       <VoicePanelBridge
         isOpen={props.isOpen}
