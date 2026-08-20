@@ -6,6 +6,7 @@ import { saveActiveScratchpad, clearActiveScratchpad, clearUserProfileNotes, USE
 import { clearWorkspace } from './workspaceStorage';
 import { DEFAULT_WORLD_STATE } from '../constants/defaultWorldState';
 import { applySettingsAppearance } from './themeManager';
+import { normalizeMemoryState } from './memoryStorage';
 
 const CONVERSATIONS_KEY = 'elara_conversations_v2';
 const SETTINGS_KEY = 'elara_settings_v2';
@@ -57,7 +58,7 @@ export async function migrateFromLocalStorage(): Promise<{ migrated: boolean; fa
     [PORTRAIT_KEY, 'elara_custom_portrait_v1', undefined],
     [FOLDERS_KEY, 'elara_folders_v1', (value) => Array.isArray(value) ? value : []],
     [WORLD_STATE_KEY, 'elara_world_state', (value) => value && typeof value === 'object' ? value : DEFAULT_WORLD_STATE],
-    [MEMORY_STATE_KEY, 'elara_memory_state', (value) => value && typeof value === 'object' ? value : { memories: [] }],
+    [MEMORY_STATE_KEY, 'elara_memory_state', (value) => normalizeMemoryState(value)],
   ];
 
   for (const [idbKey, legacyKey, transform] of migrations) {
@@ -117,14 +118,7 @@ export async function getDbWorldState(): Promise<WorldState> {
 export async function setDbWorldState(data: WorldState) { await set(WORLD_STATE_KEY, data); }
 
 export async function getDbMemoryState(): Promise<MemoryScratchpadState> {
-  const data = await get(MEMORY_STATE_KEY);
-  const state: MemoryScratchpadState = data && Array.isArray((data as any).memories)
-    ? {
-        memories: (data as any).memories,
-        lastMaintenanceAt: (data as any).lastMaintenanceAt || new Date().toISOString(),
-        autoMaintenanceEnabled: (data as any).autoMaintenanceEnabled ?? true,
-      }
-    : { memories: [], lastMaintenanceAt: new Date().toISOString(), autoMaintenanceEnabled: true };
+  const state = normalizeMemoryState(await get(MEMORY_STATE_KEY));
 
   if (state.memories.length > 0) {
     const scratchpad = [
@@ -139,7 +133,7 @@ export async function getDbMemoryState(): Promise<MemoryScratchpadState> {
 
   return state;
 }
-export async function setDbMemoryState(data: MemoryScratchpadState) { await set(MEMORY_STATE_KEY, data); }
+export async function setDbMemoryState(data: MemoryScratchpadState) { await set(MEMORY_STATE_KEY, normalizeMemoryState(data)); }
 
 export async function clearDbStorage() {
   await Promise.all([
