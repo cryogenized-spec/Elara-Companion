@@ -14,14 +14,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  oneoff-pass3-integrate:
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor == 'cryogenized-spec' && contains(github.event.head_commit.message, 'start-pass3-integration') }}
+  oneoff-pass3-integrate-pr:
+    if: ${{ github.event_name == 'pull_request' && (github.event.action == 'synchronize' || github.event.action == 'reopened') && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'refactor/voice-pass3-ui-final' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Pass 3 branch
         uses: actions/checkout@v6
         with:
-          ref: refactor/voice-pass3-ui-final
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
           persist-credentials: true
 
@@ -67,29 +67,19 @@ jobs:
           path.write_text(text[:start] + replacement + text[end:])
           PY
 
-      - name: Verify changed files exist
+      - name: Verify and commit integration
         run: |
           test -f src/components/VoiceSettingsPanel.tsx
           grep -q "VoiceSettingsPanel" src/components/SettingsModal.tsx
-
-      - name: Commit Pass 3 integration to branch
-        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/components/SettingsModal.tsx src/components/VoiceSettingsPanel.tsx
-          git commit -m "feat: mount canonical voice settings panel"
-          git push origin HEAD:refactor/voice-pass3-ui-final
-
-      - name: Restore CI workflow on main
-        run: |
-          git fetch origin main
-          git checkout -B main origin/main
-          git show HEAD^:.github/workflows/ci.yml > .github/workflows/ci.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/ci.yml
-          git commit -m "chore: restore CI workflow after pass3 integration"
-          git push origin main
+          if git diff --cached --quiet; then
+            echo "Pass 3 already integrated; nothing to commit."
+          else
+            git commit -m "feat: mount canonical voice settings panel"
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          fi
 
   check:
     runs-on: ubuntu-latest
