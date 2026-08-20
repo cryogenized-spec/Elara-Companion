@@ -1,15 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Conversation, ElaraSettings, WorldState, MemoryScratchpadState, Folder } from '../types';
-import { 
-  migrateFromLocalStorage, 
+import {
+  migrateFromLocalStorage,
   getDbConversations, setDbConversations,
   getDbSettings, setDbSettings,
   getDbFolders, setDbFolders,
   getDbPortrait, setDbPortrait,
   getDbWorldState, setDbWorldState,
   getDbMemoryState, setDbMemoryState,
-  clearDbStorage
+  clearDbStorage,
 } from '../lib/db';
+import { useMemoryMaintenance } from './useMemoryMaintenance';
 
 export function useCompanionStore() {
   const [isLoaded, setIsLoaded] = useState(false);
@@ -31,7 +32,7 @@ export function useCompanionStore() {
       setCustomPortrait(await getDbPortrait());
       setIsLoaded(true);
     }
-    loadAll();
+    void loadAll();
   }, []);
 
   const saveConversations = useCallback(async (newConvs: Conversation[]) => {
@@ -59,6 +60,12 @@ export function useCompanionStore() {
     await setDbMemoryState(newMem);
   }, []);
 
+  const memoryMaintenance = useMemoryMaintenance({
+    memoryState,
+    isLoaded,
+    onSaveMemoryState: saveMemoryState,
+  });
+
   const savePortrait = useCallback(async (newPortrait: string | null) => {
     setCustomPortrait(newPortrait);
     await setDbPortrait(newPortrait);
@@ -76,7 +83,8 @@ export function useCompanionStore() {
     settings, saveSettings,
     worldState, saveWorldState,
     memoryState, saveMemoryState,
+    memoryMaintenance,
     customPortrait, savePortrait,
-    clearAll
+    clearAll,
   };
 }
