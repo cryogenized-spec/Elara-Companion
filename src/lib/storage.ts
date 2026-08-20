@@ -64,7 +64,7 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
   speechLanguage: 'en-US',
   speechAutoSend: false,
   speechAutoCapitalize: true,
-  speechPauseTimeout: 2000,
+  speechPauseTimeout: 2500,
 };
 
 export function loadSettings(): ElaraSettings {
