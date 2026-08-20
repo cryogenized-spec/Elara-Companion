@@ -1,22 +1,6 @@
 // Gemini-backed audio transcription utilities.
 
 /**
- * Auto-capitalize helper for finalized Gemini transcripts.
- * Keeps formatting deterministic before text reaches the composer.
- */
-export function formatSpeechTranscript(rawText: string): string {
-  if (!rawText) return '';
-  let text = rawText.trim();
-
-  text = text.charAt(0).toUpperCase() + text.slice(1);
-  text = text.replace(/([.?!]\s+)([a-z])/g, (_, p1, p2) => p1 + p2.toUpperCase());
-  text = text.replace(/\b(i)\b/g, 'I');
-  text = text.replace(/\b(i)('m|'ve|'ll|'d)\b/gi, (_, p1, p2) => 'I' + p2.toLowerCase());
-
-  return text;
-}
-
-/**
  * Transcribes a recorded audio blob through the application's Gemini API route.
  * Gemini receives the audio as inline multimodal input; no browser SpeechRecognition
  * or alternate transcription provider is used by the active voice pipeline.
