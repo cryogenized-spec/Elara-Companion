@@ -1,4 +1,4 @@
-import { MemoryItem, MemoryKind, MemoryLifecycle, MemoryScratchpadState, MemorySource } from '../types';
+import { MemoryItem, MemoryKind, MemoryLifecycle, MemoryScratchpadState, MemorySource, MemoryConfidence, MemoryImportance, MemoryCategory } from '../types';
 
 const MEMORY_STORAGE_KEY = 'elara_memory_scratchpad_v1';
 const MEMORY_SCHEMA_VERSION = 2;
@@ -37,16 +37,40 @@ const isMemoryLifecycle = (value: unknown): value is MemoryLifecycle =>
 const isMemorySource = (value: unknown): value is MemorySource =>
   ['user', 'elara', 'conversation', 'artifact', 'system', 'imported'].includes(value as string);
 
+const isMemoryConfidence = (value: unknown): value is MemoryConfidence =>
+  ['certain', 'likely', 'uncertain'].includes(value as string);
+
+const isMemoryImportance = (value: unknown): value is MemoryImportance =>
+  ['low', 'normal', 'important', 'core'].includes(value as string);
+
+const isMemoryCategory = (value: unknown): value is MemoryCategory =>
+  ['User', 'Elara', 'Relationship', 'Home', 'Work', 'Projects', 'Preferences', 'People', 'Places', 'Experiences', 'Observations', 'Plans', 'Other'].includes(value as string);
+
+const normalizeLegacyConfidence = (value: unknown): MemoryConfidence => {
+  if (isMemoryConfidence(value)) return value;
+  if (value === 'high') return 'certain';
+  if (value === 'medium') return 'likely';
+  return 'uncertain';
+};
+
+const normalizeLegacyImportance = (value: unknown): MemoryImportance => {
+  if (isMemoryImportance(value)) return value;
+  if (value === 'high') return 'important';
+  if (value === 'medium') return 'normal';
+  if (value === 'low') return 'low';
+  return 'normal';
+};
+
 /** Normalize legacy memory records into the Pass 1 canonical schema. */
 export function normalizeMemoryItem(value: unknown): MemoryItem | null {
   if (!value || typeof value !== 'object') return null;
-  const raw = value as Partial<MemoryItem>;
+  const raw = value as Partial<MemoryItem> & { confidence?: unknown; importance?: unknown; category?: unknown };
   if (typeof raw.id !== 'string' || typeof raw.content !== 'string') return null;
-  if (typeof raw.confidence !== 'string' || typeof raw.importance !== 'string') return null;
-  if (typeof raw.isPrivate !== 'boolean' || typeof raw.category !== 'string') return null;
+  if (typeof raw.isPrivate !== 'boolean') return null;
   if (typeof raw.createdAt !== 'string' || typeof raw.updatedAt !== 'string') return null;
 
-  const kind = isMemoryKind(raw.kind) ? raw.kind : KIND_BY_CATEGORY[raw.category as MemoryItem['category']] || 'context';
+  const category = isMemoryCategory(raw.category) ? raw.category : 'Observations';
+  const kind = isMemoryKind(raw.kind) ? raw.kind : KIND_BY_CATEGORY[category] || 'context';
   const lifecycle = isMemoryLifecycle(raw.lifecycle)
     ? raw.lifecycle
     : raw.importance === 'core'
@@ -65,6 +89,9 @@ export function normalizeMemoryItem(value: unknown): MemoryItem | null {
     kind,
     lifecycle,
     source,
+    confidence: normalizeLegacyConfidence(raw.confidence),
+    importance: normalizeLegacyImportance(raw.importance),
+    category,
     tags: Array.isArray(raw.tags) ? raw.tags.filter((tag): tag is string => typeof tag === 'string') : [],
     relatedMemoryIds: Array.isArray(raw.relatedMemoryIds)
       ? raw.relatedMemoryIds.filter((id): id is string => typeof id === 'string')
@@ -73,7 +100,7 @@ export function normalizeMemoryItem(value: unknown): MemoryItem | null {
       ? raw.links.filter((link) => link && typeof link === 'object' && typeof link.type === 'string' && typeof link.id === 'string')
       : [],
     reinforcementCount: typeof raw.reinforcementCount === 'number' && raw.reinforcementCount >= 0 ? raw.reinforcementCount : 0,
-    pinned: raw.pinned ?? false,
+    pinned: Boolean(raw.pinned),
   } as MemoryItem;
 }
 
@@ -107,7 +134,7 @@ export function saveMemoryState(state: MemoryScratchpadState): void {
   try {
     localStorage.setItem(MEMORY_STORAGE_KEY, JSON.stringify(normalizeMemoryState(state)));
   } catch (err) {
-    console.error('Failed to save memory state to localStorage', err);
+    console.error('Failed to save memory state', err);
   }
 }
 
