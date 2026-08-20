@@ -49,12 +49,29 @@ const defaultSleep = (delayMs: number, signal?: AbortSignal): Promise<void> =>
       return;
     }
 
-    const timer = setTimeout(resolve, delayMs);
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    };
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+
     const onAbort = () => {
-      clearTimeout(timer);
+      if (settled) return;
+      settled = true;
+      cleanup();
       reject(signal?.reason || new DOMException('Aborted', 'AbortError'));
     };
 
+    timer = setTimeout(finish, delayMs);
     signal?.addEventListener('abort', onAbort, { once: true });
   });
 
@@ -94,7 +111,6 @@ export async function runWithRetry<T>(
   const policy = mergePolicy(options.policy);
   const sleep = options.sleep || defaultSleep;
   const random = options.random || Math.random;
-  let lastError: ClassifiedApiError | undefined;
 
   for (let attempt = 1; attempt <= policy.maxAttempts; attempt += 1) {
     if (options.signal?.aborted) {
@@ -106,8 +122,6 @@ export async function runWithRetry<T>(
       return { value, attempts: attempt };
     } catch (error) {
       const classified = classifyApiError(error, options.modelId);
-      lastError = classified;
-
       const hasNextAttempt = attempt < policy.maxAttempts;
       if (!classified.retryable || !hasNextAttempt) {
         throw Object.assign(new Error(classified.message), { apiError: classified });
@@ -126,7 +140,5 @@ export async function runWithRetry<T>(
     }
   }
 
-  throw Object.assign(new Error(lastError?.message || 'Retry attempts exhausted.'), {
-    apiError: lastError,
-  });
+  throw new Error('Retry attempts exhausted.');
 }
