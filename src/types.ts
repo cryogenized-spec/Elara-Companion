@@ -11,6 +11,7 @@ export interface Folder { id: string; name: string; isExpanded?: boolean; }
 export interface Conversation { id: string; title: string; createdAt: number; updatedAt: number; messages: Message[]; model?: string; temperature?: number; maxOutputTokens?: number; folderId?: string; }
 
 import type { VoiceSettings } from './lib/voiceSettings';
+import type { ReliabilitySettings } from './lib/reliabilitySettings';
 
 export interface ElaraSettings {
   systemPrompt: string; personaProtocol: string; intimacyModule: string; runtimeRules: string;
@@ -28,6 +29,8 @@ export interface ElaraSettings {
   thinkingBudget?: number; thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high'; sendOnEnter?: boolean; apiKey?: string; customBackendUrl?: string;
   /** Canonical voice configuration. Legacy flat speech fields remain for export/migration compatibility. */
   voiceSettings?: VoiceSettings;
+  /** Canonical user-owned retry/failover policy. Runtime health remains temporary and is never persisted here. */
+  reliabilitySettings?: ReliabilitySettings;
   speechLanguage?: string; speechAutoSend?: boolean; speechAutoCapitalize?: boolean; speechPauseTimeout?: number;
 }
 

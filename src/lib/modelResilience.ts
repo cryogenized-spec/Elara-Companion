@@ -1,5 +1,6 @@
 import { ClassifiedApiError, classifyApiError } from './apiError';
 import { DEFAULT_RETRY_POLICY, RetryPolicy, runWithRetry } from './retryPolicy';
+import type { ReliabilitySettings } from './reliabilitySettings';
 import {
   DEFAULT_MODEL_COOLDOWN_MS,
   ModelHealthState,
@@ -20,6 +21,9 @@ export interface ModelResiliencePolicy {
   fallbackModels?: string[];
   failoverEnabled?: boolean;
   cooldownMs?: number;
+  autoRestorePreferredModel?: boolean;
+  retryableErrorCodes?: string[];
+  failoverErrorCodes?: string[];
 }
 
 export interface ModelResilienceContext {
@@ -50,22 +54,53 @@ const defaultStateStore: ModelResilienceStateStore = {
   },
 };
 
-function shouldFailOver(error: ClassifiedApiError): boolean {
+const DEFAULT_FAILOVER_CODES = new Set([
+  'API_RATE_LIMIT_RPM_429',
+  'API_QUOTA_DAILY_429',
+  'MODEL_NOT_FOUND_404',
+  'SERVER_ERROR_500',
+  'BAD_GATEWAY_502',
+  'SERVICE_UNAVAILABLE_503',
+  'GATEWAY_TIMEOUT_504',
+]);
+
+function shouldFailOver(error: ClassifiedApiError, configuredCodes?: string[]): boolean {
   if ((error as any).failoverOverride === false) return false;
-  return [
-    'API_RATE_LIMIT_RPM_429',
-    'API_QUOTA_DAILY_429',
-    'MODEL_NOT_FOUND_404',
-    'SERVER_ERROR_500',
-    'BAD_GATEWAY_502',
-    'SERVICE_UNAVAILABLE_503',
-    'GATEWAY_TIMEOUT_504',
-  ].includes(error.code);
+  const allowed = configuredCodes ? new Set(configuredCodes) : DEFAULT_FAILOVER_CODES;
+  return allowed.has(error.code);
 }
 
 function getErrorFromThrown(error: unknown, modelId: string): ClassifiedApiError {
   const attached = (error as any)?.apiError;
   return attached || classifyApiError(error, modelId);
+}
+
+export function buildModelResiliencePolicy(settings?: ReliabilitySettings): ModelResiliencePolicy {
+  if (!settings) {
+    return {
+      retryPolicy: DEFAULT_RETRY_POLICY,
+      fallbackModels: [...DEFAULT_FALLBACK_MODELS],
+      failoverEnabled: true,
+      cooldownMs: DEFAULT_MODEL_COOLDOWN_MS,
+      autoRestorePreferredModel: true,
+    };
+  }
+
+  return {
+    retryPolicy: {
+      maxAttempts: settings.autoRetryEnabled ? settings.maxAttempts : 1,
+      baseDelayMs: settings.baseDelayMs,
+      maxDelayMs: settings.maxDelayMs,
+      jitterRatio: settings.jitterRatio,
+      honorRetryAfter: settings.honorRetryAfter,
+    },
+    fallbackModels: settings.fallbackModels,
+    failoverEnabled: settings.autoFailoverEnabled,
+    cooldownMs: settings.cooldownMs,
+    autoRestorePreferredModel: settings.autoRestorePreferredModel,
+    retryableErrorCodes: settings.retryableErrorCodes,
+    failoverErrorCodes: settings.failoverErrorCodes,
+  };
 }
 
 export async function runWithModelResilience<T>(
@@ -79,6 +114,7 @@ export async function runWithModelResilience<T>(
   const cooldownMs = options.cooldownMs ?? DEFAULT_MODEL_COOLDOWN_MS;
   const attemptedModels = new Set<string>();
   let state = stateStore.get();
+  const retryableCodes = options.retryableErrorCodes ? new Set(options.retryableErrorCodes) : undefined;
 
   while (true) {
     const selection = selectRuntimeModel({
@@ -86,6 +122,7 @@ export async function runWithModelResilience<T>(
       fallbackModels,
       state,
       now: Date.now(),
+      autoRestorePreferredModel: options.autoRestorePreferredModel,
     });
 
     const selectedModel = selection.model;
@@ -98,10 +135,20 @@ export async function runWithModelResilience<T>(
     try {
       const result = await runWithRetry(
         async (attempt) => {
-          const turn = await executeTurn(selectedModel, attempt);
-          state = recordModelSuccess(state, selectedModel);
-          stateStore.set(state);
-          return turn;
+          try {
+            const turn = await executeTurn(selectedModel, attempt);
+            state = recordModelSuccess(state, selectedModel);
+            stateStore.set(state);
+            return turn;
+          } catch (error) {
+            const classified = getErrorFromThrown(error, selectedModel);
+            if (retryableCodes && !retryableCodes.has(classified.code)) {
+              throw Object.assign(new Error(classified.message), {
+                apiError: { ...classified, retryable: false },
+              });
+            }
+            throw error;
+          }
         },
         {
           policy: options.retryPolicy || DEFAULT_RETRY_POLICY,
@@ -123,7 +170,7 @@ export async function runWithModelResilience<T>(
       state = recordModelFailure(state, selectedModel, classified, Date.now(), cooldownMs);
       stateStore.set(state);
 
-      if (!failoverEnabled || !shouldFailOver(classified)) {
+      if (!failoverEnabled || !shouldFailOver(classified, options.failoverErrorCodes)) {
         throw error;
       }
 
@@ -132,6 +179,7 @@ export async function runWithModelResilience<T>(
         fallbackModels,
         state,
         now: Date.now(),
+        autoRestorePreferredModel: options.autoRestorePreferredModel,
       });
       if (nextSelection.model.trim().toLowerCase() === normalized) {
         throw error;

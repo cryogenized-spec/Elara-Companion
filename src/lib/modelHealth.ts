@@ -73,6 +73,7 @@ export interface ModelSelectionInput {
   fallbackModels: string[];
   state: ModelHealthState;
   now?: number;
+  autoRestorePreferredModel?: boolean;
 }
 
 export interface ModelSelectionResult {
@@ -84,25 +85,30 @@ export interface ModelSelectionResult {
 export function selectRuntimeModel(input: ModelSelectionInput): ModelSelectionResult {
   const now = input.now ?? Date.now();
   const preferred = input.preferredModel.trim();
+  const preferredKey = normalizeModelId(preferred);
   const preferredCooling = isModelCoolingDown(input.state, preferred, now);
+  const autoRestore = input.autoRestorePreferredModel !== false;
 
-  // The preferred model is always the first choice when healthy or when its cooldown has expired.
+  // Healthy preferred model is always the primary choice.
   if (!preferredCooling) {
+    if (!autoRestore && input.state.models[preferredKey]) {
+      const fallbacks = [...new Set(input.fallbackModels.map(normalizeModelId).filter(Boolean))]
+        .filter((model) => model !== preferredKey);
+      const fallback = fallbacks.find((model) => !isModelCoolingDown(input.state, model, now));
+      if (fallback) return { model: fallback, usedFallback: true, probingPreferred: false };
+    }
+
     return {
       model: preferred,
       usedFallback: false,
-      probingPreferred: Boolean(input.state.models[normalizeModelId(preferred)]),
+      probingPreferred: Boolean(input.state.models[preferredKey]),
     };
   }
 
-  const fallbacks = input.fallbackModels.map(normalizeModelId).filter(Boolean);
-  const uniqueFallbacks = [...new Set(fallbacks)]
-    .filter((model) => model !== normalizeModelId(preferred));
-
-  const fallback = uniqueFallbacks.find((model) => !isModelCoolingDown(input.state, model, now));
-  if (fallback) {
-    return { model: fallback, usedFallback: true, probingPreferred: false };
-  }
+  const fallbacks = [...new Set(input.fallbackModels.map(normalizeModelId).filter(Boolean))]
+    .filter((model) => model !== preferredKey);
+  const fallback = fallbacks.find((model) => !isModelCoolingDown(input.state, model, now));
+  if (fallback) return { model: fallback, usedFallback: true, probingPreferred: false };
 
   // All fallbacks are unhealthy; probe the preferred model rather than inventing another route.
   return { model: preferred, usedFallback: false, probingPreferred: true };

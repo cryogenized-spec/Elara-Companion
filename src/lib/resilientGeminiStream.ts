@@ -1,6 +1,8 @@
 import { GoogleGenAI } from '@google/genai';
 import { classifyApiError } from './apiError';
 import { ModelResiliencePolicy, ModelResilienceStateStore, runWithModelResilience } from './modelResilience';
+import type { ReliabilitySettings } from './reliabilitySettings';
+import { buildModelResiliencePolicy } from './modelResilience';
 
 export interface ResilientStreamTurnResult {
   model: string;
@@ -19,12 +21,14 @@ export interface ResilientStreamTurnOptions {
   onChunk: (chunk: { text?: string; thoughtText?: string; thoughtType?: 'summary'; finishReason?: string; safetyRatings?: any; functionCall?: any }) => void;
   signal?: AbortSignal;
   policy?: ModelResiliencePolicy;
+  reliabilitySettings?: ReliabilitySettings;
   stateStore?: ModelResilienceStateStore;
 }
 
 export async function runResilientGeminiStreamTurn(
   options: ResilientStreamTurnOptions,
 ): Promise<ResilientStreamTurnResult> {
+  const policy = options.policy || (options.reliabilitySettings ? buildModelResiliencePolicy(options.reliabilitySettings) : undefined);
   const result = await runWithModelResilience(
     options.preferredModel,
     async (model) => {
@@ -85,7 +89,7 @@ export async function runResilientGeminiStreamTurn(
         emittedOutput,
       };
     },
-    options.policy,
+    policy,
     options.stateStore,
   );
 
