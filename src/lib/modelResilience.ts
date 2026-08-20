@@ -114,6 +114,7 @@ export async function runWithModelResilience<T>(
   const cooldownMs = options.cooldownMs ?? DEFAULT_MODEL_COOLDOWN_MS;
   const attemptedModels = new Set<string>();
   let state = stateStore.get();
+  const retryableCodes = options.retryableErrorCodes ? new Set(options.retryableErrorCodes) : undefined;
 
   while (true) {
     const selection = selectRuntimeModel({
@@ -134,10 +135,20 @@ export async function runWithModelResilience<T>(
     try {
       const result = await runWithRetry(
         async (attempt) => {
-          const turn = await executeTurn(selectedModel, attempt);
-          state = recordModelSuccess(state, selectedModel);
-          stateStore.set(state);
-          return turn;
+          try {
+            const turn = await executeTurn(selectedModel, attempt);
+            state = recordModelSuccess(state, selectedModel);
+            stateStore.set(state);
+            return turn;
+          } catch (error) {
+            const classified = getErrorFromThrown(error, selectedModel);
+            if (retryableCodes && !retryableCodes.has(classified.code)) {
+              throw Object.assign(new Error(classified.message), {
+                apiError: { ...classified, retryable: false },
+              });
+            }
+            throw error;
+          }
         },
         {
           policy: options.retryPolicy || DEFAULT_RETRY_POLICY,
