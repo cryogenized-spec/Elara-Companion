@@ -25,4 +25,6 @@ describe('resilienceStatus', () => {
     unsubscribe();
     vi.useRealTimers();
   });
+
+  // Pass 6 verification: timer-driven cleanup is deterministic under fake clocks.
 });
