@@ -8,6 +8,11 @@ export interface MemoryMaintenanceConfig {
   maxDuplicateGroupSize?: number;
 }
 
+type NormalizedMemoryMaintenanceConfig = Required<Pick<
+  MemoryMaintenanceConfig,
+  'workingStaleDays' | 'contextualStaleDays' | 'persistentStaleDays' | 'maxDuplicateGroupSize'
+>>;
+
 export interface MemoryMaintenanceCandidate {
   memoryId: string;
   kind: 'stale' | 'expired' | 'duplicate';
@@ -55,7 +60,7 @@ function daysSince(isoDate: string, nowMs: number): number {
   return Math.max(0, (nowMs - timestamp) / 86_400_000);
 }
 
-function lifecycleStaleDays(lifecycle: MemoryLifecycle, config: typeof DEFAULT_MEMORY_MAINTENANCE_CONFIG): number | null {
+function lifecycleStaleDays(lifecycle: MemoryLifecycle, config: NormalizedMemoryMaintenanceConfig): number | null {
   switch (lifecycle) {
     case 'working': return config.workingStaleDays;
     case 'contextual': return config.contextualStaleDays;
@@ -83,7 +88,7 @@ export function buildMemoryMaintenancePlan(
   memories: MemoryItem[],
   options: MemoryMaintenanceConfig = {},
 ): MemoryMaintenancePlan {
-  const config = { ...DEFAULT_MEMORY_MAINTENANCE_CONFIG, ...options };
+  const config: NormalizedMemoryMaintenanceConfig = { ...DEFAULT_MEMORY_MAINTENANCE_CONFIG, ...options };
   const now = options.now || new Date();
   const staleCandidates: MemoryMaintenanceCandidate[] = [];
   const expiredCandidates: MemoryMaintenanceCandidate[] = [];
