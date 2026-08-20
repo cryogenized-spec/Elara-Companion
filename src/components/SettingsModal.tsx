@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ElaraSettings } from '../types';
 import type { VoiceSettings } from '../lib/voiceSettings';
@@ -33,11 +33,13 @@ const VoicePanelBridge: React.FC<{
 }> = ({ isOpen, voiceValue, reliabilityValue, preferredModel, onVoiceChange, onReliabilityChange }) => {
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [section, setSection] = useState<'voice' | 'chat' | 'reliability'>('voice');
+  const autoSelectedVoiceRef = useRef(false);
 
   useEffect(() => {
     if (!isOpen) {
       setHost(null);
       setSection('voice');
+      autoSelectedVoiceRef.current = false;
       return;
     }
 
@@ -45,23 +47,58 @@ const VoicePanelBridge: React.FC<{
     let hiddenContainer: HTMLElement | null = null;
     let overlay: HTMLDivElement | null = null;
 
+    const removeOverlay = () => {
+      if (hiddenContainer) {
+        hiddenContainer.style.visibility = '';
+        hiddenContainer = null;
+      }
+      if (overlay) {
+        overlay.remove();
+        overlay = null;
+      }
+      setHost(null);
+    };
+
+    const findLegacyVoiceButton = () => {
+      return Array.from(document.querySelectorAll('button')).find((node) => {
+        if (node.closest('[data-elara-unified-settings="true"]')) return false;
+        const text = node.textContent?.replace(/\s+/g, ' ').trim();
+        return text === 'Voice & Speech' || text === 'Voice & Chat';
+      }) as HTMLButtonElement | undefined;
+    };
+
+    const ensureLegacyVoiceTab = () => {
+      const voiceButton = findLegacyVoiceButton();
+      if (voiceButton) {
+        const label = Array.from(voiceButton.querySelectorAll('span')).find(
+          (node) => node.textContent?.trim() === 'Voice & Speech',
+        );
+        if (label) label.textContent = 'Voice & Chat';
+      }
+      return voiceButton;
+    };
+
     const sync = () => {
       if (disposed) return;
+
       const marker = Array.from(document.querySelectorAll('span')).find(
         (node) => node.textContent?.trim() === 'Live Speech-to-Text & Voice Dictation',
       );
-      const container = marker?.closest('div.space-y-6') as HTMLElement | null;
 
+      if (!marker) {
+        const voiceButton = ensureLegacyVoiceTab();
+        if (!autoSelectedVoiceRef.current && voiceButton) {
+          autoSelectedVoiceRef.current = true;
+          voiceButton.click();
+          return;
+        }
+        removeOverlay();
+        return;
+      }
+
+      const container = marker.closest('div.space-y-6') as HTMLElement | null;
       if (!container) {
-        if (hiddenContainer) {
-          hiddenContainer.style.visibility = '';
-          hiddenContainer = null;
-        }
-        if (overlay) {
-          overlay.remove();
-          overlay = null;
-        }
-        setHost(null);
+        removeOverlay();
         return;
       }
 
@@ -88,6 +125,7 @@ const VoicePanelBridge: React.FC<{
       overlay.style.top = `${rect.top}px`;
       overlay.style.width = `${rect.width}px`;
       overlay.style.height = `${rect.height}px`;
+      ensureLegacyVoiceTab();
     };
 
     const observer = new MutationObserver(sync);
@@ -101,9 +139,7 @@ const VoicePanelBridge: React.FC<{
       observer.disconnect();
       window.removeEventListener('resize', sync);
       window.removeEventListener('scroll', sync, true);
-      if (hiddenContainer) hiddenContainer.style.visibility = '';
-      if (overlay) overlay.remove();
-      setHost(null);
+      removeOverlay();
     };
   }, [isOpen]);
 
