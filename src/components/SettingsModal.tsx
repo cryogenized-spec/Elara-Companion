@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ShieldAlert } from 'lucide-react';
 import type { ElaraSettings } from '../types';
 import type { VoiceSettings } from '../lib/voiceSettings';
 import { DEFAULT_VOICE_SETTINGS, normalizeVoiceSettings } from '../lib/voiceSettings';
@@ -9,7 +8,7 @@ import { DEFAULT_RELIABILITY_SETTINGS, normalizeReliabilitySettings } from '../l
 import { SettingsModal as LegacySettingsModal } from './SettingsModalLegacy';
 import { VoiceSettingsPanel } from './VoiceSettingsPanel';
 import { ReliabilitySettingsPanel } from './ReliabilitySettingsPanel';
-import { ResilienceStatusBanner } from './ResilienceStatusBanner';
+import { ChatEditorSettingsPanel } from './ChatEditorSettingsPanel';
 
 export interface SettingsModalProps {
   isOpen: boolean;
@@ -24,22 +23,21 @@ export interface SettingsModalProps {
   onClearAllData: () => void;
 }
 
-/**
- * Compatibility bridge for Pass 3.
- * The legacy settings implementation remains responsible for every existing tab,
- * persistence path, exports, and integrations. Only the legacy Voice tab surface
- * is visually replaced by the canonical VoiceSettingsPanel.
- */
 const VoicePanelBridge: React.FC<{
   isOpen: boolean;
-  value: VoiceSettings;
-  onChange: (settings: VoiceSettings) => void;
-}> = ({ isOpen, value, onChange }) => {
+  voiceValue: VoiceSettings;
+  reliabilityValue: ReliabilitySettings;
+  preferredModel: string;
+  onVoiceChange: (settings: VoiceSettings) => void;
+  onReliabilityChange: (settings: ReliabilitySettings) => void;
+}> = ({ isOpen, voiceValue, reliabilityValue, preferredModel, onVoiceChange, onReliabilityChange }) => {
   const [host, setHost] = useState<HTMLElement | null>(null);
+  const [section, setSection] = useState<'voice' | 'chat' | 'reliability'>('voice');
 
   useEffect(() => {
     if (!isOpen) {
       setHost(null);
+      setSection('voice');
       return;
     }
 
@@ -49,7 +47,6 @@ const VoicePanelBridge: React.FC<{
 
     const sync = () => {
       if (disposed) return;
-
       const marker = Array.from(document.querySelectorAll('span')).find(
         (node) => node.textContent?.trim() === 'Live Speech-to-Text & Voice Dictation',
       );
@@ -75,7 +72,7 @@ const VoicePanelBridge: React.FC<{
 
       if (!overlay) {
         overlay = document.createElement('div');
-        overlay.setAttribute('data-elara-voice-pass3', 'true');
+        overlay.setAttribute('data-elara-unified-settings', 'true');
         overlay.style.position = 'fixed';
         overlay.style.zIndex = '80';
         overlay.style.background = '#121212';
@@ -113,27 +110,51 @@ const VoicePanelBridge: React.FC<{
   if (!host) return null;
 
   return createPortal(
-    <div className="h-full overflow-y-auto p-6 text-sm text-zinc-200 leading-relaxed font-sans custom-scrollbar">
-      <VoiceSettingsPanel value={value} onChange={onChange} />
+    <div className="flex h-full min-h-0 flex-col text-sm text-zinc-200 leading-relaxed font-sans">
+      <div className="shrink-0 border-b border-zinc-800 bg-zinc-950/70 px-4 py-3">
+        <div className="grid grid-cols-3 gap-1 rounded-xl border border-zinc-800 bg-zinc-950/60 p-1">
+          {([
+            ['voice', 'Voice & Speech'],
+            ['chat', 'Chat & Editor'],
+            ['reliability', 'Reliability'],
+          ] as const).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setSection(id)}
+              className={`rounded-lg px-2 py-2 text-[11px] font-medium transition-colors ${section === id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-6 custom-scrollbar">
+        {section === 'voice' && <VoiceSettingsPanel value={voiceValue} onChange={onVoiceChange} />}
+        {section === 'chat' && <ChatEditorSettingsPanel />}
+        {section === 'reliability' && (
+          <ReliabilitySettingsPanel
+            settings={reliabilityValue}
+            preferredModel={preferredModel}
+            onApply={onReliabilityChange}
+            embedded
+          />
+        )}
+      </div>
     </div>,
     host,
   );
 };
 
 export const SettingsModal: React.FC<SettingsModalProps> = (props) => {
-  const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>(() =>
-    normalizeVoiceSettings(props.settings.voiceSettings),
-  );
-  const [reliabilitySettings, setReliabilitySettings] = useState<ReliabilitySettings>(() =>
-    normalizeReliabilitySettings(props.settings.reliabilitySettings),
-  );
-  const [reliabilityOpen, setReliabilityOpen] = useState(false);
+  const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>(() => normalizeVoiceSettings(props.settings.voiceSettings));
+  const [reliabilitySettings, setReliabilitySettings] = useState<ReliabilitySettings>(() => normalizeReliabilitySettings(props.settings.reliabilitySettings));
 
   useEffect(() => {
     if (props.isOpen) {
       setVoiceSettings(normalizeVoiceSettings(props.settings.voiceSettings));
       setReliabilitySettings(normalizeReliabilitySettings(props.settings.reliabilitySettings));
-      setReliabilityOpen(false);
     }
   }, [props.isOpen, props.settings.voiceSettings, props.settings.reliabilitySettings]);
 
@@ -149,41 +170,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = (props) => {
     });
   };
 
-  const handleReliabilityApply = (next: ReliabilitySettings) => {
-    setReliabilitySettings(normalizeReliabilitySettings(next));
-  };
-
   return (
     <>
       <LegacySettingsModal {...props} onSaveSettings={handleSaveSettings} />
-      <ResilienceStatusBanner />
-
       <VoicePanelBridge
         isOpen={props.isOpen}
-        value={voiceSettings}
-        onChange={setVoiceSettings}
+        voiceValue={voiceSettings}
+        reliabilityValue={reliabilitySettings}
+        preferredModel={props.settings.model}
+        onVoiceChange={setVoiceSettings}
+        onReliabilityChange={setReliabilitySettings}
       />
-
-      {props.isOpen && !reliabilityOpen && (
-        <button
-          type="button"
-          onClick={() => setReliabilityOpen(true)}
-          className="fixed bottom-4 right-4 z-[85] inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-[#171717] px-3.5 py-2.5 text-xs font-medium text-amber-300 shadow-xl shadow-black/40 transition hover:border-amber-400/60 hover:bg-zinc-900"
-          title="Open Reliability & Failover settings"
-        >
-          <ShieldAlert className="h-4 w-4" />
-          Reliability & Failover
-        </button>
-      )}
-
-      {props.isOpen && reliabilityOpen && (
-        <ReliabilitySettingsPanel
-          settings={reliabilitySettings}
-          preferredModel={props.settings.model}
-          onApply={handleReliabilityApply}
-          onClose={() => setReliabilityOpen(false)}
-        />
-      )}
     </>
   );
 };
