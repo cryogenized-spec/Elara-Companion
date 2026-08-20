@@ -1,8 +1,11 @@
-// src/hooks/useSpeechToText.ts - Robust Audio Recorder & Gemini Transcriber Hook
+// Audio recorder hook with Gemini-backed transcription.
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { transcribeAudioBlob } from '../lib/speechRecognition';
+import { transcribeAudioBlob } from '../lib/geminiTranscription';
+import type { VoiceSettings } from '../lib/voiceSettings';
+import { DEFAULT_VOICE_SETTINGS } from '../lib/voiceSettings';
 
 export interface SpeechToTextOptions {
+  voiceSettings?: VoiceSettings;
   lang?: string;
   autoCapitalize?: boolean;
   autoSendOnPause?: boolean;
@@ -31,11 +34,12 @@ function getBestMimeType(): string {
 }
 
 export function useSpeechToText(options: SpeechToTextOptions = {}) {
+  const { voiceSettings = DEFAULT_VOICE_SETTINGS } = options;
   const {
-    lang = 'en-US',
-    autoCapitalize = true,
-    autoSendOnPause = false,
-    pauseThresholdMs = 3000,
+    lang = voiceSettings.language,
+    autoCapitalize = voiceSettings.autoCapitalize,
+    autoSendOnPause = voiceSettings.autoSendOnSilence,
+    pauseThresholdMs = voiceSettings.silenceTimeoutMs,
     onTranscriptChange,
     onTranscriptDone,
     onAutoSend,
@@ -49,7 +53,6 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
   const [audioLevel, setAudioLevel] = useState(0);
   const [waveformBars, setWaveformBars] = useState<number[]>([0.15, 0.25, 0.18, 0.35, 0.22, 0.15, 0.28, 0.12]);
 
-  // Audio recording references
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -57,12 +60,10 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
 
-  // Live state refs
   const isListeningRef = useRef(false);
   const activeMimeRef = useRef('audio/webm');
   const silenceStartRef = useRef<number | null>(null);
 
-  // Settings refs
   const activeLangRef = useRef(lang);
   const autoCapitalizeRef = useRef(autoCapitalize);
   const autoSendRef = useRef(autoSendOnPause);
@@ -70,6 +71,7 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
   const onAutoSendRef = useRef(onAutoSend);
   const onTranscriptChangeRef = useRef(onTranscriptChange);
   const onTranscriptDoneRef = useRef(onTranscriptDone);
+  const voiceSettingsRef = useRef(voiceSettings);
 
   useEffect(() => { activeLangRef.current = lang; }, [lang]);
   useEffect(() => { autoCapitalizeRef.current = autoCapitalize; }, [autoCapitalize]);
@@ -78,6 +80,7 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
   useEffect(() => { onAutoSendRef.current = onAutoSend; }, [onAutoSend]);
   useEffect(() => { onTranscriptChangeRef.current = onTranscriptChange; }, [onTranscriptChange]);
   useEffect(() => { onTranscriptDoneRef.current = onTranscriptDone; }, [onTranscriptDone]);
+  useEffect(() => { voiceSettingsRef.current = voiceSettings; }, [voiceSettings]);
 
   const stopAudioAnalyzer = useCallback(() => {
     if (animFrameRef.current) {
@@ -147,7 +150,7 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
           if (isQuiet) {
             if (!silenceStartRef.current) {
               silenceStartRef.current = now;
-            } else if (now - silenceStartRef.current >= Math.max(2500, pauseThresholdRef.current)) {
+            } else if (now - silenceStartRef.current >= pauseThresholdRef.current) {
               silenceStartRef.current = null;
               stopListeningInternal(true);
               return;
@@ -172,9 +175,9 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
 
     let formatted = cleanText;
     if (autoCapitalizeRef.current) {
-       formatted = cleanText.charAt(0).toUpperCase() + cleanText.slice(1);
+      formatted = cleanText.charAt(0).toUpperCase() + cleanText.slice(1);
     }
-    
+
     setTranscript(formatted);
     setInterimText('');
 
@@ -261,11 +264,12 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
         throw new Error('Microphone access is not supported in this browser.');
       }
 
+      const voice = voiceSettingsRef.current;
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
+          echoCancellation: voice.echoCancellation,
+          noiseSuppression: voice.noiseSuppression,
+          autoGainControl: voice.autoGainControl,
         },
       });
 
@@ -289,7 +293,7 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
         mediaRecorderRef.current = recorder;
         recorder.start(1000);
       } catch (recErr) {
-        console.warn('MediaRecorder backup init notice:', recErr);
+        console.warn('MediaRecorder init notice:', recErr);
       }
     } catch (micErr: any) {
       console.warn('Microphone start error:', micErr);

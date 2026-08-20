@@ -1,0 +1,8 @@
+/* Pass 1 — remove redundant main-chat launchers without changing underlying navigation. */
+[title="Elara Settings & Appearance"] {
+  display: none !important;
+}
+
+[data-elara-surface-strip] {
+  display: none !important;
+}
