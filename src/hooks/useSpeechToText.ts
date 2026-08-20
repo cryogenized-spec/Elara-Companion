@@ -1,6 +1,6 @@
-// src/hooks/useSpeechToText.ts - Robust Audio Recorder & Gemini Transcriber Hook
+// Audio recorder hook with Gemini-backed transcription.
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { transcribeAudioBlob } from '../lib/speechRecognition';
+import { transcribeAudioBlob } from '../lib/geminiTranscription';
 
 export interface SpeechToTextOptions {
   lang?: string;
@@ -49,7 +49,6 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
   const [audioLevel, setAudioLevel] = useState(0);
   const [waveformBars, setWaveformBars] = useState<number[]>([0.15, 0.25, 0.18, 0.35, 0.22, 0.15, 0.28, 0.12]);
 
-  // Audio recording references
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -57,12 +56,10 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
 
-  // Live state refs
   const isListeningRef = useRef(false);
   const activeMimeRef = useRef('audio/webm');
   const silenceStartRef = useRef<number | null>(null);
 
-  // Settings refs
   const activeLangRef = useRef(lang);
   const autoCapitalizeRef = useRef(autoCapitalize);
   const autoSendRef = useRef(autoSendOnPause);
@@ -172,9 +169,9 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
 
     let formatted = cleanText;
     if (autoCapitalizeRef.current) {
-       formatted = cleanText.charAt(0).toUpperCase() + cleanText.slice(1);
+      formatted = cleanText.charAt(0).toUpperCase() + cleanText.slice(1);
     }
-    
+
     setTranscript(formatted);
     setInterimText('');
 
