@@ -168,3 +168,5 @@ const ToggleRow: React.FC<ToggleRowProps> = ({ label, description, value, onChan
     </button>
   </div>
 );
+
+// Pass 3 CI integration trigger.
