@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpen, CheckSquare, Code2, ExternalLink, List, Minus, Quote, Table2, X } from 'lucide-react';
+import { CheckSquare, Code2, ExternalLink, List, Minus, Quote, Table2, X } from 'lucide-react';
 
 const REFERENCE_URL = 'https://github.com/cryogenized-spec/Elara-companion-app-v2/blob/main/docs/ELARA_CHAT_MARKDOWN.md';
 
@@ -12,14 +12,25 @@ const Example: React.FC<{ label: string; code: string; className?: string }> = (
   </div>
 );
 
-export const MarkdownHelpButton: React.FC = () => {
+interface MarkdownHelpButtonProps {
+  inline?: boolean;
+}
+
+export const MarkdownHelpButton: React.FC<MarkdownHelpButtonProps> = ({ inline = false }) => {
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-3 z-[90] inline-flex items-center gap-1.5 rounded-xl border border-zinc-700/80 bg-zinc-950/90 px-2.5 py-1.5 text-[11px] font-semibold text-zinc-300 shadow-xl backdrop-blur-md transition-colors hover:bg-zinc-900 hover:text-white md:bottom-24 md:right-5" aria-label="Open Markdown help" title="Markdown help">
-        <BookOpen className="h-3.5 w-3.5 text-sky-400" />
-        <span>Markdown</span>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={inline
+          ? 'inline-flex items-center justify-center rounded-md px-1.5 py-1 text-[10px] font-mono font-semibold text-zinc-500 hover:bg-zinc-800 hover:text-sky-300 transition-colors'
+          : 'hidden'}
+        aria-label="Open Markdown help"
+        title="Markdown help"
+      >
+        M↓
       </button>
 
       {open && (
