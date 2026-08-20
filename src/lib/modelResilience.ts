@@ -51,6 +51,7 @@ const defaultStateStore: ModelResilienceStateStore = {
 };
 
 function shouldFailOver(error: ClassifiedApiError): boolean {
+  if ((error as any).failoverOverride === false) return false;
   return [
     'API_RATE_LIMIT_RPM_429',
     'API_QUOTA_DAILY_429',
