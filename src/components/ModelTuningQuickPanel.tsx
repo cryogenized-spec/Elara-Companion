@@ -5,17 +5,20 @@ import { getDbSettings, setDbSettings } from '../lib/db';
 import { getModelProfile } from '../lib/modelRegistry';
 import { discoverGeminiModels, type DiscoveredModel } from '../lib/modelDiscovery';
 import { applySettingsAppearance } from '../lib/themeManager';
+import { DEFAULT_THINKING_DISPLAY_MODE, loadThinkingDisplayMode, saveThinkingDisplayMode, type ThinkingDisplayMode } from '../lib/thinkingDisplay';
 
 export const ModelTuningQuickPanel: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState<ElaraSettings | null>(null);
   const [models, setModels] = useState<DiscoveredModel[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [thinkingDisplayMode, setThinkingDisplayMode] = useState<ThinkingDisplayMode>(DEFAULT_THINKING_DISPLAY_MODE);
 
   useEffect(() => {
     if (!open) return;
     getDbSettings().then(async (loaded) => {
       setSettings(loaded);
+      setThinkingDisplayMode(loadThinkingDisplayMode());
       applySettingsAppearance(loaded);
       if (loaded.apiKey) {
         setLoadingModels(true);
@@ -80,6 +83,29 @@ export const ModelTuningQuickPanel: React.FC = () => {
                   ) : (
                     <div><div className="mb-2 flex justify-between text-xs text-zinc-400"><span>Thinking budget</span><span>{Math.max(profile.thinkingBudgetMin || 0, Math.min(profile.thinkingBudgetMax || 24576, settings.thinkingBudget || 0)).toLocaleString()}</span></div><input type="range" min={profile.thinkingBudgetMin || 0} max={profile.thinkingBudgetMax || 24576} step="128" value={Math.max(profile.thinkingBudgetMin || 0, Math.min(profile.thinkingBudgetMax || 24576, settings.thinkingBudget || 0))} onChange={(e)=>update({thinkingBudget:Number(e.target.value)})} className="w-full"/></div>
                   )}
+                </div>
+
+                <div className="rounded-2xl border border-sky-900/40 bg-sky-950/10 p-3">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-medium text-zinc-200"><Brain className="h-4 w-4 text-sky-400"/> Thinking display</div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {([
+                      ['off', 'Off'],
+                      ['steps', 'Steps'],
+                      ['summaries', 'Summaries'],
+                    ] as const).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => { setThinkingDisplayMode(mode); saveThinkingDisplayMode(mode); }}
+                        className={`min-h-11 rounded-xl border text-xs font-medium transition-colors ${thinkingDisplayMode === mode ? 'border-sky-500 bg-sky-500/10 text-sky-300' : 'border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[10px] leading-relaxed text-zinc-500">
+                    Off hides the thinking surface. Steps shows concise step labels only. Summaries shows the user-facing thinking summary and can be expanded.
+                  </p>
                 </div>
 
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/30 p-3">
