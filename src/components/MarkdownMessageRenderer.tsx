@@ -73,13 +73,13 @@ export const MarkdownMessageRenderer: React.FC<MarkdownMessageRendererProps> = (
         li({ children }) {
           return <li className="pl-1 leading-relaxed break-words">{children}</li>;
         },
-        input({ type, checked, disabled }) {
+        input({ type, checked }) {
           if (type !== 'checkbox') return null;
           return (
             <input
               type="checkbox"
               checked={Boolean(checked)}
-              disabled={disabled !== false}
+              disabled
               readOnly
               className="mr-2 align-middle accent-sky-500"
               aria-label={checked ? 'Completed task' : 'Incomplete task'}
@@ -127,9 +127,6 @@ export const MarkdownMessageRenderer: React.FC<MarkdownMessageRendererProps> = (
         },
         td({ children }) {
           return <td className="px-3 py-2 border-b border-zinc-800 align-top">{children}</td>;
-        },
-        del({ children }) {
-          return <del className="text-zinc-400 decoration-zinc-500">{children}</del>;
         },
       }}
     >
