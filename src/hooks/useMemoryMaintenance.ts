@@ -27,6 +27,7 @@ export function useMemoryMaintenance({
   const stateRef = useRef(memoryState);
   const onSaveRef = useRef(onSaveMemoryState);
   const runningRef = useRef(false);
+  const lastResultRef = useRef<MemoryMaintenanceCycleResult | null>(null);
   const [lastResult, setLastResult] = useState<MemoryMaintenanceCycleResult | null>(null);
 
   stateRef.current = memoryState;
@@ -34,7 +35,7 @@ export function useMemoryMaintenance({
 
   const runNow = useCallback(async () => {
     if (runningRef.current) {
-      return lastResult || {
+      return lastResultRef.current || {
         state: stateRef.current,
         plan: null,
         ran: false,
@@ -45,6 +46,7 @@ export function useMemoryMaintenance({
     runningRef.current = true;
     try {
       const result = runMemoryMaintenanceCycle(stateRef.current, { intervalMs });
+      lastResultRef.current = result;
       setLastResult(result);
       if (result.ran) {
         stateRef.current = result.state;
@@ -54,7 +56,7 @@ export function useMemoryMaintenance({
     } finally {
       runningRef.current = false;
     }
-  }, [intervalMs, lastResult]);
+  }, [intervalMs]);
 
   useEffect(() => {
     if (!isLoaded) return;
