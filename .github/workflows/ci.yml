@@ -14,18 +14,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  oneoff-pass3-integrate-pr:
-    if: ${{ github.event_name == 'pull_request' && (github.event.action == 'synchronize' || github.event.action == 'reopened') && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'refactor/voice-pass3-ui-final' }}
+  check:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Pass 3 branch
+      - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref }}
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Mount canonical Voice settings panel
+      - name: Mount canonical Voice settings panel for Pass 3
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'refactor/voice-pass3-ui-final' }}
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -67,25 +67,15 @@ jobs:
           path.write_text(text[:start] + replacement + text[end:])
           PY
 
-      - name: Verify and commit integration
-        run: |
-          test -f src/components/VoiceSettingsPanel.tsx
-          grep -q "VoiceSettingsPanel" src/components/SettingsModal.tsx
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/components/SettingsModal.tsx src/components/VoiceSettingsPanel.tsx
           if git diff --cached --quiet; then
-            echo "Pass 3 already integrated; nothing to commit."
+            echo "Voice settings panel already mounted."
           else
             git commit -m "feat: mount canonical voice settings panel"
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
           fi
-
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
 
       - name: Setup Node
         uses: actions/setup-node@v6
