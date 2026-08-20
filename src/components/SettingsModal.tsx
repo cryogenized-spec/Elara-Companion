@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { ShieldAlert } from 'lucide-react';
 import type { ElaraSettings } from '../types';
 import type { VoiceSettings } from '../lib/voiceSettings';
 import { DEFAULT_VOICE_SETTINGS, normalizeVoiceSettings } from '../lib/voiceSettings';
+import type { ReliabilitySettings } from '../lib/reliabilitySettings';
+import { DEFAULT_RELIABILITY_SETTINGS, normalizeReliabilitySettings } from '../lib/reliabilitySettings';
 import { SettingsModal as LegacySettingsModal } from './SettingsModalLegacy';
 import { VoiceSettingsPanel } from './VoiceSettingsPanel';
+import { ReliabilitySettingsPanel } from './ReliabilitySettingsPanel';
 
 export interface SettingsModalProps {
   isOpen: boolean;
@@ -119,17 +123,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>(() =>
     normalizeVoiceSettings(props.settings.voiceSettings),
   );
+  const [reliabilitySettings, setReliabilitySettings] = useState<ReliabilitySettings>(() =>
+    normalizeReliabilitySettings(props.settings.reliabilitySettings),
+  );
+  const [reliabilityOpen, setReliabilityOpen] = useState(false);
 
   useEffect(() => {
     if (props.isOpen) {
       setVoiceSettings(normalizeVoiceSettings(props.settings.voiceSettings));
+      setReliabilitySettings(normalizeReliabilitySettings(props.settings.reliabilitySettings));
+      setReliabilityOpen(false);
     }
-  }, [props.isOpen, props.settings.voiceSettings]);
+  }, [props.isOpen, props.settings.voiceSettings, props.settings.reliabilitySettings]);
 
   const handleSaveSettings = (newSettings: ElaraSettings) => {
     props.onSaveSettings({
       ...newSettings,
       voiceSettings: voiceSettings || DEFAULT_VOICE_SETTINGS,
+      reliabilitySettings: reliabilitySettings || DEFAULT_RELIABILITY_SETTINGS,
       speechLanguage: voiceSettings.language,
       speechAutoSend: voiceSettings.autoSendOnSilence,
       speechAutoCapitalize: voiceSettings.autoCapitalize,
@@ -137,14 +148,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = (props) => {
     });
   };
 
+  const handleReliabilityApply = (next: ReliabilitySettings) => {
+    setReliabilitySettings(normalizeReliabilitySettings(next));
+  };
+
   return (
     <>
       <LegacySettingsModal {...props} onSaveSettings={handleSaveSettings} />
+
       <VoicePanelBridge
         isOpen={props.isOpen}
         value={voiceSettings}
         onChange={setVoiceSettings}
       />
+
+      {props.isOpen && !reliabilityOpen && (
+        <button
+          type="button"
+          onClick={() => setReliabilityOpen(true)}
+          className="fixed bottom-4 right-4 z-[85] inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-[#171717] px-3.5 py-2.5 text-xs font-medium text-amber-300 shadow-xl shadow-black/40 transition hover:border-amber-400/60 hover:bg-zinc-900"
+          title="Open Reliability & Failover settings"
+        >
+          <ShieldAlert className="h-4 w-4" />
+          Reliability & Failover
+        </button>
+      )}
+
+      {props.isOpen && reliabilityOpen && (
+        <ReliabilitySettingsPanel
+          settings={reliabilitySettings}
+          preferredModel={props.settings.model}
+          onApply={handleReliabilityApply}
+          onClose={() => setReliabilityOpen(false)}
+        />
+      )}
     </>
   );
 };
