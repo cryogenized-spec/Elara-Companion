@@ -1,0 +1,82 @@
+name: One-off Voice Pass 3 Apply
+
+on:
+  push:
+    branches: [refactor/voice-pass3-ui]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ github.actor == 'cryogenized-spec' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Apply canonical Voice UI
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/components/SettingsModal.tsx')
+          text = path.read_text()
+          import_anchor = "import { loadRateLimits } from '../lib/storage';\n"
+          import_line = "import { VoiceSettingsPanel } from './VoiceSettingsPanel';\n"
+          if import_line not in text:
+              if import_anchor not in text:
+                  raise SystemExit('SettingsModal import anchor not found')
+              text = text.replace(import_anchor, import_anchor + import_line, 1)
+
+          pattern = re.compile(
+              r"\n          /\*\*? TAB: VOICE & SPEECH-TO-TEXT \*/.*?\n          \{activeTab === 'voice' && \(.*?\n          \)\}\n\n          /\*\*? TAB 3: SYSTEM PROMPT & MODULES \*/",
+              re.S,
+          )
+
+          replacement = r'''
+
+          {/* TAB: VOICE & SPEECH-TO-TEXT */}
+          {activeTab === 'voice' && (
+            <VoiceSettingsPanel
+              value={formData.voiceSettings}
+              onChange={(voiceSettings) =>
+                setFormData({
+                  ...formData,
+                  voiceSettings,
+                  speechLanguage: voiceSettings.language,
+                  speechAutoSend: voiceSettings.autoSendOnSilence,
+                  speechAutoCapitalize: voiceSettings.autoCapitalize,
+                  speechPauseTimeout: voiceSettings.silenceTimeoutMs,
+                })
+              }
+            />
+          )}
+
+          {/* TAB 3: SYSTEM PROMPT & MODULES */]'''
+
+          new_text, count = pattern.subn(replacement.replace('{activeTab', '{activeTab').replace('MODULES */]', 'MODULES */'), text, count=1)
+          if count != 1:
+              raise SystemExit(f'Voice tab replacement count was {count}, expected 1')
+          path.write_text(new_text)
+          PY
+
+      - name: Typecheck guard
+        run: |
+          if [ -f package.json ]; then
+            npm install --no-audit --no-fund
+            npm run lint
+          fi
+
+      - name: Commit and remove one-off workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/SettingsModal.tsx src/components/VoiceSettingsPanel.tsx
+          git commit -m "feat: replace legacy voice settings UI"
+          git rm .github/workflows/oneoff-voice-pass3.yml
+          git commit -m "chore: remove one-off voice pass workflow"
+          git push
