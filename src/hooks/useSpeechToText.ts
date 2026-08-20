@@ -2,6 +2,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { transcribeAudioBlob } from '../lib/geminiTranscription';
 
+export const DEFAULT_SPEECH_PAUSE_TIMEOUT_MS = 2500;
+
 export interface SpeechToTextOptions {
   lang?: string;
   autoCapitalize?: boolean;
@@ -35,7 +37,7 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
     lang = 'en-US',
     autoCapitalize = true,
     autoSendOnPause = false,
-    pauseThresholdMs = 3000,
+    pauseThresholdMs = DEFAULT_SPEECH_PAUSE_TIMEOUT_MS,
     onTranscriptChange,
     onTranscriptDone,
     onAutoSend,
@@ -144,7 +146,7 @@ export function useSpeechToText(options: SpeechToTextOptions = {}) {
           if (isQuiet) {
             if (!silenceStartRef.current) {
               silenceStartRef.current = now;
-            } else if (now - silenceStartRef.current >= Math.max(2500, pauseThresholdRef.current)) {
+            } else if (now - silenceStartRef.current >= pauseThresholdRef.current) {
               silenceStartRef.current = null;
               stopListeningInternal(true);
               return;
