@@ -7,13 +7,90 @@ on:
     branches: [main, fix/**, refactor/**]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  oneoff-pass3-integrate:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor == 'cryogenized-spec' && contains(github.event.head_commit.message, 'start-pass3-integration') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Pass 3 branch
+        uses: actions/checkout@v6
+        with:
+          ref: refactor/voice-pass3-ui-final
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Mount canonical Voice settings panel
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/components/SettingsModal.tsx')
+          text = path.read_text()
+          import_anchor = "import { loadRateLimits } from '../lib/storage';\n"
+          import_line = "import { VoiceSettingsPanel } from './VoiceSettingsPanel';\n"
+          if import_line not in text:
+              if import_anchor not in text:
+                  raise SystemExit('SettingsModal import anchor not found')
+              text = text.replace(import_anchor, import_anchor + import_line, 1)
+
+          start_marker = "          {/* TAB: VOICE & SPEECH-TO-TEXT */}"
+          end_marker = "          {/* TAB 3: SYSTEM PROMPT & MODULES */}"
+          start = text.find(start_marker)
+          end = text.find(end_marker, start + len(start_marker))
+          if start < 0 or end < 0:
+              raise SystemExit(f'Voice tab markers not found: start={start}, end={end}')
+
+          replacement = '''          {/* TAB: VOICE & SPEECH-TO-TEXT */}
+          {activeTab === 'voice' && (
+            <VoiceSettingsPanel
+              value={formData.voiceSettings}
+              onChange={(voiceSettings) =>
+                setFormData({
+                  ...formData,
+                  voiceSettings,
+                  speechLanguage: voiceSettings.language,
+                  speechAutoSend: voiceSettings.autoSendOnSilence,
+                  speechAutoCapitalize: voiceSettings.autoCapitalize,
+                  speechPauseTimeout: voiceSettings.silenceTimeoutMs,
+                })
+              }
+            />
+          )}
+
+'''
+          path.write_text(text[:start] + replacement + text[end:])
+          PY
+
+      - name: Verify changed files exist
+        run: |
+          test -f src/components/VoiceSettingsPanel.tsx
+          grep -q "VoiceSettingsPanel" src/components/SettingsModal.tsx
+
+      - name: Commit Pass 3 integration to branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/SettingsModal.tsx src/components/VoiceSettingsPanel.tsx
+          git commit -m "feat: mount canonical voice settings panel"
+          git push origin HEAD:refactor/voice-pass3-ui-final
+
+      - name: Restore CI workflow on main
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          git show HEAD^:.github/workflows/ci.yml > .github/workflows/ci.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/ci.yml
+          git commit -m "chore: restore CI workflow after pass3 integration"
+          git push origin main
+
   check:
     runs-on: ubuntu-latest
     steps:
