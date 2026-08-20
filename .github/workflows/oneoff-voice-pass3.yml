@@ -19,7 +19,6 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
 
           path = Path('src/components/SettingsModal.tsx')
           text = path.read_text()
@@ -31,14 +30,14 @@ jobs:
                   raise SystemExit('SettingsModal import anchor not found')
               text = text.replace(import_anchor, import_anchor + import_line, 1)
 
-          pattern = re.compile(
-              r"\n          /\*\*? TAB: VOICE & SPEECH-TO-TEXT \*/.*?\n          \{activeTab === 'voice' && \(.*?\n          \)\}\n\n          /\*\*? TAB 3: SYSTEM PROMPT & MODULES \*/",
-              re.S,
-          )
+          start_marker = "          {/* TAB: VOICE & SPEECH-TO-TEXT */}"
+          end_marker = "          {/* TAB 3: SYSTEM PROMPT & MODULES */}"
+          start = text.find(start_marker)
+          end = text.find(end_marker, start + len(start_marker))
+          if start < 0 or end < 0:
+              raise SystemExit(f'Voice tab markers not found: start={start}, end={end}')
 
-          replacement = '''
-
-          {/* TAB: VOICE & SPEECH-TO-TEXT */}
+          replacement = '''          {/* TAB: VOICE & SPEECH-TO-TEXT */}
           {activeTab === 'voice' && (
             <VoiceSettingsPanel
               value={formData.voiceSettings}
@@ -55,12 +54,9 @@ jobs:
             />
           )}
 
-          {/* TAB 3: SYSTEM PROMPT & MODULES */'''
-
-          new_text, count = pattern.subn(replacement, text, count=1)
-          if count != 1:
-              raise SystemExit(f'Voice tab replacement count was {count}, expected 1')
-          path.write_text(new_text)
+'''
+          text = text[:start] + replacement + text[end:]
+          path.write_text(text)
           PY
 
       - name: Lint/typecheck gate
