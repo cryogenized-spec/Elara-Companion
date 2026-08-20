@@ -1,4 +1,4 @@
-import { MemoryAction, MemoryItem, MemoryScratchpadState } from '../types';
+import { MemoryAction, MemoryItem, MemoryLink, MemoryScratchpadState } from '../types';
 
 const ACTIVE_SCRATCHPAD_KEY = 'elara_active_scratchpad_v1';
 const SCRATCHPAD_EVENT = 'elara:scratchpad-updated';
@@ -8,13 +8,24 @@ function buildPersistentScratchpad(memories: MemoryItem[]): string {
     const importanceRank: Record<string, number> = { core: 4, important: 3, normal: 2, low: 1 };
     return (importanceRank[b.importance] || 0) - (importanceRank[a.importance] || 0);
   }).slice(0, 40);
-
   if (ranked.length === 0) return '';
   return ranked.map((memory) => {
     const privateTag = memory.isPrivate ? 'PRIVATE OBSERVATION' : 'SHARED FACT';
     const kind = memory.kind ? ` [${memory.kind}]` : '';
     return `- [${privateTag}] [${memory.category}]${kind} [${memory.confidence}] ${memory.content}`;
   }).join('\n');
+}
+
+function normalizeMemoryLinks(links: MemoryLink[] | undefined, conversationId?: string, sourceArtifactId?: string): MemoryLink[] | undefined {
+  const next: MemoryLink[] = [];
+  const pushUnique = (link: MemoryLink) => {
+    if (!link.id || next.some((existing) => existing.type === link.type && existing.id === link.id)) return;
+    next.push(link);
+  };
+  for (const link of links || []) if (link?.type && link.id) pushUnique(link);
+  if (conversationId) pushUnique({ type: 'conversation', id: conversationId, label: 'Source conversation' });
+  if (sourceArtifactId) pushUnique({ type: 'artifact', id: sourceArtifactId, label: 'Source artifact' });
+  return next.length ? next : undefined;
 }
 
 function persistScratchpad(memories: MemoryItem[]): void {
@@ -27,67 +38,39 @@ function persistScratchpad(memories: MemoryItem[]): void {
   }
 }
 
-export function applyMemoryActions(
-  state: MemoryScratchpadState,
-  actions: MemoryAction[],
-  conversationId?: string
-): MemoryScratchpadState {
+export function applyMemoryActions(state: MemoryScratchpadState, actions: MemoryAction[], conversationId?: string): MemoryScratchpadState {
   if (!actions || actions.length === 0) {
     persistScratchpad(state.memories);
     return state;
   }
-
   let currentMemories = [...state.memories];
   let stateModified = false;
-
   for (const action of actions) {
     if (!action || action.type === 'NO_ACTION') continue;
-
-    if ((action.type === 'ADD' || action.type === 'CREATE') && action.memory && action.memory.content) {
+    if ((action.type === 'ADD' || action.type === 'CREATE') && action.memory?.content) {
       const now = new Date().toISOString();
-      const newMem: MemoryItem = {
+      currentMemories.unshift({
         id: `mem_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-        content: action.memory.content,
-        kind: action.memory.kind || 'observation',
-        lifecycle: action.memory.lifecycle || (action.memory.kind === 'working' ? 'working' : 'persistent'),
-        source: action.memory.source || 'elara',
-        confidence: action.memory.confidence || 'certain',
-        importance: action.memory.importance || 'normal',
-        isPrivate: action.memory.isPrivate ?? true,
-        category: action.memory.category || 'Observations',
-        createdAt: now,
-        updatedAt: now,
-        eventDate: action.memory.eventDate,
-        expiresAt: action.memory.expiresAt,
-        pinned: false,
-        tags: action.memory.tags || [],
-        sourceConversationId: conversationId,
-        sourceArtifactId: action.memory.sourceArtifactId,
-        relatedMemoryIds: action.memory.relatedMemoryIds,
-        links: action.memory.links,
-      };
-      currentMemories.unshift(newMem);
+        content: action.memory.content, kind: action.memory.kind || 'observation',
+        lifecycle: action.memory.lifecycle || (action.memory.kind === 'working' ? 'working' : 'persistent'), source: action.memory.source || 'elara',
+        confidence: action.memory.confidence || 'certain', importance: action.memory.importance || 'normal', isPrivate: action.memory.isPrivate ?? true,
+        category: action.memory.category || 'Observations', createdAt: now, updatedAt: now, eventDate: action.memory.eventDate, expiresAt: action.memory.expiresAt,
+        pinned: false, tags: action.memory.tags || [], sourceConversationId: conversationId, sourceArtifactId: action.memory.sourceArtifactId,
+        relatedMemoryIds: action.memory.relatedMemoryIds, links: normalizeMemoryLinks(action.memory.links, conversationId, action.memory.sourceArtifactId),
+      });
       stateModified = true;
     } else if (action.type === 'UPDATE' && action.targetId && action.memory) {
       const index = currentMemories.findIndex((m) => m.id === action.targetId);
       if (index !== -1) {
+        const existing = currentMemories[index];
+        const sourceArtifactId = action.memory.sourceArtifactId || existing.sourceArtifactId;
         currentMemories[index] = {
-          ...currentMemories[index],
-          content: action.memory.content || currentMemories[index].content,
-          kind: action.memory.kind || currentMemories[index].kind,
-          lifecycle: action.memory.lifecycle || currentMemories[index].lifecycle,
-          source: action.memory.source || currentMemories[index].source,
-          confidence: action.memory.confidence || currentMemories[index].confidence,
-          importance: action.memory.importance || currentMemories[index].importance,
-          isPrivate: action.memory.isPrivate ?? currentMemories[index].isPrivate,
-          category: action.memory.category || currentMemories[index].category,
-          updatedAt: new Date().toISOString(),
-          eventDate: action.memory.eventDate || currentMemories[index].eventDate,
-          expiresAt: action.memory.expiresAt || currentMemories[index].expiresAt,
-          tags: action.memory.tags || currentMemories[index].tags,
-          sourceArtifactId: action.memory.sourceArtifactId || currentMemories[index].sourceArtifactId,
-          relatedMemoryIds: action.memory.relatedMemoryIds || currentMemories[index].relatedMemoryIds,
-          links: action.memory.links || currentMemories[index].links,
+          ...existing, content: action.memory.content || existing.content, kind: action.memory.kind || existing.kind, lifecycle: action.memory.lifecycle || existing.lifecycle,
+          source: action.memory.source || existing.source, confidence: action.memory.confidence || existing.confidence, importance: action.memory.importance || existing.importance,
+          isPrivate: action.memory.isPrivate ?? existing.isPrivate, category: action.memory.category || existing.category, updatedAt: new Date().toISOString(),
+          eventDate: action.memory.eventDate || existing.eventDate, expiresAt: action.memory.expiresAt || existing.expiresAt, tags: action.memory.tags || existing.tags,
+          sourceConversationId: conversationId || existing.sourceConversationId, sourceArtifactId, relatedMemoryIds: action.memory.relatedMemoryIds || existing.relatedMemoryIds,
+          links: normalizeMemoryLinks(action.memory.links || existing.links, conversationId || existing.sourceConversationId, sourceArtifactId),
         };
         stateModified = true;
       }
@@ -97,34 +80,23 @@ export function applyMemoryActions(
       if (currentMemories.length !== before) stateModified = true;
     } else if (action.type === 'MERGE' && action.mergeTargetIds?.length && action.memory) {
       const mergeSet = new Set(action.mergeTargetIds);
+      const merged = currentMemories.filter((m) => mergeSet.has(m.id));
+      const sourceConversationId = conversationId || merged.find((m) => m.sourceConversationId)?.sourceConversationId;
+      const sourceArtifactId = action.memory.sourceArtifactId || merged.find((m) => m.sourceArtifactId)?.sourceArtifactId;
       currentMemories = currentMemories.filter((m) => !mergeSet.has(m.id));
       const now = new Date().toISOString();
       currentMemories.unshift({
-        id: `mem_merged_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-        content: action.memory.content,
-        kind: action.memory.kind || 'observation',
-        lifecycle: action.memory.lifecycle || 'persistent',
-        source: action.memory.source || 'elara',
-        confidence: action.memory.confidence || 'certain',
-        importance: action.memory.importance || 'important',
-        isPrivate: action.memory.isPrivate ?? false,
-        category: action.memory.category || 'Observations',
-        createdAt: now,
-        updatedAt: now,
-        tags: action.memory.tags || ['merged'],
-        sourceConversationId: conversationId,
-        sourceArtifactId: action.memory.sourceArtifactId,
-        relatedMemoryIds: action.memory.relatedMemoryIds,
-        links: action.memory.links,
+        id: `mem_merged_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, content: action.memory.content,
+        kind: action.memory.kind || 'observation', lifecycle: action.memory.lifecycle || 'persistent', source: action.memory.source || 'elara',
+        confidence: action.memory.confidence || 'certain', importance: action.memory.importance || 'important', isPrivate: action.memory.isPrivate ?? false,
+        category: action.memory.category || 'Observations', createdAt: now, updatedAt: now, tags: action.memory.tags || ['merged'],
+        sourceConversationId, sourceArtifactId, relatedMemoryIds: action.memory.relatedMemoryIds,
+        links: normalizeMemoryLinks(action.memory.links || merged.flatMap((m) => m.links || []), sourceConversationId, sourceArtifactId),
       });
       stateModified = true;
     }
   }
-
-  const nextState = stateModified
-    ? { ...state, memories: currentMemories, lastMaintenanceAt: new Date().toISOString(), schemaVersion: state.schemaVersion || 2 }
-    : state;
-
+  const nextState = stateModified ? { ...state, memories: currentMemories, lastMaintenanceAt: new Date().toISOString(), schemaVersion: state.schemaVersion || 2 } : state;
   persistScratchpad(nextState.memories);
   return nextState;
 }
