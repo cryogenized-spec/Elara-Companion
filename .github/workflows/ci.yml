@@ -25,7 +25,7 @@ jobs:
           persist-credentials: true
 
       - name: Mount canonical Voice settings panel for Pass 3
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'refactor/voice-pass3-final' }}
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/refactor/voice-pass3-final') || (github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'refactor/voice-pass3-final') }}
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -74,7 +74,8 @@ jobs:
             echo "Voice settings panel already mounted."
           else
             git commit -m "feat: mount canonical voice settings panel"
-            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+            BRANCH="${GITHUB_REF#refs/heads/}"
+            git push origin "HEAD:${BRANCH}"
           fi
 
       - name: Setup Node
