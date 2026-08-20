@@ -121,7 +121,8 @@ export async function runWithRetry<T>(
       const value = await operation(attempt);
       return { value, attempts: attempt };
     } catch (error) {
-      const classified = classifyApiError(error, options.modelId);
+      const attached = (error as any)?.apiError as ClassifiedApiError | undefined;
+      const classified = attached?.code ? attached : classifyApiError(error, options.modelId);
       const hasNextAttempt = attempt < policy.maxAttempts;
       if (!classified.retryable || !hasNextAttempt) {
         throw Object.assign(new Error(classified.message), { apiError: classified });
