@@ -36,7 +36,7 @@ export const ThinkingScratchpad: React.FC<ThinkingScratchpadProps> = ({
 
   if (displayMode === 'off') return null;
 
-  const hasThoughts = (thoughts && thoughts.length > 0) || (rawThoughts && rawThoughts.trim().length > 0);
+  const hasThoughts = thoughts.length > 0 || Boolean(rawThoughts?.trim());
   if (!isThinking && !hasThoughts) return null;
 
   const liveStep = thoughts.length > 0
@@ -47,26 +47,27 @@ export const ThinkingScratchpad: React.FC<ThinkingScratchpadProps> = ({
   const isStepOnly = displayMode === 'steps';
 
   const handleOpen = () => {
-    if (isStepOnly) return;
+    if (!isStepOnly) setModalOpen(true);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (isStepOnly || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
     setModalOpen(true);
   };
 
   return (
     <>
       <div
-        onClick={handleOpen}
         role={isStepOnly ? undefined : 'button'}
         tabIndex={isStepOnly ? undefined : 0}
-        onKeyDown={(e) => {
-          if (!isStepOnly && (e.key === 'Enter' || e.key === ' ')) {
-            e.preventDefault();
-            setModalOpen(true);
-          }
-        }}
-        title={isStepOnly ? 'Thinking steps' : 'Open thinking summary'}
-        className={`w-full mb-2.5 px-3.5 py-2 rounded-xl transition-all duration-300 select-none group border backdrop-blur-md ${!isStepOnly ? 'cursor-pointer' : ''} ${isThinking ? 'bg-sky-950/40 border-sky-500/40 hover:border-sky-400/70 shadow-[0_0_15px_rgba(112,161,255,0.12)]' : 'bg-zinc-900/65 border-zinc-800/80 hover:border-sky-500/30 hover:bg-zinc-900/85'}`}
+        aria-label={isStepOnly ? 'Thinking steps' : 'Open thinking summary'}
+        aria-expanded={!isStepOnly ? modalOpen : undefined}
+        onClick={handleOpen}
+        onKeyDown={handleKeyDown}
+        className={`w-full mb-2.5 px-3.5 py-2.5 rounded-xl transition-all duration-300 select-none group border backdrop-blur-md ${!isStepOnly ? 'cursor-pointer touch-manipulation focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950' : ''} ${isThinking ? 'bg-sky-950/40 border-sky-500/40 hover:border-sky-400/70 shadow-[0_0_15px_rgba(112,161,255,0.12)]' : 'bg-zinc-900/65 border-zinc-800/80 hover:border-sky-500/30 hover:bg-zinc-900/85'}`}
       >
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2 min-h-7">
           <div className="flex items-center space-x-2 min-w-0">
             {isThinking ? (
               <div className="relative flex items-center justify-center shrink-0">
@@ -92,9 +93,9 @@ export const ThinkingScratchpad: React.FC<ThinkingScratchpadProps> = ({
           </div>
 
           {!isStepOnly && (
-            <div className="flex items-center space-x-1 text-[11px] text-zinc-500 group-hover:text-sky-300 transition-colors shrink-0">
+            <div className="flex items-center min-h-10 -my-1.5 -mr-1 px-3 text-[11px] text-zinc-500 group-hover:text-sky-300 transition-colors shrink-0">
               <span className="text-[10px] hidden sm:inline">View summary</span>
-              <ChevronRight className="w-3 h-3 text-zinc-500 group-hover:text-sky-300 group-hover:translate-x-0.5 transition-transform" />
+              <ChevronRight className={`w-3.5 h-3.5 ml-1 text-zinc-500 group-hover:text-sky-300 transition-transform ${modalOpen ? 'rotate-90' : 'group-hover:translate-x-0.5'}`} />
             </div>
           )}
         </div>
@@ -115,7 +116,6 @@ export const ThinkingScratchpad: React.FC<ThinkingScratchpadProps> = ({
           isOpen={modalOpen}
           onClose={() => setModalOpen(false)}
           thoughts={thoughts}
-          rawThoughts={rawThoughts}
           isStreaming={isThinking || isStreaming}
           thoughtDurationMs={thoughtDurationMs}
         />
