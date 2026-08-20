@@ -74,7 +74,7 @@ export async function runResilientGeminiStreamTurn(
         if (emittedOutput) {
           const classified = classifyApiError(error, model);
           throw Object.assign(new Error(classified.message), {
-            apiError: { ...classified, retryable: false },
+            apiError: { ...classified, retryable: false, failoverOverride: false },
           });
         }
         throw error;
