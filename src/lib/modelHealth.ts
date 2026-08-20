@@ -73,7 +73,6 @@ export interface ModelSelectionInput {
   fallbackModels: string[];
   state: ModelHealthState;
   now?: number;
-  probePreferredAfterCooldown?: boolean;
 }
 
 export interface ModelSelectionResult {
@@ -85,19 +84,27 @@ export interface ModelSelectionResult {
 export function selectRuntimeModel(input: ModelSelectionInput): ModelSelectionResult {
   const now = input.now ?? Date.now();
   const preferred = input.preferredModel.trim();
-  const fallbacks = input.fallbackModels.map(normalizeModelId).filter(Boolean);
-  const uniqueFallbacks = [...new Set(fallbacks)].filter((model) => model !== normalizeModelId(preferred));
-
   const preferredCooling = isModelCoolingDown(input.state, preferred, now);
-  if (!preferredCooling || input.probePreferredAfterCooldown !== false) {
-    return { model: preferred, usedFallback: false, probingPreferred: preferredCooling };
+
+  // The preferred model is always the first choice when healthy or when its cooldown has expired.
+  if (!preferredCooling) {
+    return {
+      model: preferred,
+      usedFallback: false,
+      probingPreferred: Boolean(input.state.models[normalizeModelId(preferred)]),
+    };
   }
+
+  const fallbacks = input.fallbackModels.map(normalizeModelId).filter(Boolean);
+  const uniqueFallbacks = [...new Set(fallbacks)]
+    .filter((model) => model !== normalizeModelId(preferred));
 
   const fallback = uniqueFallbacks.find((model) => !isModelCoolingDown(input.state, model, now));
   if (fallback) {
     return { model: fallback, usedFallback: true, probingPreferred: false };
   }
 
+  // All fallbacks are unhealthy; probe the preferred model rather than inventing another route.
   return { model: preferred, usedFallback: false, probingPreferred: true };
 }
 
