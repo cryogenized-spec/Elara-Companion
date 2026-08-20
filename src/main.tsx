@@ -7,6 +7,7 @@ import { AgentBehaviorPolicyPanel } from './components/AgentBehaviorPolicyPanel'
 import { ElaraSurfaces } from './components/ElaraSurfaces';
 import { OocConversationPanel } from './components/OocConversationPanel';
 import { BackgroundNotificationsControl } from './components/BackgroundNotificationsControl';
+import { MobileKeyboardLayoutSync } from './components/MobileKeyboardLayoutSync';
 import { installBackgroundSafeAbortBoundary } from './lib/backgroundSafeRuntime';
 import { installMobileViewportSync } from './lib/mobileViewport';
 import './index.css';
@@ -19,6 +20,7 @@ installMobileViewportSync();
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
+    <MobileKeyboardLayoutSync />
     <AppearanceQuickPanel />
     <ModelTuningQuickPanel />
     <AgentBehaviorPolicyPanel />
