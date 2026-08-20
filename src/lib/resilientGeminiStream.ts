@@ -3,6 +3,7 @@ import { classifyApiError } from './apiError';
 import { ModelResiliencePolicy, ModelResilienceStateStore, runWithModelResilience } from './modelResilience';
 import type { ReliabilitySettings } from './reliabilitySettings';
 import { buildModelResiliencePolicy } from './modelResilience';
+import { emitResilienceStatus } from './resilienceStatus';
 
 export interface ResilientStreamTurnResult {
   model: string;
@@ -92,6 +93,23 @@ export async function runResilientGeminiStreamTurn(
     policy,
     options.stateStore,
   );
+
+  const statusKind = result.context.probingPreferred || result.context.attempts > 1
+    ? 'recovered'
+    : result.context.usedFallback
+      ? 'fallback'
+      : null;
+
+  if (statusKind) {
+    emitResilienceStatus({
+      kind: statusKind,
+      model: result.context.model,
+      preferredModel: options.preferredModel,
+      attempts: result.context.attempts,
+      usedFallback: result.context.usedFallback,
+      probingPreferred: result.context.probingPreferred,
+    });
+  }
 
   return {
     model: result.context.model,
