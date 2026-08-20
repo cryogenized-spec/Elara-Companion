@@ -121,4 +121,18 @@ export const AVAILABLE_MODELS: GeminiModelOption[] = [
   { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash', description: 'Stable Flash for fast multimodal, general-purpose and agentic work.' },
   { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', description: 'Current stable Flash for sustained agentic and coding workloads.' },
   { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite', description: 'Current stable fast, cost-efficient Flash-Lite execution.' },
+  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite', description: 'Stable lightweight Flash-Lite model for throughput and low latency.' },
+  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview', description: 'Preview high-intelligence model for complex reasoning and coding.' },
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview', description: 'Preview Flash model for high-quality reasoning and lower cost.' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', description: 'Stable 2.5 Flash retained for compatibility while still available.' },
+  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', description: 'Stable 2.5 Flash-Lite retained for compatibility while still available.' },
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: 'Stable advanced reasoning model for complex tasks.' },
 ];
+
+export type ArtifactProvider = 'local' | 'google_docs' | 'google_sheets' | 'google_keep';
+export type SyncStatus = 'unlinked' | 'linked' | 'local_ahead' | 'remote_ahead' | 'synchronized' | 'conflict' | 'error';
+export type RevisionSource = 'user' | 'agent' | 'google_sync' | 'restore' | 'system';
+export interface ArtifactRevision { id: string; artifactId: string; revisionNumber: number; content: string; createdAt: number; author: 'user' | 'agent' | 'system'; source: RevisionSource; contentHash: string; }
+export interface WorkspaceArtifact { id: string; name: string; content: string; createdAt: number; updatedAt: number; type: string; provider?: ArtifactProvider; externalId?: string; url?: string; linkedAt?: number; lastSyncedAt?: number; syncStatus?: SyncStatus; syncBaselineHash?: string; revisions?: ArtifactRevision[]; }
+export interface Workspace { id: string; name: string; artifacts: WorkspaceArtifact[]; activeArtifactId: string | null; }
+export interface PersonaSnapshot { id: string; name: string; timestamp: number; systemPrompt: string; personaProtocol: string; intimacyModule: string; runtimeRules: string; adultFictionEnabled?: boolean; adultFictionModule?: string; }
