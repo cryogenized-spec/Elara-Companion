@@ -8,6 +8,7 @@ import {
 } from '../constants/defaultPrompt';
 import { DEFAULT_GEMINI_MODEL, GEMINI_MODEL_PROFILES } from './modelRegistry';
 import { applySettingsAppearance } from './themeManager';
+import { DEFAULT_VOICE_SETTINGS, migrateLegacyVoiceSettings, normalizeVoiceSettings } from './voiceSettings';
 
 const CONVERSATIONS_STORAGE_KEY = 'elara_conversations_v1';
 const SETTINGS_STORAGE_KEY = 'elara_settings_v1';
@@ -61,11 +62,26 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
   thinkingBudget: 4096,
   thinkingLevel: 'medium',
   sendOnEnter: false,
-  speechLanguage: 'en-US',
-  speechAutoSend: false,
-  speechAutoCapitalize: true,
-  speechPauseTimeout: 2500,
+  voiceSettings: { ...DEFAULT_VOICE_SETTINGS },
+  speechLanguage: DEFAULT_VOICE_SETTINGS.language,
+  speechAutoSend: DEFAULT_VOICE_SETTINGS.autoSendOnSilence,
+  speechAutoCapitalize: DEFAULT_VOICE_SETTINGS.autoCapitalize,
+  speechPauseTimeout: DEFAULT_VOICE_SETTINGS.silenceTimeoutMs,
 };
+
+export function normalizeSettings(settings: Partial<ElaraSettings> | null | undefined): ElaraSettings {
+  const merged = { ...DEFAULT_SETTINGS, ...(settings || {}) } as ElaraSettings;
+  const voiceSettings = migrateLegacyVoiceSettings(merged);
+  return {
+    ...merged,
+    voiceSettings,
+    // Keep the legacy fields synchronized for old exports/imports and compatibility consumers.
+    speechLanguage: voiceSettings.language,
+    speechAutoSend: voiceSettings.autoSendOnSilence,
+    speechAutoCapitalize: voiceSettings.autoCapitalize,
+    speechPauseTimeout: voiceSettings.silenceTimeoutMs,
+  };
+}
 
 export function loadSettings(): ElaraSettings {
   try {
@@ -75,7 +91,7 @@ export function loadSettings(): ElaraSettings {
       return DEFAULT_SETTINGS;
     }
     const parsed = JSON.parse(raw);
-    const loaded = { ...DEFAULT_SETTINGS, ...parsed };
+    const loaded = normalizeSettings(parsed);
     // Ensure new fields exist for users who had older settings
     if (typeof loaded.adultFictionEnabled !== 'boolean') loaded.adultFictionEnabled = true;
     if (typeof loaded.adultFictionModule !== 'string' || !loaded.adultFictionModule.trim()) {
@@ -93,9 +109,10 @@ export function loadSettings(): ElaraSettings {
 }
 
 export function saveSettings(settings: ElaraSettings): void {
-  try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings)); }
+  const normalized = normalizeSettings(settings);
+  try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(normalized)); }
   catch (e) { console.error('Failed to save settings:', e); }
-  applySettingsAppearance(settings);
+  applySettingsAppearance(normalized);
 }
 
 const FOLDERS_STORAGE_KEY = 'elara_folders_v1';
@@ -153,7 +170,7 @@ export function saveConversations(conversations: Conversation[]): void {
 }
 
 export function exportAllDataJSON(conversations: Conversation[], settings: ElaraSettings): void {
-  const data = { version: '3.0', exportDate: new Date().toISOString(), settings, conversations };
+  const data = { version: '3.0', exportDate: new Date().toISOString(), settings: normalizeSettings(settings), conversations };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -193,7 +210,7 @@ export function importDataJSON(jsonStr: string): { conversations: Conversation[]
     }
 
     const validConversations = importedConversations.filter((c) => c && typeof c.id === 'string' && Array.isArray(c.messages));
-    return { conversations: validConversations, settings: importedSettings };
+    return { conversations: validConversations, settings: importedSettings ? normalizeSettings(importedSettings) : undefined };
   } catch (e) {
     throw new Error('Invalid JSON format for import');
   }

@@ -10,6 +10,8 @@ export interface Message {
 export interface Folder { id: string; name: string; isExpanded?: boolean; }
 export interface Conversation { id: string; title: string; createdAt: number; updatedAt: number; messages: Message[]; model?: string; temperature?: number; maxOutputTokens?: number; folderId?: string; }
 
+import type { VoiceSettings } from './lib/voiceSettings';
+
 export interface ElaraSettings {
   systemPrompt: string; personaProtocol: string; intimacyModule: string; runtimeRules: string;
   /** When true, injects adultFictionModule into the system payload. Default true. */
@@ -24,6 +26,8 @@ export interface ElaraSettings {
   userFontFamily?: string; userFontSource?: 'system' | 'google'; userFontWeight?: 300 | 400 | 500 | 600 | 700; userTextColor?: string; userFontSize?: number;
   assistantFontFamily?: string; assistantFontSource?: 'system' | 'google'; assistantFontWeight?: 300 | 400 | 500 | 600 | 700; assistantTextColor?: string; assistantFontSize?: number;
   thinkingBudget?: number; thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high'; sendOnEnter?: boolean; apiKey?: string; customBackendUrl?: string;
+  /** Canonical voice configuration. Legacy flat speech fields remain for export/migration compatibility. */
+  voiceSettings?: VoiceSettings;
   speechLanguage?: string; speechAutoSend?: boolean; speechAutoCapitalize?: boolean; speechPauseTimeout?: number;
 }
 
