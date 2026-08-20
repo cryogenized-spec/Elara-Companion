@@ -1,6 +1,6 @@
 import { get, set, del } from 'idb-keyval';
 import { Conversation, ElaraSettings, WorldState, MemoryScratchpadState, Folder, PersonaSnapshot } from '../types';
-import { DEFAULT_SETTINGS } from './storage';
+import { DEFAULT_SETTINGS, normalizeSettings } from './storage';
 import { loadAgentOperatingPolicy, saveAgentOperatingPolicy, AGENT_OPERATING_POLICY_KEY } from './agentPolicy';
 import { saveActiveScratchpad, clearActiveScratchpad, clearUserProfileNotes, USER_PROFILE_NOTES_KEY, ACTIVE_SCRATCHPAD_KEY } from './contextManager';
 import { clearWorkspace } from './workspaceStorage';
@@ -53,7 +53,7 @@ export async function migrateFromLocalStorage(): Promise<{ migrated: boolean; fa
   const failures: string[] = [];
   const migrations: Array<[string, string, ((value: unknown) => unknown) | undefined]> = [
     [CONVERSATIONS_KEY, 'elara_conversations_v1', (value) => Array.isArray(value) ? value : []],
-    [SETTINGS_KEY, 'elara_settings_v1', (value) => value && typeof value === 'object' ? value : {}],
+    [SETTINGS_KEY, 'elara_settings_v1', (value) => value && typeof value === 'object' ? normalizeSettings(value as Partial<ElaraSettings>) : DEFAULT_SETTINGS],
     [PORTRAIT_KEY, 'elara_custom_portrait_v1', undefined],
     [FOLDERS_KEY, 'elara_folders_v1', (value) => Array.isArray(value) ? value : []],
     [WORLD_STATE_KEY, 'elara_world_state', (value) => value && typeof value === 'object' ? value : DEFAULT_WORLD_STATE],
@@ -83,7 +83,7 @@ export async function setDbConversations(data: Conversation[]) { await set(CONVE
 
 export async function getDbSettings(): Promise<ElaraSettings> {
   const data = await get(SETTINGS_KEY);
-  const settings = data && typeof data === 'object' ? { ...DEFAULT_SETTINGS, ...data } : DEFAULT_SETTINGS;
+  const settings = normalizeSettings(data && typeof data === 'object' ? data as Partial<ElaraSettings> : DEFAULT_SETTINGS);
 
   const legacyPolicy = data && typeof data === 'object' && typeof (data as any).agentBehaviorPolicy === 'string'
     ? String((data as any).agentBehaviorPolicy).trim()
@@ -96,8 +96,9 @@ export async function getDbSettings(): Promise<ElaraSettings> {
 }
 
 export async function setDbSettings(data: ElaraSettings) {
-  await set(SETTINGS_KEY, { ...DEFAULT_SETTINGS, ...(data || {}) });
-  applySettingsAppearance(data);
+  const normalized = normalizeSettings(data);
+  await set(SETTINGS_KEY, normalized);
+  applySettingsAppearance(normalized);
 }
 
 export async function getDbPortrait(): Promise<string | null> { return (await get(PORTRAIT_KEY)) || null; }
