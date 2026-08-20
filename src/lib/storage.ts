@@ -8,7 +8,8 @@ import {
 } from '../constants/defaultPrompt';
 import { DEFAULT_GEMINI_MODEL, GEMINI_MODEL_PROFILES } from './modelRegistry';
 import { applySettingsAppearance } from './themeManager';
-import { DEFAULT_VOICE_SETTINGS, migrateLegacyVoiceSettings, normalizeVoiceSettings } from './voiceSettings';
+import { DEFAULT_VOICE_SETTINGS, migrateLegacyVoiceSettings } from './voiceSettings';
+import { DEFAULT_RELIABILITY_SETTINGS, normalizeReliabilitySettings } from './reliabilitySettings';
 
 const CONVERSATIONS_STORAGE_KEY = 'elara_conversations_v1';
 const SETTINGS_STORAGE_KEY = 'elara_settings_v1';
@@ -63,6 +64,7 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
   thinkingLevel: 'medium',
   sendOnEnter: false,
   voiceSettings: { ...DEFAULT_VOICE_SETTINGS },
+  reliabilitySettings: { ...DEFAULT_RELIABILITY_SETTINGS, fallbackModels: [...DEFAULT_RELIABILITY_SETTINGS.fallbackModels] },
   speechLanguage: DEFAULT_VOICE_SETTINGS.language,
   speechAutoSend: DEFAULT_VOICE_SETTINGS.autoSendOnSilence,
   speechAutoCapitalize: DEFAULT_VOICE_SETTINGS.autoCapitalize,
@@ -72,9 +74,11 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
 export function normalizeSettings(settings: Partial<ElaraSettings> | null | undefined): ElaraSettings {
   const merged = { ...DEFAULT_SETTINGS, ...(settings || {}) } as ElaraSettings;
   const voiceSettings = migrateLegacyVoiceSettings(merged);
+  const reliabilitySettings = normalizeReliabilitySettings(merged.reliabilitySettings);
   return {
     ...merged,
     voiceSettings,
+    reliabilitySettings,
     // Keep the legacy fields synchronized for old exports/imports and compatibility consumers.
     speechLanguage: voiceSettings.language,
     speechAutoSend: voiceSettings.autoSendOnSilence,
@@ -92,7 +96,6 @@ export function loadSettings(): ElaraSettings {
     }
     const parsed = JSON.parse(raw);
     const loaded = normalizeSettings(parsed);
-    // Ensure new fields exist for users who had older settings
     if (typeof loaded.adultFictionEnabled !== 'boolean') loaded.adultFictionEnabled = true;
     if (typeof loaded.adultFictionModule !== 'string' || !loaded.adultFictionModule.trim()) {
       loaded.adultFictionModule = DEFAULT_ADULT_FICTION_MODULE;
