@@ -13,9 +13,19 @@ export function installMobileViewportSync(): () => void {
     window.dispatchEvent(new CustomEvent(VIEWPORT_SYNC_EVENT));
   };
 
+  const clearResumeTimers = () => {
+    if (resumeTimer !== null) {
+      window.cancelAnimationFrame(resumeTimer);
+      resumeTimer = null;
+    }
+    if (delayedResumeTimer !== null) {
+      window.clearTimeout(delayedResumeTimer);
+      delayedResumeTimer = null;
+    }
+  };
+
   const scheduleResumeSync = () => {
-    if (resumeTimer !== null) window.cancelAnimationFrame(resumeTimer);
-    if (delayedResumeTimer !== null) window.clearTimeout(delayedResumeTimer);
+    clearResumeTimers();
 
     // Android can restore the IME after the page becomes visible. Re-measure
     // immediately, on the next frame, and once more after the browser settles.
@@ -50,8 +60,6 @@ export function installMobileViewportSync(): () => void {
     window.removeEventListener('resize', update);
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     window.removeEventListener('pageshow', handlePageShow);
-    if (resumeTimer !== null) window.cancelAnimationFrame(resumeTimer);
-    if (delayedResumeTimer !== null) window.clearTimeout(delayedResumeTimer);
   };
 }
 
