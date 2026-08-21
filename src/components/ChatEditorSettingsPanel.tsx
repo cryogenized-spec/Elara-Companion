@@ -9,6 +9,7 @@ import {
   type OutgoingRecoveryEntry,
 } from '../lib/outgoingRecoveryStorage';
 import { MarkdownHelpButton } from './MarkdownHelpButton';
+import { MemoryTransparencySettingsPanel } from './MemoryTransparencySettingsPanel';
 
 const TEXTAREA_SELECTOR = 'textarea[placeholder*="Message Elara"]';
 
@@ -73,7 +74,7 @@ export const ChatEditorSettingsPanel: React.FC = () => {
               <FileText className="h-4 w-4 text-sky-400" /> Chat & Editor
             </h3>
             <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
-              Lightweight formatting, durable drafts, and recovery behaviour for the message composer.
+              Lightweight formatting, durable drafts, recovery behaviour, and transparent memory controls for the message workspace.
             </p>
           </div>
           <button type="button" onClick={reset} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-700/60 bg-zinc-800 px-2.5 py-1.5 text-[11px] text-zinc-300 hover:bg-zinc-700">
@@ -90,6 +91,8 @@ export const ChatEditorSettingsPanel: React.FC = () => {
             <MarkdownHelpButton inline />
           </div>
         </div>
+
+        <MemoryTransparencySettingsPanel />
 
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3.5 space-y-3">
           <div className="flex items-center gap-2">
@@ -166,19 +169,13 @@ export const ChatEditorSettingsPanel: React.FC = () => {
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
                       <button type="button" onClick={() => restoreToComposer(entry.content)} className="rounded-lg border border-zinc-700/70 bg-zinc-800 px-2 py-1.5 text-[10px] text-zinc-200 hover:bg-zinc-700">Restore</button>
-                      <button type="button" onClick={() => void handleCopy(entry)} className="rounded-lg border border-zinc-800 bg-zinc-900 p-1.5 text-zinc-400 hover:text-zinc-200" title="Copy recovery text">
-                        <Copy className="h-3 w-3" />
-                      </button>
-                      <button type="button" onClick={() => void handleClear(entry.id)} className="rounded-lg border border-zinc-800 bg-zinc-900 p-1.5 text-zinc-400 hover:text-red-300" title="Remove recovery entry">
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+                      <button type="button" onClick={() => void handleCopy(entry)} className="rounded-lg border border-zinc-800 bg-zinc-900 p-1.5 text-zinc-400 hover:text-zinc-200" title="Copy recovery text"><Copy className="h-3 w-3" /></button>
+                      <button type="button" onClick={() => void handleClear(entry.id)} className="rounded-lg border border-zinc-800 bg-zinc-900 p-1.5 text-zinc-400 hover:text-red-300" title="Remove recovery entry"><Trash2 className="h-3 w-3" /></button>
                     </div>
                   </div>
                 </div>
               ))}
-              <button type="button" onClick={() => void handleClearAll()} className="inline-flex items-center gap-1.5 text-[10px] text-zinc-500 hover:text-zinc-300">
-                <Trash2 className="h-3 w-3" /> Clear recovery buffer
-              </button>
+              <button type="button" onClick={() => void handleClearAll()} className="inline-flex items-center gap-1.5 text-[10px] text-zinc-500 hover:text-zinc-300"><Trash2 className="h-3 w-3" /> Clear recovery buffer</button>
             </div>
           )}
 
