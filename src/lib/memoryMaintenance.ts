@@ -171,7 +171,8 @@ export function applySafeMemoryMaintenance(
   const memories = state.memories.map((memory) => {
     const protectedMemory = memory.pinned === true || memory.lifecycle === 'core' || memory.importance === 'core';
     if (protectedMemory) {
-      return memory.state === 'active' ? memory : { ...memory, state: 'active' as const };
+      if (memory.state === 'stale') return { ...memory, state: 'active' as const };
+      return memory;
     }
 
     if (expiredIds.has(memory.id)) {
