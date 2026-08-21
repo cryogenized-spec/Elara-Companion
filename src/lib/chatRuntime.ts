@@ -4,6 +4,7 @@ import { getModelProfile } from './modelRegistry';
 import { agentToolDeclarations, executeAgentTool, AgentToolExecution } from './agentToolRegistry';
 import { buildWorkspaceContextPrompt } from './workspaceTools';
 import { TEXT_PROCESSING_POLICY } from '../constants/textProcessingPolicy';
+import { recordLiveToolActivity } from './thinkingLiveRuntime';
 
 export const MAX_AGENT_ITERATIONS = 5;
 
@@ -127,6 +128,16 @@ export async function executeAgentToolCall(
   googleToken?: string,
 ): Promise<AgentToolExecution> {
   const execution = await executeAgentTool(workspace, toolName, args, googleToken);
+
+  if (typeof window !== 'undefined') {
+    recordLiveToolActivity({
+      name: toolName,
+      args,
+      result: execution.result,
+      error: execution.error ? String(execution.error) : undefined,
+    });
+  }
+
   if (typeof window !== 'undefined' && execution.createdArtifactId) {
     const artifact = execution.updatedWorkspace.artifacts.find((item) => item.id === execution.createdArtifactId);
     if (artifact) {
