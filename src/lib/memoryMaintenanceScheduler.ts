@@ -57,14 +57,10 @@ export function runMemoryMaintenanceCycle(
     now,
   };
   const plan = buildMemoryMaintenancePlan(state.memories, config);
-  const maintained = applySafeMemoryMaintenance(state, plan);
+  const maintained = applySafeMemoryMaintenance(state, plan, config);
 
   return {
-    state: {
-      ...maintained,
-      lastMaintenanceAt: plan.generatedAt,
-      schemaVersion: 2,
-    },
+    state: maintained,
     plan,
     ran: true,
     skippedReason: null,
