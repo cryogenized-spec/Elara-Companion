@@ -3,7 +3,6 @@ import {
   createPendingOutgoingRecovery,
   listOutgoingRecoveryEntries,
   markOutgoingConfirmed,
-  markOutgoingFailed,
   normalizeRecoveryText,
   type OutgoingRecoveryEntry,
 } from '../lib/outgoingRecoveryStorage';
@@ -11,7 +10,6 @@ import {
 const TEXTAREA_SELECTOR = 'textarea[placeholder*="Message Elara"]';
 const SEND_BUTTON_SELECTOR = 'button[title^="Send message"]';
 const ACTIVE_CONVERSATION_SELECTOR = '[class*="bg-zinc-800/90"][class*="border-zinc-700/60"]';
-const SIDEBAR_MESSAGE_SELECTOR = '[data-elara-message-id]';
 
 function normalizeText(value: string): string {
   return normalizeRecoveryText(value).slice(0, 500);
@@ -19,8 +17,7 @@ function normalizeText(value: string): string {
 
 function getConversationFingerprint(): string {
   const active = document.querySelector(ACTIVE_CONVERSATION_SELECTOR)?.textContent || 'New Conversation';
-  const firstMessage = document.querySelector(SIDEBAR_MESSAGE_SELECTOR)?.textContent || '';
-  return `${normalizeText(active)}::${normalizeText(firstMessage) || 'empty'}`;
+  return normalizeText(active);
 }
 
 function getTextarea(): HTMLTextAreaElement | null {
@@ -65,38 +62,56 @@ export const ComposerOutboxRecovery: React.FC = () => {
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Enter') return;
-      if (!(event.ctrlKey || event.metaKey || (event.shiftKey === false && document.activeElement?.matches(TEXTAREA_SELECTOR)))) return;
-      const textarea = document.activeElement?.closest(TEXTAREA_SELECTOR);
-      if (!textarea) return;
+      const active = document.activeElement;
+      if (!(active instanceof HTMLTextAreaElement) || !active.matches(TEXTAREA_SELECTOR)) return;
+
       const title = document.querySelector(SEND_BUTTON_SELECTOR)?.getAttribute('title') || '';
       const enterSends = title.includes('(Enter)');
-      if (!event.ctrlKey && !event.metaKey && !enterSends) return;
+      const shouldSend = enterSends ? !event.shiftKey : event.ctrlKey || event.metaKey;
+      if (!shouldSend) return;
       void captureSendIntent();
     };
 
-    const handleRenderedUserMessage = (event: Event) => {
+    const handleRenderedUserMessage = async (event: Event) => {
       const detail = (event as CustomEvent<{ id?: string; content?: string }>).detail;
       if (!detail?.content) return;
+
       const normalized = normalizeRecoveryText(detail.content);
-      const pending = pendingRef.current.find((entry) => normalizeRecoveryText(entry.content) === normalized);
-      if (!pending) return;
-      pendingRef.current = pendingRef.current.filter((entry) => entry.id !== pending.id);
-      void markOutgoingConfirmed(pending.id, detail.id);
+      const entries = await listOutgoingRecoveryEntries();
+      if (disposed) return;
+
+      const existing = entries.find((entry) =>
+        entry.status === 'confirmed' &&
+        entry.messageId === detail.id,
+      );
+      if (existing) return;
+
+      const pending = entries.find((entry) =>
+        entry.status === 'pending' &&
+        normalizeRecoveryText(entry.content) === normalized,
+      );
+
+      if (pending) {
+        pendingRef.current = pendingRef.current.filter((entry) => entry.id !== pending.id);
+        await markOutgoingConfirmed(pending.id, detail.id);
+        return;
+      }
+
+      const confirmed = await createPendingOutgoingRecovery({
+        content: detail.content,
+        conversationFingerprint: getConversationFingerprint(),
+      });
+      await markOutgoingConfirmed(confirmed.id, detail.id);
     };
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') void refreshPending();
     };
 
-    const handlePageHide = () => {
-      void refreshPending();
-    };
-
     document.addEventListener('click', handleClick, true);
     document.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('elara:user-message-rendered', handleRenderedUserMessage as EventListener);
     document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('pagehide', handlePageHide);
     void refreshPending();
 
     return () => {
@@ -105,7 +120,6 @@ export const ComposerOutboxRecovery: React.FC = () => {
       document.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('elara:user-message-rendered', handleRenderedUserMessage as EventListener);
       document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('pagehide', handlePageHide);
     };
   }, []);
 
