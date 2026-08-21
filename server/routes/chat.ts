@@ -1,4 +1,5 @@
 import express from "express";
+import { createHash } from "node:crypto";
 import { getGeminiClient, formatApiErrorDetails, normalizeModelName } from "../services/gemini";
 import {
   buildConversationContents,
@@ -10,6 +11,33 @@ import {
 } from "../../src/lib/chatRuntime";
 import { runResilientGeminiStreamTurn } from "../../src/lib/resilientGeminiStream";
 
+const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
+const acceptedChatRequests = new Map<string, number>();
+
+function makeChatRequestKey(body: Record<string, unknown>): string {
+  const identity = {
+    message: body.message ?? '',
+    image: body.image ?? '',
+    history: body.history ?? [],
+    systemPrompt: body.systemPrompt ?? '',
+    model: body.model ?? '',
+    temperature: body.temperature ?? null,
+    maxOutputTokens: body.maxOutputTokens ?? null,
+    topP: body.topP ?? null,
+    topK: body.topK ?? null,
+    thinkingBudget: body.thinkingBudget ?? null,
+    thinkingLevel: body.thinkingLevel ?? null,
+    workspace: body.workspace ?? null,
+  };
+  return createHash('sha256').update(JSON.stringify(identity)).digest('hex');
+}
+
+function pruneAcceptedChatRequests(now = Date.now()): void {
+  for (const [key, timestamp] of acceptedChatRequests) {
+    if (now - timestamp > IDEMPOTENCY_TTL_MS) acceptedChatRequests.delete(key);
+  }
+}
+
 export function setupChatRoutes(app: express.Express) {
   app.post('/api/chat/stream', async (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -18,9 +46,19 @@ export function setupChatRoutes(app: express.Express) {
 
     const { message, image, history = [], systemPrompt, model, temperature, maxOutputTokens, topP, topK, thinkingBudget, thinkingLevel, workspace, googleToken } = req.body;
     const preferredModel = (typeof model === 'string' && model.trim()) ? model.trim() : (process.env.GEMINI_MODEL || 'gemini-3.7-flash');
+    const requestKey = makeChatRequestKey(req.body || {});
+
+    pruneAcceptedChatRequests();
+    if (acceptedChatRequests.has(requestKey)) {
+      res.write(`data: ${JSON.stringify({ duplicate: true, message: 'This chat request was already accepted and will not be executed twice.' })}\n\n`);
+      return res.end();
+    }
+
+    acceptedChatRequests.set(requestKey, Date.now());
 
     try {
       if (!message && !image && history.length === 0) {
+        acceptedChatRequests.delete(requestKey);
         res.write(`data: ${JSON.stringify({ error: 'Message or image content is required.' })}\n\n`);
         return res.end();
       }
@@ -94,6 +132,7 @@ export function setupChatRoutes(app: express.Express) {
       res.write(`data: ${JSON.stringify({ done: true, workspace: currentWorkspace, artifactIds: touchedArtifactIds })}\n\n`);
       return res.end();
     } catch (err: any) {
+      acceptedChatRequests.delete(requestKey);
       console.error(`Error in /api/chat/stream on preferred model [${preferredModel}]:`, err);
       const errorModel = err?.apiError?.modelId || preferredModel;
       const errorDetails = formatApiErrorDetails(err, normalizeModelName(errorModel));

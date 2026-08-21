@@ -9,6 +9,7 @@ import { OocConversationPanel } from './components/OocConversationPanel';
 import { BackgroundNotificationsControl } from './components/BackgroundNotificationsControl';
 import { ComposerDraftRecovery } from './components/ComposerDraftRecovery';
 import { ComposerMarkdownAnchor } from './components/ComposerMarkdownAnchor';
+import { ComposerOutboxRecovery } from './components/ComposerOutboxRecovery';
 import { installBackgroundSafeAbortBoundary } from './lib/backgroundSafeRuntime';
 import { installMobileViewportSync } from './lib/mobileViewport';
 import './index.css';
@@ -29,5 +30,6 @@ createRoot(document.getElementById('root')!).render(
     <BackgroundNotificationsControl />
     <ComposerDraftRecovery />
     <ComposerMarkdownAnchor />
+    <ComposerOutboxRecovery />
   </StrictMode>,
 );
