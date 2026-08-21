@@ -42,10 +42,16 @@ New evidence should not blindly create duplicates. Later passes will compare new
 
 The structured memory store is authoritative. The derived active scratchpad text is a presentation/cache projection. Later passes will introduce contextual retrieval so only memories relevant to the current conversation are injected into Gemini.
 
+## Observation stream — Pass 2
+
+The memory extractor now treats small, grounded user details as atomic observations rather than requiring them to qualify as permanent memories. Observations may capture circumstances, activities, projects, plans, preferences, routines, interests, relationships, purchases, places, worries, decisions, or one-off events that could become useful later.
+
+New observations are stamped by the processor as `resolution: observation`, `state: active`, with source-conversation provenance, an observation timestamp, and initial evidence/retrieval metadata. This pass intentionally does not promote observations, deduplicate them semantically, decay them, or inject them selectively into the prompt; those responsibilities belong to later passes.
+
 ## Compatibility
 
 Schema changes must be additive and migration-safe. Existing records are normalized into the current shape instead of being discarded. `schemaVersion: 3` identifies the Pass 1 memory schema. New fields are optional so pre-v3 records continue to load safely.
 
 ## Pass 1 scope
 
-This pass establishes the contract and migration-safe schema only. It does not yet change extraction, retrieval, promotion, decay, maintenance behavior, or prompt assembly.
+Pass 1 established the contract and migration-safe schema. Pass 2 adds the observation-stream extraction and deterministic observation stamping while leaving retrieval, promotion, reconciliation, decay, and prompt assembly unchanged.
