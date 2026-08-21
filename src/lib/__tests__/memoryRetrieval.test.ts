@@ -27,6 +27,15 @@ describe('memory retrieval', () => {
     assert.equal(results[0].memory.id, 'recent');
   });
 
+  it('uses memory id as the final deterministic tie-breaker', () => {
+    const memories = [
+      makeMemory({ id: 'b', content: 'The user likes this project.', updatedAt: '2026-08-20T00:00:00.000Z' }),
+      makeMemory({ id: 'a', content: 'The user likes this project.', updatedAt: '2026-08-20T00:00:00.000Z' }),
+    ];
+    const results = retrieveRelevantMemories(memories, 'Tell me about this project.', { now: new Date('2026-08-21T00:00:00.000Z') });
+    assert.deepEqual(results.map((result) => result.memory.id), ['a', 'b']);
+  });
+
   it('boosts a matching project relationship', () => {
     const results = retrieveRelevantMemories([
       makeMemory({ id: 'linked', content: 'A general note about repairs.', sourceArtifactId: 'project-42' }),
@@ -54,5 +63,13 @@ describe('memory retrieval', () => {
     assert.equal(results.length, 2);
     assert.match(formatRetrievedMemoryContext(results), /relevance/);
     assert.equal(formatRetrievedMemoryContext([]), '');
+  });
+
+  it('caps the formatted context even when memory content is very large', () => {
+    const longMemory = makeMemory({ id: 'long', content: 'roof '.repeat(5000) });
+    const results = retrieveRelevantMemories([longMemory], 'roof', { minimumScore: 0 });
+    const formatted = formatRetrievedMemoryContext(results, 600);
+    assert.ok(formatted.length <= 600);
+    assert.match(formatted, /relevance/);
   });
 });
