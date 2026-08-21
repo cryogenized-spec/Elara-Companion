@@ -12,7 +12,7 @@ Elara's memory system is a structured knowledge layer, not a single prompt-sized
 - **observation** — a small atomic detail noticed in conversation. Observations are cheap to create and do not automatically become permanent facts.
 - **synthesized** — a higher-level pattern derived from multiple observations or episodes.
 
-These classes describe memory resolution. Existing `MemoryKind` values remain valid and are not being removed in this pass.
+These classes describe memory resolution. Existing `MemoryKind` values remain valid and are not being removed.
 
 ## Lifecycle states
 
@@ -30,6 +30,18 @@ Memory must remain traceable. Records may reference the source conversation, sou
 
 The current schema therefore reserves fields for supporting memory IDs, conflicts, supersession, retrieval count, evidence count, and observation timestamps.
 
+## Observation stream
+
+Gemini's memory extractor now records small, grounded details as atomic `observation` records. These are deliberately low-resolution: a single observation is evidence, not automatically a permanent fact. The processor stamps provenance, observation time, evidence count, and active state deterministically.
+
+Observations are allowed to accumulate across conversations. The current prompt projection may still show only a limited importance-ranked subset; contextual retrieval will later replace that flat projection.
+
+## Consolidation and promotion
+
+The consolidation engine compares active observations and related memories using normalized token similarity. High-similarity observations are treated as duplicate candidates and reinforce the preferred record rather than being immediately deleted. Potentially contradictory related records are marked `conflicted` with reciprocal links so later reconciliation can resolve them.
+
+Observations may be promoted only after repeated reinforcement/evidence. Promotion is conservative: preferences/facts can become `core`, while project/plan/working material becomes `contextual` and other repeated observations become `episodic`. Destructive merging remains a later, explicitly reconciled operation.
+
 ## Promotion principle
 
 A single observation should normally remain an observation. Repetition, confirmation, specificity, importance, or explicit user statements can increase confidence and allow later passes to promote it into contextual, persistent, or core memory.
@@ -42,16 +54,12 @@ New evidence should not blindly create duplicates. Later passes will compare new
 
 The structured memory store is authoritative. The derived active scratchpad text is a presentation/cache projection. Later passes will introduce contextual retrieval so only memories relevant to the current conversation are injected into Gemini.
 
-## Observation stream — Pass 2
-
-The memory extractor now treats small, grounded user details as atomic observations rather than requiring them to qualify as permanent memories. Observations may capture circumstances, activities, projects, plans, preferences, routines, interests, relationships, purchases, places, worries, decisions, or one-off events that could become useful later.
-
-New observations are stamped by the processor as `resolution: observation`, `state: active`, with source-conversation provenance, an observation timestamp, and initial evidence/retrieval metadata. This pass intentionally does not promote observations, deduplicate them semantically, decay them, or inject them selectively into the prompt; those responsibilities belong to later passes.
-
 ## Compatibility
 
-Schema changes must be additive and migration-safe. Existing records are normalized into the current shape instead of being discarded. `schemaVersion: 3` identifies the Pass 1 memory schema. New fields are optional so pre-v3 records continue to load safely.
+Schema changes must be additive and migration-safe. Existing records are normalized into the current shape instead of being discarded. `schemaVersion: 3` identifies the current memory schema. New fields are optional so pre-v3 records continue to load safely.
 
-## Pass 1 scope
+## Pass status
 
-Pass 1 established the contract and migration-safe schema. Pass 2 adds the observation-stream extraction and deterministic observation stamping while leaving retrieval, promotion, reconciliation, decay, and prompt assembly unchanged.
+- **Pass 1 — Schema & architecture contract:** implemented.
+- **Pass 2 — Observation stream:** implemented.
+- **Pass 3 — Deduplication, reconciliation & promotion:** implemented conservatively; destructive merge and full contextual retrieval remain later passes.
