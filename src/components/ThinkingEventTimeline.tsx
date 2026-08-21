@@ -74,7 +74,15 @@ export const ThinkingEventTimeline: React.FC<ThinkingEventTimelineProps> = ({
     [events],
   );
 
-  const duration = compactDuration(thoughtDurationMs);
+  const derivedDurationMs = thoughtDurationMs ?? (() => {
+    if (ordered.length < 2) return undefined;
+    const first = ordered[0]?.timestamp;
+    const last = ordered[ordered.length - 1]?.timestamp;
+    if (typeof first !== 'number' || typeof last !== 'number') return undefined;
+    return Math.max(0, last - first);
+  })();
+
+  const duration = compactDuration(derivedDurationMs);
   if (ordered.length === 0) return null;
 
   const toggleEvent = (id: string) => setExpanded((current) => ({ ...current, [id]: !current[id] }));
@@ -94,10 +102,12 @@ export const ThinkingEventTimeline: React.FC<ThinkingEventTimelineProps> = ({
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-pink-300">
-            {isStreaming ? 'Thinking' : 'Thinking completed'}
+            {isStreaming ? 'Thinking' : 'Thought for'}
           </div>
           <div className="text-[10px] text-zinc-500">
-            {ordered.length} {ordered.length === 1 ? 'event' : 'events'}{duration ? ` · ${duration}` : ''}
+            {isStreaming
+              ? `${ordered.length} ${ordered.length === 1 ? 'event' : 'events'}${duration ? ` · ${duration}` : ''}`
+              : duration ? `${duration}` : `${ordered.length} ${ordered.length === 1 ? 'event' : 'events'}`}
           </div>
         </div>
         {isStreaming && <Sparkles className="h-3.5 w-3.5 shrink-0 text-pink-300 animate-pulse" />}
@@ -107,7 +117,7 @@ export const ThinkingEventTimeline: React.FC<ThinkingEventTimelineProps> = ({
         <div className="relative mt-2 pl-7">
           <div className="absolute left-[11px] top-2 bottom-2 w-px bg-gradient-to-b from-pink-400/60 via-pink-500/25 to-zinc-800" />
           <div className="space-y-1">
-            {ordered.map((event, index) => {
+            {ordered.map((event) => {
               const isOpen = expanded[event.id] ?? false;
               const eventDuration = compactDuration(event.durationMs);
               const hasExpandableBody = Boolean(event.summary || event.detail || event.tool?.operation);
@@ -148,8 +158,6 @@ export const ThinkingEventTimeline: React.FC<ThinkingEventTimelineProps> = ({
                       <Clock3 className={`mt-1 h-3 w-3 shrink-0 ${event.status === 'active' ? 'text-pink-300' : 'text-zinc-700'}`} />
                     )}
                   </button>
-
-                  {index < ordered.length - 1 && null}
                 </div>
               );
             })}
