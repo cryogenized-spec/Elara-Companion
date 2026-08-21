@@ -15,6 +15,7 @@ import {
 import { CameraModal } from './CameraModal';
 import { useSpeechToText } from '../hooks/useSpeechToText';
 import { ElaraSettings } from '../types';
+import { setNextMemoryRetrievalQuery } from '../lib/contextManager';
 
 interface MessageComposerProps {
   onSendMessage: (text: string, image?: string) => void;
@@ -96,6 +97,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     const combinedText = base ? `${base} ${next}` : next;
 
     if ((combinedText || attachedImage) && !isStreaming && !disabled) {
+      setNextMemoryRetrievalQuery(combinedText);
       onSendMessage(combinedText, attachedImage || undefined);
       setInput('');
       baseInputRef.current = '';
@@ -169,6 +171,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       stopListening();
     }
     if ((input.trim() || attachedImage) && !isStreaming && !disabled) {
+      setNextMemoryRetrievalQuery(input.trim());
       onSendMessage(input.trim(), attachedImage || undefined);
       setInput('');
       baseInputRef.current = '';

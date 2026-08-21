@@ -13,9 +13,24 @@ export const ACTIVE_SCRATCHPAD_KEY = 'elara_active_scratchpad_v1';
 export const MEMORY_CONTEXT_MIRROR_KEY = 'elara_memory_context_mirror_v3';
 
 let lastMemoryRetrievalTrace: MemoryRetrievalTrace | null = null;
+let nextMemoryRetrievalQuery: string | null = null;
 
 export function getLastMemoryRetrievalTrace(): MemoryRetrievalTrace | null {
   return lastMemoryRetrievalTrace;
+}
+
+export function setNextMemoryRetrievalQuery(query: string): void {
+  nextMemoryRetrievalQuery = query.trim() || null;
+}
+
+export function clearNextMemoryRetrievalQuery(): void {
+  nextMemoryRetrievalQuery = null;
+}
+
+function consumeMemoryRetrievalQuery(): string {
+  const query = nextMemoryRetrievalQuery || '';
+  nextMemoryRetrievalQuery = null;
+  return query.trim();
 }
 
 function getStructuredMemoryMirror(): any[] {
@@ -28,20 +43,9 @@ function getStructuredMemoryMirror(): any[] {
   }
 }
 
-function getLiveRetrievalQuery(): string {
-  try {
-    const active = document.activeElement as Element & { value?: string } | null;
-    if (active && typeof active.value === 'string' && active.value.trim()) return active.value.trim();
-    const textarea = document.querySelector('textarea') as HTMLTextAreaElement | null;
-    return textarea?.value?.trim() || '';
-  } catch {
-    return '';
-  }
-}
-
 function buildRetrievedMemoryContext(): string {
   const memories = getStructuredMemoryMirror();
-  const query = getLiveRetrievalQuery();
+  const query = consumeMemoryRetrievalQuery();
   if (memories.length === 0 || !query) {
     lastMemoryRetrievalTrace = null;
     return '';
