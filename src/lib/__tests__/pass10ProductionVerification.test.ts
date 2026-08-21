@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { sanitizeObservationActions } from '../../serverMemoryExtractionContract';
+import { sanitizeObservationActions } from '../../../server/routes/memory';
 
 describe('Pass 10 production verification contract', () => {
   it('keeps destructive and direct-promotion memory actions out of the server adapter', () => {
