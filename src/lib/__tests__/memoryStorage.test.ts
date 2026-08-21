@@ -105,6 +105,6 @@ describe('memory schema normalization', () => {
     assert.equal(state.autoMaintenanceEnabled, false);
     assert.equal(state.memories.length, 1);
     assert.equal(state.memories[0].id, 'valid');
-    assert.equal(state.memories[0].resolution, 'core');
+    assert.equal(state.memories[0].resolution, 'contextual');
   });
 });
