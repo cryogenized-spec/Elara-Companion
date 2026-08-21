@@ -6,11 +6,12 @@ export interface MemoryMaintenanceConfig {
   contextualStaleDays?: number;
   persistentStaleDays?: number;
   maxDuplicateGroupSize?: number;
+  maxEvidenceMemoryIds?: number;
 }
 
 type NormalizedMemoryMaintenanceConfig = Required<Pick<
   MemoryMaintenanceConfig,
-  'workingStaleDays' | 'contextualStaleDays' | 'persistentStaleDays' | 'maxDuplicateGroupSize'
+  'workingStaleDays' | 'contextualStaleDays' | 'persistentStaleDays' | 'maxDuplicateGroupSize' | 'maxEvidenceMemoryIds'
 >>;
 
 export interface MemoryMaintenanceCandidate {
@@ -39,6 +40,7 @@ export const DEFAULT_MEMORY_MAINTENANCE_CONFIG = {
   contextualStaleDays: 30,
   persistentStaleDays: 120,
   maxDuplicateGroupSize: 8,
+  maxEvidenceMemoryIds: 12,
 } as const;
 
 function normalizeText(value: string): string {
@@ -54,7 +56,8 @@ export function memoryFingerprint(memory: MemoryItem): string {
   return `${memory.kind || 'context'}|${normalizeText(memory.content)}`;
 }
 
-function daysSince(isoDate: string, nowMs: number): number {
+function daysSince(isoDate: string | undefined, nowMs: number): number {
+  if (!isoDate) return Number.POSITIVE_INFINITY;
   const timestamp = Date.parse(isoDate);
   if (!Number.isFinite(timestamp)) return Number.POSITIVE_INFINITY;
   return Math.max(0, (nowMs - timestamp) / 86_400_000);
@@ -71,17 +74,25 @@ function lifecycleStaleDays(lifecycle: MemoryLifecycle, config: NormalizedMemory
   }
 }
 
-function freshnessReference(memory: MemoryItem): string {
-  return memory.lastRecalledAt || memory.updatedAt || memory.createdAt;
+function freshnessReference(memory: MemoryItem): string | undefined {
+  return memory.lastObservedAt || memory.lastRecalledAt || memory.updatedAt || memory.createdAt;
 }
 
 export function calculateMemoryMaintenanceScore(memory: MemoryItem, now = new Date()): number {
   const ageDays = daysSince(freshnessReference(memory), now.getTime());
   const reinforcement = Math.max(0, memory.reinforcementCount || 0);
+  const evidence = Math.max(0, memory.evidenceCount || 0);
   const reinforcementBoost = Math.min(0.35, reinforcement * 0.05);
-  const importanceBoost = memory.importance === 'core' ? 0.45 : memory.importance === 'important' ? 0.2 : memory.importance === 'normal' ? 0.05 : 0;
+  const evidenceBoost = Math.min(0.15, evidence * 0.025);
+  const importanceBoost = memory.importance === 'core'
+    ? 0.45
+    : memory.importance === 'important'
+      ? 0.2
+      : memory.importance === 'normal'
+        ? 0.05
+        : 0;
   const agePenalty = Number.isFinite(ageDays) ? Math.min(0.8, ageDays / 180) : 0.8;
-  return Math.max(0, Math.min(1, 0.5 + reinforcementBoost + importanceBoost - agePenalty));
+  return Math.max(0, Math.min(1, 0.5 + reinforcementBoost + evidenceBoost + importanceBoost - agePenalty));
 }
 
 export function buildMemoryMaintenancePlan(
@@ -123,14 +134,14 @@ export function buildMemoryMaintenancePlan(
         kind: 'stale',
         lifecycle,
         score: calculateMemoryMaintenanceScore(memory, now),
-        reason: `No recent reinforcement for approximately ${Math.round(ageDays)} days; lifecycle '${lifecycle}' is past its ${threshold}-day freshness window.`,
+        reason: `No recent reinforcement or recall for approximately ${Math.round(ageDays)} days; lifecycle '${lifecycle}' is past its ${threshold}-day freshness window.`,
       });
     }
   }
 
   const groups = new Map<string, string[]>();
   for (const memory of memories) {
-    if (memory.lifecycle === 'archived') continue;
+    if (memory.state === 'archived' || memory.lifecycle === 'archived') continue;
     const fingerprint = memoryFingerprint(memory);
     const ids = groups.get(fingerprint) || [];
     if (ids.length < config.maxDuplicateGroupSize) ids.push(memory.id);
@@ -148,13 +159,51 @@ export function buildMemoryMaintenancePlan(
 export function applySafeMemoryMaintenance(
   state: MemoryScratchpadState,
   plan: MemoryMaintenancePlan,
+  config: MemoryMaintenanceConfig = {},
 ): MemoryScratchpadState {
+  const normalizedConfig: NormalizedMemoryMaintenanceConfig = {
+    ...DEFAULT_MEMORY_MAINTENANCE_CONFIG,
+    ...config,
+  };
+  const staleIds = new Set(plan.staleCandidates.map((candidate) => candidate.memoryId));
   const expiredIds = new Set(plan.expiredCandidates.map((candidate) => candidate.memoryId));
+
   const memories = state.memories.map((memory) => {
-    if (!expiredIds.has(memory.id)) return memory;
-    if (memory.pinned || memory.lifecycle === 'core' || memory.importance === 'core') return memory;
-    return { ...memory, lifecycle: 'archived' as const, state: 'archived' as const, updatedAt: plan.generatedAt };
+    const protectedMemory = memory.pinned === true || memory.lifecycle === 'core' || memory.importance === 'core';
+    if (protectedMemory) {
+      return memory.state === 'active' ? memory : { ...memory, state: 'active' as const };
+    }
+
+    if (expiredIds.has(memory.id)) {
+      return {
+        ...memory,
+        lifecycle: 'archived' as const,
+        state: 'archived' as const,
+        updatedAt: plan.generatedAt,
+      };
+    }
+
+    const nextEvidenceIds = Array.from(new Set(memory.evidenceMemoryIds || [])).slice(-normalizedConfig.maxEvidenceMemoryIds);
+    const nextEvidenceCount = Math.max(memory.evidenceCount || 0, nextEvidenceIds.length);
+    const recentEnough = !staleIds.has(memory.id);
+    const currentState = memory.state || 'active';
+    const nextState = currentState === 'conflicted' || currentState === 'superseded'
+      ? currentState
+      : recentEnough ? 'active' : 'stale';
+
+    return {
+      ...memory,
+      state: nextState,
+      evidenceMemoryIds: nextEvidenceIds,
+      evidenceCount: nextEvidenceCount,
+      updatedAt: memory.updatedAt,
+    };
   });
 
-  return { ...state, memories, lastMaintenanceAt: plan.generatedAt, schemaVersion: 3 };
+  return {
+    ...state,
+    memories,
+    lastMaintenanceAt: plan.generatedAt,
+    schemaVersion: 3,
+  };
 }
