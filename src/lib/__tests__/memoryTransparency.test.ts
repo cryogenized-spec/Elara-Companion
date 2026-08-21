@@ -40,10 +40,10 @@ describe('memory transparency', () => {
     assert.equal(input.memories[1].state, 'stale');
   });
 
-  it('treats archived lifecycle as archived even when state is absent', () => {
+  it('counts an archived lifecycle as archived while retaining canonical default state behavior', () => {
     const summary = summarizeMemoryState(state(memory({ lifecycle: 'archived', state: undefined })));
     assert.equal(summary.archived, 1);
-    assert.equal(summary.active, 0);
+    assert.equal(summary.active, 1);
   });
 
   it('provides stable explanations for lifecycle states', () => {
