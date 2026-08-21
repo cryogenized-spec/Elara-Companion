@@ -76,7 +76,7 @@ const deriveResolution = (kind: MemoryKind, lifecycle: MemoryLifecycle, explicit
   return 'observation';
 };
 
-/** Normalize legacy memory records into the Pass 1 canonical schema. */
+/** Normalize legacy memory records into the canonical schema and repair invariant drift. */
 export function normalizeMemoryItem(value: unknown): MemoryItem | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Partial<MemoryItem> & { confidence?: unknown; importance?: unknown; category?: unknown; resolution?: unknown; state?: unknown };
@@ -103,7 +103,11 @@ export function normalizeMemoryItem(value: unknown): MemoryItem | null {
   const resolution = deriveResolution(kind, lifecycle, raw.resolution);
   const state = isMemoryState(raw.state) ? raw.state : lifecycle === 'archived' ? 'archived' : 'active';
   const retrievalCount = typeof raw.retrievalCount === 'number' && raw.retrievalCount >= 0 ? raw.retrievalCount : 0;
-  const evidenceCount = typeof raw.evidenceCount === 'number' && raw.evidenceCount >= 0 ? raw.evidenceCount : 0;
+  const evidenceMemoryIds = Array.isArray(raw.evidenceMemoryIds)
+    ? raw.evidenceMemoryIds.filter((id): id is string => typeof id === 'string')
+    : [];
+  const rawEvidenceCount = typeof raw.evidenceCount === 'number' && raw.evidenceCount >= 0 ? raw.evidenceCount : 0;
+  const evidenceCount = Math.max(rawEvidenceCount, evidenceMemoryIds.length);
 
   return {
     ...raw,
@@ -122,9 +126,7 @@ export function normalizeMemoryItem(value: unknown): MemoryItem | null {
     links: Array.isArray(raw.links)
       ? raw.links.filter((link) => link && typeof link === 'object' && typeof link.type === 'string' && typeof link.id === 'string')
       : [],
-    evidenceMemoryIds: Array.isArray(raw.evidenceMemoryIds)
-      ? raw.evidenceMemoryIds.filter((id): id is string => typeof id === 'string')
-      : [],
+    evidenceMemoryIds,
     conflictMemoryIds: Array.isArray(raw.conflictMemoryIds)
       ? raw.conflictMemoryIds.filter((id): id is string => typeof id === 'string')
       : [],
@@ -145,7 +147,7 @@ export function normalizeMemoryState(value: unknown): MemoryScratchpadState {
   return {
     memories,
     lastMaintenanceAt: typeof raw.lastMaintenanceAt === 'string' ? raw.lastMaintenanceAt : new Date().toISOString(),
-    autoMaintenanceEnabled: raw.autoMaintenanceEnabled ?? true,
+    autoMaintenanceEnabled: typeof raw.autoMaintenanceEnabled === 'boolean' ? raw.autoMaintenanceEnabled : true,
     schemaVersion: MEMORY_SCHEMA_VERSION,
   };
 }
