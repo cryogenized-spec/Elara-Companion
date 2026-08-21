@@ -38,6 +38,7 @@ function deriveInitialResolution(kind?: MemoryItem['kind'], lifecycle?: MemoryIt
 }
 
 function persistScratchpad(memories: MemoryItem[]): void {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
   const scratchpad = buildPersistentScratchpad(memories);
   try {
     localStorage.setItem(ACTIVE_SCRATCHPAD_KEY, scratchpad);
@@ -120,7 +121,7 @@ export function applyMemoryActions(state: MemoryScratchpadState, actions: Memory
           state: action.memory.state || existing.state || 'active',
           lastObservedAt: observedNow ? new Date().toISOString() : existing.lastObservedAt,
           evidenceMemoryIds: action.memory.evidenceMemoryIds || existing.evidenceMemoryIds,
-          evidenceCount: action.memory.evidenceMemoryIds?.length || existing.evidenceCount || 1,
+          evidenceCount: Math.max(action.memory.evidenceMemoryIds?.length || 0, existing.evidenceCount || 1),
           supersedesMemoryId: action.memory.supersedesMemoryId || existing.supersedesMemoryId,
           supersededByMemoryId: action.memory.supersededByMemoryId || existing.supersededByMemoryId,
           conflictMemoryIds: action.memory.conflictMemoryIds || existing.conflictMemoryIds,
@@ -134,23 +135,50 @@ export function applyMemoryActions(state: MemoryScratchpadState, actions: Memory
     } else if (action.type === 'MERGE' && action.mergeTargetIds?.length && action.memory) {
       const mergeSet = new Set(action.mergeTargetIds);
       const merged = currentMemories.filter((m) => mergeSet.has(m.id));
+      if (merged.length === 0) continue;
+
       const sourceConversationId = conversationId || merged.find((m) => m.sourceConversationId)?.sourceConversationId;
       const sourceArtifactId = action.memory.sourceArtifactId || merged.find((m) => m.sourceArtifactId)?.sourceArtifactId;
-      currentMemories = currentMemories.filter((m) => !mergeSet.has(m.id));
       const now = new Date().toISOString();
+      const synthesizedId = `mem_merged_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+      const mergedEvidenceIds = Array.from(new Set([
+        ...merged.map((m) => m.id),
+        ...merged.flatMap((m) => m.evidenceMemoryIds || []),
+        ...(action.memory.evidenceMemoryIds || []),
+      ]));
+      const mergedRelatedIds = Array.from(new Set([
+        ...merged.map((m) => m.id),
+        ...merged.flatMap((m) => m.relatedMemoryIds || []),
+        ...(action.memory.relatedMemoryIds || []),
+      ])).filter((id) => id !== synthesizedId);
+
+      currentMemories = currentMemories.map((memory) => mergeSet.has(memory.id)
+        ? { ...memory, state: 'superseded' as const, supersededByMemoryId: synthesizedId, updatedAt: now }
+        : memory);
+
       currentMemories.unshift({
-        id: `mem_merged_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, content: action.memory.content,
-        kind: action.memory.kind || 'observation', lifecycle: action.memory.lifecycle || 'persistent', source: action.memory.source || 'elara',
-        confidence: action.memory.confidence || 'certain', importance: action.memory.importance || 'important', isPrivate: action.memory.isPrivate ?? false,
-        category: action.memory.category || 'Observations', createdAt: now, updatedAt: now, tags: action.memory.tags || ['merged'],
-        sourceConversationId, sourceArtifactId, relatedMemoryIds: action.memory.relatedMemoryIds,
+        id: synthesizedId,
+        content: action.memory.content,
+        kind: action.memory.kind || 'observation',
+        lifecycle: action.memory.lifecycle || 'persistent',
+        source: action.memory.source || 'elara',
+        confidence: action.memory.confidence || 'certain',
+        importance: action.memory.importance || 'important',
+        isPrivate: action.memory.isPrivate ?? merged.every((m) => m.isPrivate),
+        category: action.memory.category || 'Observations',
+        createdAt: now,
+        updatedAt: now,
+        tags: action.memory.tags || ['merged', 'synthesized'],
+        sourceConversationId,
+        sourceArtifactId,
+        relatedMemoryIds: mergedRelatedIds,
         links: normalizeMemoryLinks(action.memory.links || merged.flatMap((m) => m.links || []), sourceConversationId, sourceArtifactId),
         resolution: action.memory.resolution || 'synthesized',
         state: action.memory.state || 'active',
         lastObservedAt: now,
         retrievalCount: 0,
-        evidenceCount: merged.length || 1,
-        evidenceMemoryIds: action.memory.evidenceMemoryIds || merged.map((m) => m.id),
+        evidenceCount: Math.max(mergedEvidenceIds.length, merged.reduce((sum, memory) => sum + Math.max(memory.evidenceCount || 0, 1), 0), 1),
+        evidenceMemoryIds: mergedEvidenceIds,
         supersedesMemoryId: action.memory.supersedesMemoryId,
         supersededByMemoryId: action.memory.supersededByMemoryId,
         conflictMemoryIds: action.memory.conflictMemoryIds || [],
