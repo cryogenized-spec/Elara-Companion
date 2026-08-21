@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { MemoryItem } from '../../types';
-import { formatRetrievedMemoryContext, retrieveRelevantMemories } from '../memoryRetrieval';
+import { formatRetrievedMemoryContext, inspectMemoryRetrieval, retrieveRelevantMemories, withInjectedMemoryTrace } from '../memoryRetrieval';
 
 const makeMemory = (overrides: Partial<MemoryItem> = {}): MemoryItem => ({ id: 'm1', content: 'The user is working on the roof repair project.', kind: 'project', lifecycle: 'contextual', source: 'conversation', confidence: 'certain', importance: 'normal', isPrivate: true, category: 'Projects', createdAt: '2026-08-20T00:00:00.000Z', updatedAt: '2026-08-20T00:00:00.000Z', pinned: false, resolution: 'contextual', state: 'active', reinforcementCount: 0, evidenceCount: 1, ...overrides });
 
@@ -34,5 +34,27 @@ describe('memory retrieval', () => {
     const results = retrieveRelevantMemories([makeMemory({ id: 'long', content: 'roof '.repeat(5000) })], 'roof', { minimumScore: 0 });
     const formatted = formatRetrievedMemoryContext(results, 600);
     assert.ok(formatted.length <= 600); assert.match(formatted, /relevance/);
+  });
+  it('explains why candidates were selected or excluded', () => {
+    const trace = inspectMemoryRetrieval([
+      makeMemory({ id: 'selected', content: 'The user is painting the roof and watching the weather.' }),
+      makeMemory({ id: 'archived', content: 'Roof project from last year.', state: 'archived' }),
+      makeMemory({ id: 'weak', content: 'The user likes jazz music.', category: 'Experiences' }),
+      makeMemory({ id: 'superseded', content: 'The old roof plan.', state: 'superseded' }),
+    ], 'roof repair', { now: new Date('2026-08-21T00:00:00.000Z'), limit: 1, minimumScore: 0.18 });
+    assert.equal(trace.selectedIds.length, 1);
+    assert.equal(trace.candidateCount, 4);
+    assert.equal(trace.candidates.find((candidate) => candidate.memory.id === 'archived')?.disposition, 'filtered-archived');
+    assert.equal(trace.candidates.find((candidate) => candidate.memory.id === 'superseded')?.disposition, 'filtered-superseded');
+    assert.ok(trace.candidates.find((candidate) => candidate.memory.id === 'selected')?.reasons.length);
+  });
+  it('records the actual injected set and context size', () => {
+    const results = retrieveRelevantMemories([makeMemory({ id: 'roof', content: 'The user is painting the roof.' })], 'roof', { now: new Date('2026-08-21T00:00:00.000Z') });
+    const trace = inspectMemoryRetrieval([makeMemory({ id: 'roof', content: 'The user is painting the roof.' })], 'roof', { now: new Date('2026-08-21T00:00:00.000Z') });
+    const context = formatRetrievedMemoryContext(results);
+    const completed = withInjectedMemoryTrace(trace, results, context);
+    assert.deepEqual(completed.selectedIds, ['roof']);
+    assert.equal(completed.injectedCount, 1);
+    assert.equal(completed.contextChars, context.length);
   });
 });
