@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { clearLiveThinkingStream, getLiveThinkingEvents, syncLiveThoughtSteps } from '../thinkingLiveRuntime';
 
 describe('live thinking runtime bridge', () => {
-  it('keeps only the latest active thought event while preserving canonical ordering', () => {
+  it('keeps the first active thought stable until a new thought phase arrives', () => {
     clearLiveThinkingStream();
     const first = syncLiveThoughtSteps([
       { id: 'a', step_title: 'Understand request', summary: 'Reading the request.', timestamp: 1 },
@@ -16,7 +16,7 @@ describe('live thinking runtime bridge', () => {
     assert.equal(first.length, 1);
     assert.equal(second.length, 2);
     assert.equal(second[0].type, 'thought');
-    assert.equal(second[0].summary, 'Preparing the response.');
+    assert.equal(second[0].summary, 'Reading the request.');
     assert.equal(second[0].sequence, 1);
     assert.equal(second[1].sequence, 2);
     assert.deepEqual(getLiveThinkingEvents().map((event) => event.sequence), [1, 2]);
