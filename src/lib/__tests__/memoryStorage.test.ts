@@ -32,6 +32,17 @@ describe('memory schema normalization', () => {
     assert.equal(memory.pinned, false);
   });
 
+  it('repairs evidence count when references exceed the stored aggregate', () => {
+    const memory = normalizeMemoryItem({
+      id: 'mem-evidence', content: 'Supported observation.', isPrivate: true, category: 'Observations',
+      createdAt: '2026-08-19T00:00:00.000Z', updatedAt: '2026-08-19T00:00:00.000Z',
+      evidenceMemoryIds: ['a', 'b', 'c'], evidenceCount: 1,
+    });
+    assert.ok(memory);
+    assert.equal(memory.evidenceCount, 3);
+    assert.deepEqual(memory.evidenceMemoryIds, ['a', 'b', 'c']);
+  });
+
   it('preserves explicit canonical metadata', () => {
     const memory = normalizeMemoryItem({
       id: 'mem-2',
@@ -106,5 +117,10 @@ describe('memory schema normalization', () => {
     assert.equal(state.memories.length, 1);
     assert.equal(state.memories[0].id, 'valid');
     assert.equal(state.memories[0].resolution, 'contextual');
+  });
+
+  it('rejects malformed maintenance flags instead of treating strings as booleans', () => {
+    const state = normalizeMemoryState({ autoMaintenanceEnabled: 'false', memories: [] });
+    assert.equal(state.autoMaintenanceEnabled, true);
   });
 });
