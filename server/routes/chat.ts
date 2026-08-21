@@ -38,6 +38,29 @@ function pruneAcceptedChatRequests(now = Date.now()): void {
   }
 }
 
+function normalizeConversationTitle(raw: string, fallbackSource: string): string {
+  const generic = /^(new conversation|new chat|conversation|chat|discussion|untitled|general discussion|miscellaneous)$/i;
+  const cleaned = raw
+    .replace(/^[\"'`]+|[\"'`]+$/g, '')
+    .replace(/^(title|conversation title)\s*:\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (words.length >= 2 && words.length <= 5 && !generic.test(cleaned)) return cleaned;
+
+  const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'to', 'of', 'for', 'in', 'on', 'with', 'is', 'it', 'this', 'that', 'i', 'me', 'my', 'we', 'you', 'can', 'please', 'help', 'about']);
+  const fallbackWords = fallbackSource
+    .replace(/[#*`_>\[\]]/g, ' ')
+    .replace(/[^\p{L}\p{N}'-]+/gu, ' ')
+    .split(/\s+/)
+    .filter((word) => word && !stopWords.has(word.toLowerCase()))
+    .slice(0, 5);
+  if (fallbackWords.length >= 2) {
+    return fallbackWords.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  }
+  return 'A Fresh Thread';
+}
+
 export function setupChatRoutes(app: express.Express) {
   app.post('/api/chat/stream', async (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -121,7 +144,7 @@ export function setupChatRoutes(app: express.Express) {
           if (fc.name === 'generate_canvas') {
             const title = fc.args?.title || 'Canvas Workspace';
             const content = fc.args?.content || '';
-            res.write(`data: ${JSON.stringify({ text: `\n<canvas title="${title}">\n${content}\n</canvas>\n` })}\n\n`);
+            res.write(`data: ${JSON.stringify({ text: `\n<canvas title=\"${title}\">\n${content}\n</canvas>\n` })}\n\n`);
           }
           res.write(`data: ${JSON.stringify({ toolCall: { name: fc.name, args: fc.args, result: op.result, workspace: currentWorkspace, createdArtifactId: op.createdArtifactId, modifiedArtifactId: op.modifiedArtifactId, externalDocUrl: op.externalDocUrl } })}\n\n`);
           toolResponseParts.push({ functionResponse: { name: fc.name, response: op.result, id: fc.id } });
@@ -144,33 +167,32 @@ export function setupChatRoutes(app: express.Express) {
   app.post('/api/chat/title', async (req, res) => {
     try {
       const { firstUserMessage, firstAssistantResponse } = req.body;
-      if (!firstUserMessage || typeof firstUserMessage !== 'string') return res.json({ title: 'New Conversation' });
+      if (!firstUserMessage || typeof firstUserMessage !== 'string') return res.json({ title: 'A Fresh Thread' });
       const sanitizedUserText = firstUserMessage.trim().replace(/[#*`_>\[\]]/g, '').trim();
-      const words = sanitizedUserText.split(/\s+/).filter(Boolean).slice(0, 5);
-      const fallbackTitle = words.length > 0 ? words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : 'New Conversation';
       const candidateModels = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.7-flash'];
       for (const modelToTry of candidateModels) {
         try {
           const ai = getGeminiClient();
-          const prompt = `Generate a concise conversation title (maximum 4 to 6 words, no quotes, no title prefix) for this conversation:\nUser: ${sanitizedUserText}\n${firstAssistantResponse ? `Assistant: ${String(firstAssistantResponse).slice(0, 150)}` : ''}`;
+          const prompt = `Create the short conversation title you would show in a polished ChatGPT-style conversation list.\n\nRules:\n- Exactly 2 to 5 words.\n- Capture the distinctive subject, problem, idea, event, or mood of the conversation.\n- Be specific and slightly creative rather than mechanically summarizing the first sentence.\n- Prefer memorable noun phrases such as \"Roof Repair Strategy\", \"Midnight Memory Architecture\", or \"Android Keyboard Fix\".\n- Do not use generic labels such as Conversation, Chat, Discussion, New Conversation, General Help, or Miscellaneous.\n- No quotes, emojis, numbering, prefixes, trailing punctuation, or explanation.\n\nUser: ${sanitizedUserText}\n${firstAssistantResponse ? `Assistant: ${String(firstAssistantResponse).slice(0, 500)}` : ''}\n\nReturn only the title.`;
           const response = await ai.models.generateContent({
             model: modelToTry,
             contents: prompt,
             config: {
               maxOutputTokens: 25,
-              temperature: 0.4,
+              temperature: 0.75,
               safetySettings: ELARA_SAFETY_SETTINGS,
             },
           });
-          const rawTitle = response.text?.trim().replace(/^["']|["']$/g, '').trim() || '';
-          return res.json({ title: rawTitle.slice(0, 45) || fallbackTitle });
+          const rawTitle = response.text?.trim() || '';
+          const title = normalizeConversationTitle(rawTitle, sanitizedUserText);
+          return res.json({ title });
         } catch (_) {
           continue;
         }
       }
-      return res.json({ title: fallbackTitle });
+      return res.json({ title: normalizeConversationTitle('', sanitizedUserText) });
     } catch (_) {
-      return res.json({ title: 'New Conversation' });
+      return res.json({ title: normalizeConversationTitle('', String(req.body?.firstUserMessage || '')) });
     }
   });
 }
