@@ -93,7 +93,6 @@ export function buildRuntimeConfig(options: RuntimeConfigOptions): any {
   const combinedPrompt = [TEXT_PROCESSING_POLICY, options.systemPrompt || '', workspaceContext].filter(Boolean).join('\n\n').trim();
   if (combinedPrompt) config.systemInstruction = combinedPrompt;
 
-  // Blanket enforcement: safety settings are ALWAYS applied. No opt-out path exists.
   config.safetySettings = ELARA_SAFETY_SETTINGS;
 
   if (profile.supportsTemperature && typeof options.temperature === 'number') {
@@ -134,7 +133,6 @@ export async function executeAgentToolCall(
       name: toolName,
       args,
       result: execution.result,
-      error: execution.error ? String(execution.error) : undefined,
     });
   }
 
