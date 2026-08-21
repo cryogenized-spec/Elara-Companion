@@ -13,7 +13,7 @@ const makeMemory = (index: number, mode: 'unique' | 'clustered'): MemoryItem => 
   confidence: 'likely',
   importance: 'normal',
   isPrivate: true,
-  category: 'Benchmark',
+  category: 'Observations',
   createdAt: '2026-08-20T00:00:00.000Z',
   updatedAt: '2026-08-20T00:00:00.000Z',
   resolution: 'observation',
