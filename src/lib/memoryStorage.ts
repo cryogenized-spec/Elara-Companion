@@ -1,7 +1,7 @@
-import { MemoryItem, MemoryKind, MemoryLifecycle, MemoryScratchpadState, MemorySource, MemoryConfidence, MemoryImportance, MemoryCategory } from '../types';
+import { MemoryItem, MemoryKind, MemoryLifecycle, MemoryScratchpadState, MemorySource, MemoryConfidence, MemoryImportance, MemoryCategory, MemoryResolution, MemoryState } from '../types';
 
 const MEMORY_STORAGE_KEY = 'elara_memory_scratchpad_v1';
-const MEMORY_SCHEMA_VERSION = 2;
+const MEMORY_SCHEMA_VERSION = 3;
 
 export const DEFAULT_MEMORIES: MemoryItem[] = [];
 
@@ -46,6 +46,12 @@ const isMemoryImportance = (value: unknown): value is MemoryImportance =>
 const isMemoryCategory = (value: unknown): value is MemoryCategory =>
   ['User', 'Elara', 'Relationship', 'Home', 'Work', 'Projects', 'Preferences', 'People', 'Places', 'Experiences', 'Observations', 'Plans', 'Other'].includes(value as string);
 
+const isMemoryResolution = (value: unknown): value is MemoryResolution =>
+  ['core', 'contextual', 'episodic', 'observation', 'synthesized'].includes(value as string);
+
+const isMemoryState = (value: unknown): value is MemoryState =>
+  ['active', 'stale', 'archived', 'superseded', 'conflicted'].includes(value as string);
+
 const normalizeLegacyConfidence = (value: unknown): MemoryConfidence => {
   if (isMemoryConfidence(value)) return value;
   if (value === 'high') return 'certain';
@@ -61,10 +67,19 @@ const normalizeLegacyImportance = (value: unknown): MemoryImportance => {
   return 'normal';
 };
 
+const deriveResolution = (kind: MemoryKind, lifecycle: MemoryLifecycle, explicit?: unknown): MemoryResolution => {
+  if (isMemoryResolution(explicit)) return explicit;
+  if (lifecycle === 'core') return 'core';
+  if (kind === 'observation') return 'observation';
+  if (kind === 'episode') return 'episodic';
+  if (kind === 'fact' || kind === 'preference' || kind === 'relationship' || kind === 'project' || kind === 'plan' || kind === 'working' || kind === 'context') return 'contextual';
+  return 'observation';
+};
+
 /** Normalize legacy memory records into the Pass 1 canonical schema. */
 export function normalizeMemoryItem(value: unknown): MemoryItem | null {
   if (!value || typeof value !== 'object') return null;
-  const raw = value as Partial<MemoryItem> & { confidence?: unknown; importance?: unknown; category?: unknown };
+  const raw = value as Partial<MemoryItem> & { confidence?: unknown; importance?: unknown; category?: unknown; resolution?: unknown; state?: unknown };
   if (typeof raw.id !== 'string' || typeof raw.content !== 'string') return null;
   if (typeof raw.isPrivate !== 'boolean') return null;
   if (typeof raw.createdAt !== 'string' || typeof raw.updatedAt !== 'string') return null;
@@ -83,15 +98,23 @@ export function normalizeMemoryItem(value: unknown): MemoryItem | null {
       : raw.sourceConversationId
         ? 'conversation'
         : 'system';
+  const confidence = normalizeLegacyConfidence(raw.confidence);
+  const importance = normalizeLegacyImportance(raw.importance);
+  const resolution = deriveResolution(kind, lifecycle, raw.resolution);
+  const state = isMemoryState(raw.state) ? raw.state : lifecycle === 'archived' ? 'archived' : 'active';
+  const retrievalCount = typeof raw.retrievalCount === 'number' && raw.retrievalCount >= 0 ? raw.retrievalCount : 0;
+  const evidenceCount = typeof raw.evidenceCount === 'number' && raw.evidenceCount >= 0 ? raw.evidenceCount : 0;
 
   return {
     ...raw,
     kind,
     lifecycle,
     source,
-    confidence: normalizeLegacyConfidence(raw.confidence),
-    importance: normalizeLegacyImportance(raw.importance),
+    confidence,
+    importance,
     category,
+    resolution,
+    state,
     tags: Array.isArray(raw.tags) ? raw.tags.filter((tag): tag is string => typeof tag === 'string') : [],
     relatedMemoryIds: Array.isArray(raw.relatedMemoryIds)
       ? raw.relatedMemoryIds.filter((id): id is string => typeof id === 'string')
@@ -99,7 +122,15 @@ export function normalizeMemoryItem(value: unknown): MemoryItem | null {
     links: Array.isArray(raw.links)
       ? raw.links.filter((link) => link && typeof link === 'object' && typeof link.type === 'string' && typeof link.id === 'string')
       : [],
+    evidenceMemoryIds: Array.isArray(raw.evidenceMemoryIds)
+      ? raw.evidenceMemoryIds.filter((id): id is string => typeof id === 'string')
+      : [],
+    conflictMemoryIds: Array.isArray(raw.conflictMemoryIds)
+      ? raw.conflictMemoryIds.filter((id): id is string => typeof id === 'string')
+      : [],
     reinforcementCount: typeof raw.reinforcementCount === 'number' && raw.reinforcementCount >= 0 ? raw.reinforcementCount : 0,
+    retrievalCount,
+    evidenceCount,
     pinned: Boolean(raw.pinned),
   } as MemoryItem;
 }
