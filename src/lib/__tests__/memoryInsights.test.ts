@@ -39,7 +39,7 @@ describe('memory insights', () => {
   });
 
   it('uses stable defaults when additive metadata is absent', () => {
-    const legacy = { ...memory, resolution: undefined, state: undefined, evidenceCount: undefined, evidenceMemoryIds: undefined, conflictMemoryIds: undefined, supersedesMemoryId: undefined };
+    const legacy = { ...memory, resolution: undefined, state: undefined, evidenceCount: undefined, evidenceMemoryIds: undefined, conflictMemoryIds: undefined, supersedesMemoryId: undefined, reinforcementCount: 0 };
     const insight = buildMemoryInsightSummary(legacy);
     assert.equal(insight.resolutionLabel, 'Contextual');
     assert.equal(insight.stateLabel, 'Active');
