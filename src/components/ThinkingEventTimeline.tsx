@@ -111,20 +111,14 @@ export const ThinkingEventTimeline: React.FC<ThinkingEventTimelineProps> = ({
         className="flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left hover:bg-pink-400/[0.035] focus:outline-none focus-visible:ring-1 focus-visible:ring-pink-400/60"
         aria-expanded={!collapsed}
       >
-        <span className="shrink-0">
-          <ElaraMindSigil active={isStreaming} size="md" />
-        </span>
+        <span className="shrink-0"><ElaraMindSigil active={isStreaming} size={24} /></span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-pink-200">
-              {isStreaming ? 'Thinking' : 'Thought for'}
-            </span>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-pink-200">{isStreaming ? 'Thinking' : 'Thought for'}</span>
             {isStreaming && <Sparkles className="h-3 w-3 text-pink-300/80 animate-pulse" />}
           </div>
           <div className="text-[10px] text-zinc-500 truncate">
-            {isStreaming
-              ? `${ordered.length} ${ordered.length === 1 ? 'event' : 'events'}${duration ? ` · ${duration}` : ''}`
-              : duration ? duration : `${ordered.length} ${ordered.length === 1 ? 'event' : 'events'}`}
+            {isStreaming ? `${ordered.length} ${ordered.length === 1 ? 'event' : 'events'}${duration ? ` · ${duration}` : ''}` : duration ? duration : `${ordered.length} ${ordered.length === 1 ? 'event' : 'events'}`}
           </div>
         </div>
         {collapsed ? <ChevronRight className="h-4 w-4 shrink-0 text-pink-300/80" /> : <ChevronDown className="h-4 w-4 shrink-0 text-pink-300/80" />}
@@ -143,9 +137,7 @@ export const ThinkingEventTimeline: React.FC<ThinkingEventTimelineProps> = ({
 
               return (
                 <div key={event.id} className="relative">
-                  <div className="absolute -left-6 sm:-left-7 top-2.5 z-10 flex h-[18px] w-[18px] sm:h-5 sm:w-5 items-center justify-center rounded-full border border-pink-400/30 bg-zinc-950">
-                    <ServiceIcon event={event} />
-                  </div>
+                  <div className="absolute -left-6 sm:-left-7 top-2.5 z-10 flex h-[18px] w-[18px] sm:h-5 sm:w-5 items-center justify-center rounded-full border border-pink-400/30 bg-zinc-950"><ServiceIcon event={event} /></div>
                   <button
                     type="button"
                     onClick={() => hasExpandableBody && toggleEvent(event.id)}
@@ -153,33 +145,16 @@ export const ThinkingEventTimeline: React.FC<ThinkingEventTimelineProps> = ({
                     className={`group flex w-full items-start gap-1.5 sm:gap-2 rounded-lg px-1.5 sm:px-2 py-1.5 sm:py-2 text-left transition-colors ${hasExpandableBody ? 'hover:bg-white/[0.035] cursor-pointer' : 'cursor-default'} focus:outline-none focus-visible:ring-1 focus-visible:ring-pink-400/60`}
                     aria-expanded={hasExpandableBody ? isOpen : undefined}
                   >
-                    <span className="mt-0.5 shrink-0 text-pink-300/70">
-                      {hasExpandableBody ? (isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />) : <span className="block w-3.5" />}
-                    </span>
+                    <span className="mt-0.5 shrink-0 text-pink-300/70">{hasExpandableBody ? (isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />) : <span className="block w-3.5" />}</span>
                     <span className="min-w-0 flex-1">
                       <span className={`flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] sm:text-xs font-medium ${statusClasses[event.status]}`}>
                         <span className="truncate">{label}</span>
-                        {service && (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/75 px-1.5 py-0.5 text-[8px] sm:text-[9px] uppercase tracking-wide text-zinc-500">
-                            <ServiceIcon event={event} />
-                            <span>{service}</span>
-                          </span>
-                        )}
+                        {service && <span className="inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/75 px-1.5 py-0.5 text-[8px] sm:text-[9px] uppercase tracking-wide text-zinc-500"><ServiceIcon event={event} /><span>{service}</span></span>}
                         {eventDuration && <span className="text-[9px] font-mono text-zinc-600">{eventDuration}</span>}
                       </span>
-                      {isOpen && (
-                        <span className="mt-1.5 block whitespace-pre-wrap break-words text-[11px] leading-relaxed text-zinc-400">
-                          {event.summary || event.detail || event.tool?.operation || 'No additional detail.'}
-                        </span>
-                      )}
+                      {isOpen && <span className="mt-1.5 block whitespace-pre-wrap break-words text-[11px] leading-relaxed text-zinc-400">{event.summary || event.detail || event.tool?.operation || 'No additional detail.'}</span>}
                     </span>
-                    {event.status === 'failed' ? (
-                      <span className="mt-1 text-[9px] font-semibold uppercase text-rose-400">Failed</span>
-                    ) : event.type === 'completion' ? (
-                      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
-                    ) : (
-                      <Clock3 className={`mt-1 h-3 w-3 shrink-0 ${event.status === 'active' ? 'text-pink-300' : 'text-zinc-700'}`} />
-                    )}
+                    {event.status === 'failed' ? <span className="mt-1 text-[9px] font-semibold uppercase text-rose-400">Failed</span> : event.type === 'completion' ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" /> : <Clock3 className={`mt-1 h-3 w-3 shrink-0 ${event.status === 'active' ? 'text-pink-300' : 'text-zinc-700'}`} />}
                   </button>
                 </div>
               );
