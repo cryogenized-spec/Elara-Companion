@@ -1,30 +1,26 @@
-import { describe, expect, it, vi } from 'vitest';
-import { emitResilienceStatus, getResilienceStatus, subscribeResilienceStatus } from './resilienceStatus';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { clearResilienceStatus, emitResilienceStatus, getResilienceStatus, subscribeResilienceStatus } from './resilienceStatus';
 
-describe('resilienceStatus', () => {
-  it('publishes and clears a fallback status', () => {
-    vi.useFakeTimers();
-    const seen: Array<unknown> = [];
-    const unsubscribe = subscribeResilienceStatus((status) => seen.push(status));
+test('resilience status publishes and clears through the repository test runner', () => {
+  clearResilienceStatus();
+  const seen: Array<unknown> = [];
+  const unsubscribe = subscribeResilienceStatus((status) => seen.push(status));
 
-    emitResilienceStatus({
-      kind: 'fallback',
-      model: 'gemini-3.6-flash',
-      preferredModel: 'gemini-3.7-flash',
-      attempts: 3,
-      usedFallback: true,
-      probingPreferred: false,
-    });
-
-    expect(getResilienceStatus()?.model).toBe('gemini-3.6-flash');
-    expect(seen.length).toBe(1);
-
-    vi.advanceTimersByTime(7000);
-    expect(getResilienceStatus()).toBeNull();
-    expect(seen.at(-1)).toBeNull();
-    unsubscribe();
-    vi.useRealTimers();
+  emitResilienceStatus({
+    kind: 'fallback',
+    model: 'gemini-3.6-flash',
+    preferredModel: 'gemini-3.7-flash',
+    attempts: 3,
+    usedFallback: true,
+    probingPreferred: false,
   });
 
-  // Pass 6 verification: timer-driven cleanup is deterministic under fake clocks.
+  assert.equal(getResilienceStatus()?.model, 'gemini-3.6-flash');
+  assert.equal(seen.length, 1);
+
+  clearResilienceStatus();
+  assert.equal(getResilienceStatus(), null);
+  assert.equal(seen.at(-1), null);
+  unsubscribe();
 });

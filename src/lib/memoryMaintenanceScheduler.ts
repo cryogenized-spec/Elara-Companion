@@ -19,7 +19,7 @@ export interface MemoryMaintenanceCycleResult {
   state: MemoryScratchpadState;
   plan: MemoryMaintenancePlan | null;
   ran: boolean;
-  skippedReason: 'disabled' | 'not-due' | null;
+  skippedReason: 'disabled' | 'not-due' | 'error' | null;
 }
 
 export function shouldRunMemoryMaintenance(
@@ -51,22 +51,28 @@ export function runMemoryMaintenanceCycle(
     return { state, plan: null, ran: false, skippedReason: 'not-due' };
   }
 
-  const config: MemoryMaintenanceConfig = {
-    ...DEFAULT_MEMORY_MAINTENANCE_CONFIG,
-    ...(options.config || {}),
-    now,
-  };
-  const plan = buildMemoryMaintenancePlan(state.memories, config);
-  const maintained = applySafeMemoryMaintenance(state, plan);
+  try {
+    const config: MemoryMaintenanceConfig = {
+      ...DEFAULT_MEMORY_MAINTENANCE_CONFIG,
+      ...(options.config || {}),
+      now,
+    };
+    const plan = buildMemoryMaintenancePlan(state.memories, config);
+    const maintained = applySafeMemoryMaintenance(state, plan, config);
 
-  return {
-    state: {
-      ...maintained,
-      lastMaintenanceAt: plan.generatedAt,
-      schemaVersion: 2,
-    },
-    plan,
-    ran: true,
-    skippedReason: null,
-  };
+    return {
+      state: maintained,
+      plan,
+      ran: true,
+      skippedReason: null,
+    };
+  } catch (error) {
+    console.warn('Memory maintenance skipped after an internal failure:', error);
+    return {
+      state,
+      plan: null,
+      ran: false,
+      skippedReason: 'error',
+    };
+  }
 }

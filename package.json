@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit && npm --prefix background-runtime install --no-audit --no-fund && npm --prefix background-runtime run typecheck",
-    "test": "node --import tsx --test"
+    "test": "node --import tsx --test",
+    "benchmark:memory": "tsx scripts/benchmark-memory-consolidation.ts"
   },
   "dependencies": {
     "@google/genai": "^2.15.0",

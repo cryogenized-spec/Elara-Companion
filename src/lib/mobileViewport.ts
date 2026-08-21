@@ -44,6 +44,7 @@ export function installMobileViewportSync(): () => void {
   window.addEventListener('pageshow', handlePageShow);
 
   return () => {
+    clearResumeTimers();
     window.visualViewport?.removeEventListener('resize', update);
     window.visualViewport?.removeEventListener('scroll', update);
     window.removeEventListener('resize', update);
