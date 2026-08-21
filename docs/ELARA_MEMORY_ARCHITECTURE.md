@@ -32,9 +32,9 @@ The current schema therefore reserves fields for supporting memory IDs, conflict
 
 ## Observation stream
 
-Gemini's memory extractor now records small, grounded details as atomic `observation` records. These are deliberately low-resolution: a single observation is evidence, not automatically a permanent fact. The processor stamps provenance, observation time, evidence count, and active state deterministically.
+Gemini's memory extractor records small, grounded details as atomic `observation` records. These are deliberately low-resolution: a single observation is evidence, not automatically a permanent fact. The processor stamps provenance, observation time, evidence count, and active state deterministically.
 
-Observations are allowed to accumulate across conversations. The current prompt projection may still show only a limited importance-ranked subset; contextual retrieval now replaces that flat projection for Gemini context.
+Observations are allowed to accumulate across conversations. The Scratchpad remains a human-facing projection, while the structured memory store remains authoritative.
 
 ## Consolidation and promotion
 
@@ -47,6 +47,14 @@ Observations may be promoted only after repeated reinforcement/evidence. Promoti
 Pass 4 introduced a standalone ranked retrieval engine over the structured memory store. `retrieveRelevantMemories()` combines content similarity, topic hints, project relationships, freshness, importance, resolution, lifecycle state, reinforcement, and evidence into a bounded relevance score. Archived and superseded memories are excluded by default, while conflicted memories are also excluded unless explicitly requested.
 
 Pass 5 now uses that retrieval layer during prompt assembly. The normalized IndexedDB memory state is mirrored locally for synchronous lookup, stable core memories are kept in a small bounded set, and query-relevant contextual memories are ranked and injected into `[RETRIEVED MEMORY CONTEXT]`. The legacy flat scratchpad string is no longer injected into Gemini. The Scratchpad itself remains available as the user-facing inspection surface.
+
+## Maintenance and decay
+
+Pass 6 strengthens the existing maintenance system rather than creating another scheduler. Maintenance runs at the persistence boundary on the existing daily interval when automatic maintenance is enabled, so app startup/reload is sufficient to trigger due maintenance without an always-running background timer.
+
+Maintenance marks stale working/contextual/persistent records as `stale` without deleting them, archives records whose explicit expiry has elapsed, restores eligible stale records to `active` when their freshness is renewed, detects exact duplicate groups for later reconciliation, and compacts supporting evidence ID lists while preserving the aggregate evidence count.
+
+Core and pinned records are protected. Conflicted and superseded states are preserved rather than silently overwritten. Maintenance is schema-v3 aware.
 
 ## Promotion principle
 
@@ -71,3 +79,4 @@ Schema changes must be additive and migration-safe. Existing records are normali
 - **Pass 3 — Deduplication, reconciliation & promotion:** implemented conservatively; destructive merge remains later.
 - **Pass 4 — Contextual retrieval engine:** implemented as a side-effect-free ranked retrieval layer.
 - **Pass 5 — Gemini context integration:** implemented; core memories remain bounded while contextual retrieval replaces the flat scratchpad injection.
+- **Pass 6 — Consolidation, decay & maintenance:** implemented on the existing persistence boundary; no parallel scheduler retained.

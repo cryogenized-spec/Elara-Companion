@@ -18,9 +18,9 @@ function getStructuredMemoryMirror(): any[] {
 
 function getLiveRetrievalQuery(): string {
   try {
-    const active = document.activeElement;
-    if (active instanceof HTMLTextAreaElement && active.value.trim()) return active.value.trim();
-    const textarea = document.querySelector('textarea');
+    const active = document.activeElement as Element & { value?: string } | null;
+    if (active && typeof active.value === 'string' && active.value.trim()) return active.value.trim();
+    const textarea = document.querySelector('textarea') as HTMLTextAreaElement | null;
     return textarea?.value?.trim() || '';
   } catch {
     return '';
