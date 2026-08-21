@@ -1,4 +1,5 @@
 import { MemoryAction, MemoryItem, MemoryLink, MemoryScratchpadState } from '../types';
+import { consolidateMemories } from './memoryConsolidation';
 
 const ACTIVE_SCRATCHPAD_KEY = 'elara_active_scratchpad_v1';
 const SCRATCHPAD_EVENT = 'elara:scratchpad-updated';
@@ -48,8 +49,10 @@ function persistScratchpad(memories: MemoryItem[]): void {
 
 export function applyMemoryActions(state: MemoryScratchpadState, actions: MemoryAction[], conversationId?: string): MemoryScratchpadState {
   if (!actions || actions.length === 0) {
-    persistScratchpad(state.memories);
-    return state;
+    const consolidated = consolidateMemories(state.memories);
+    const nextState = consolidated.memories === state.memories ? { ...state, schemaVersion: 3 } : { ...state, memories: consolidated.memories, lastMaintenanceAt: new Date().toISOString(), schemaVersion: 3 };
+    persistScratchpad(nextState.memories);
+    return nextState;
   }
   let currentMemories = [...state.memories];
   let stateModified = false;
@@ -155,7 +158,11 @@ export function applyMemoryActions(state: MemoryScratchpadState, actions: Memory
       stateModified = true;
     }
   }
-  const nextState = stateModified ? { ...state, memories: currentMemories, lastMaintenanceAt: new Date().toISOString(), schemaVersion: 3 } : { ...state, schemaVersion: 3 };
+
+  const consolidated = consolidateMemories(currentMemories);
+  const nextState = stateModified || consolidated.memories !== currentMemories
+    ? { ...state, memories: consolidated.memories, lastMaintenanceAt: new Date().toISOString(), schemaVersion: 3 }
+    : { ...state, schemaVersion: 3 };
   persistScratchpad(nextState.memories);
   return nextState;
 }
