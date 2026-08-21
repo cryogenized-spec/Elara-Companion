@@ -7,6 +7,7 @@ import { clearWorkspace } from './workspaceStorage';
 import { DEFAULT_WORLD_STATE } from '../constants/defaultWorldState';
 import { applySettingsAppearance } from './themeManager';
 import { MEMORY_SCHEMA_VERSION, normalizeMemoryState } from './memoryStorage';
+import { runMemoryMaintenanceCycle } from './memoryMaintenanceScheduler';
 
 const CONVERSATIONS_KEY = 'elara_conversations_v2';
 const SETTINGS_KEY = 'elara_settings_v2';
@@ -127,10 +128,12 @@ export async function setDbWorldState(data: WorldState) { await set(WORLD_STATE_
 
 export async function getDbMemoryState(): Promise<MemoryScratchpadState> {
   const raw = await get(MEMORY_STATE_KEY);
-  const state = normalizeMemoryState(raw);
+  const normalized = normalizeMemoryState(raw);
+  const maintenance = runMemoryMaintenanceCycle(normalized);
+  const state = maintenance.ran ? maintenance.state : normalized;
 
-  if (state.schemaVersion === MEMORY_SCHEMA_VERSION && raw && typeof raw === 'object') {
-    // Already current; no write needed.
+  if (state.schemaVersion === MEMORY_SCHEMA_VERSION && raw && typeof raw === 'object' && !maintenance.ran) {
+    // Already current and maintenance is not due.
   } else {
     await set(MEMORY_STATE_KEY, state);
   }
