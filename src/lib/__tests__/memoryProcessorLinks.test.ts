@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import type { MemoryScratchpadState } from '../../types';
 import { applyMemoryActions } from '../memoryProcessor';
 
-const baseState: MemoryScratchpadState = { memories: [], autoMaintenanceEnabled: true, schemaVersion: 2 };
+const baseState: MemoryScratchpadState = { memories: [], autoMaintenanceEnabled: true, schemaVersion: 3 };
 
 describe('memory provenance links', () => {
   it('links created memories to their source conversation', () => {
@@ -56,13 +56,15 @@ describe('memory provenance links', () => {
           confidence: 'certain', importance: 'normal', isPrivate: true, category: 'Projects',
           createdAt: '2026-08-19T00:00:00.000Z', updatedAt: '2026-08-19T00:00:00.000Z',
           sourceConversationId: 'conv-old', sourceArtifactId: 'artifact-old',
-          links: [{ type: 'artifact', id: 'artifact-old' }], relatedMemoryIds: ['b'],
+          links: [{ type: 'artifact', id: 'artifact-old' }], relatedMemoryIds: ['b'], resolution: 'contextual', state: 'active',
+          evidenceCount: 1, evidenceMemoryIds: [],
         },
         {
           id: 'b', content: 'Related note.', kind: 'project', lifecycle: 'persistent', source: 'conversation',
           confidence: 'certain', importance: 'normal', isPrivate: true, category: 'Projects',
           createdAt: '2026-08-19T00:00:00.000Z', updatedAt: '2026-08-19T00:00:00.000Z',
-          sourceConversationId: 'conv-old', relatedMemoryIds: ['a'],
+          sourceConversationId: 'conv-old', relatedMemoryIds: ['a'], resolution: 'contextual', state: 'active',
+          evidenceCount: 1, evidenceMemoryIds: [],
         },
       ],
     };
@@ -79,11 +81,20 @@ describe('memory provenance links', () => {
       },
     }], 'conv-new');
 
-    assert.equal(next.memories[0].sourceConversationId, 'conv-new');
-    assert.equal(next.memories[0].sourceArtifactId, 'artifact-old');
-    assert.deepEqual(next.memories[0].links, [
-      { type: 'artifact', id: 'artifact-old' },
-      { type: 'conversation', id: 'conv-new', label: 'Source conversation' },
-    ]);
+    const merged = next.memories.find((memory) => memory.resolution === 'synthesized');
+    const sourceA = next.memories.find((memory) => memory.id === 'a');
+    const sourceB = next.memories.find((memory) => memory.id === 'b');
+
+    assert.ok(merged);
+    assert.equal(merged.sourceConversationId, 'conv-new');
+    assert.equal(merged.sourceArtifactId, 'artifact-old');
+    assert.equal(sourceA?.state, 'superseded');
+    assert.equal(sourceA?.supersededByMemoryId, merged.id);
+    assert.equal(sourceB?.state, 'superseded');
+    assert.equal(sourceB?.supersededByMemoryId, merged.id);
+    assert.ok(merged.evidenceMemoryIds?.includes('a'));
+    assert.ok(merged.evidenceMemoryIds?.includes('b'));
+    assert.ok(merged.relatedMemoryIds?.includes('a'));
+    assert.ok(merged.relatedMemoryIds?.includes('b'));
   });
 });
