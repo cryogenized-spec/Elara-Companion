@@ -1,92 +1,46 @@
 const VIEWPORT_HEIGHT_VAR = '--elara-viewport-height';
-const RESUME_SETTLE_DELAYS_MS = [0, 120, 350, 700] as const;
+const VIEWPORT_SYNC_EVENT = 'elara:mobile-viewport-sync';
 
 export function installMobileViewportSync(): () => void {
   if (typeof window === 'undefined' || typeof document === 'undefined') return () => {};
 
-  let resumeTimers: number[] = [];
+  let resumeTimer: number | null = null;
+  let delayedResumeTimer: number | null = null;
 
   const update = () => {
     const height = window.visualViewport?.height || window.innerHeight;
     document.documentElement.style.setProperty(VIEWPORT_HEIGHT_VAR, `${Math.round(height)}px`);
+    window.dispatchEvent(new CustomEvent(VIEWPORT_SYNC_EVENT));
   };
 
-  const isEditableElement = (element: Element | null): element is HTMLElement => {
-    return element instanceof HTMLElement && element.matches('textarea, input, [contenteditable="true"]');
-  };
+  const scheduleResumeSync = () => {
+    if (resumeTimer !== null) window.cancelAnimationFrame(resumeTimer);
+    if (delayedResumeTimer !== null) window.clearTimeout(delayedResumeTimer);
 
-  const blurActiveEditor = () => {
-    const activeElement = document.activeElement;
-    if (!isEditableElement(activeElement)) return;
-    activeElement.blur();
-  };
-
-  const scrollActiveEditorIntoView = () => {
-    const activeElement = document.activeElement;
-    if (!isEditableElement(activeElement)) return;
-
-    activeElement.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
-  };
-
-  const clearResumeTimers = () => {
-    resumeTimers.forEach((timer) => window.clearTimeout(timer));
-    resumeTimers = [];
-  };
-
-  const resyncAfterResume = () => {
-    clearResumeTimers();
+    // Android can restore the IME after the page becomes visible. Re-measure
+    // immediately, on the next frame, and once more after the browser settles.
     update();
-
-    if (typeof window.requestAnimationFrame === 'function') {
-      window.requestAnimationFrame(update);
-      window.requestAnimationFrame(scrollActiveEditorIntoView);
-    }
-
-    resumeTimers = RESUME_SETTLE_DELAYS_MS
-      .filter((delay) => delay > 0)
-      .map((delay) => window.setTimeout(() => {
+    resumeTimer = window.requestAnimationFrame(() => {
+      resumeTimer = null;
+      update();
+      delayedResumeTimer = window.setTimeout(() => {
+        delayedResumeTimer = null;
         update();
-        scrollActiveEditorIntoView();
-      }, delay));
+      }, 120);
+    });
   };
 
   const handleVisibilityChange = () => {
-    if (document.visibilityState === 'hidden') {
-      // Android can otherwise restore focus to the composer when the PWA resumes,
-      // which may reopen the IME over the editor even when the user dismissed it.
-      clearResumeTimers();
-      blurActiveEditor();
-      return;
-    }
-
-    if (document.visibilityState === 'visible') {
-      resyncAfterResume();
-    }
+    if (document.visibilityState === 'visible') scheduleResumeSync();
   };
 
-  const handlePageShow = () => {
-    // Do not focus or reopen the IME on pageshow. Only resync viewport geometry.
-    resyncAfterResume();
-  };
-
-  const handleFocusIn = () => {
-    update();
-    if (typeof window.requestAnimationFrame === 'function') {
-      window.requestAnimationFrame(update);
-    }
-    window.setTimeout(update, 120);
-    window.setTimeout(() => {
-      update();
-      scrollActiveEditorIntoView();
-    }, 350);
-  };
+  const handlePageShow = () => scheduleResumeSync();
 
   update();
   window.visualViewport?.addEventListener('resize', update);
   window.visualViewport?.addEventListener('scroll', update);
   window.addEventListener('resize', update);
   document.addEventListener('visibilitychange', handleVisibilityChange);
-  document.addEventListener('focusin', handleFocusIn);
   window.addEventListener('pageshow', handlePageShow);
 
   return () => {
@@ -95,7 +49,10 @@ export function installMobileViewportSync(): () => void {
     window.visualViewport?.removeEventListener('scroll', update);
     window.removeEventListener('resize', update);
     document.removeEventListener('visibilitychange', handleVisibilityChange);
-    document.removeEventListener('focusin', handleFocusIn);
     window.removeEventListener('pageshow', handlePageShow);
+    if (resumeTimer !== null) window.cancelAnimationFrame(resumeTimer);
+    if (delayedResumeTimer !== null) window.clearTimeout(delayedResumeTimer);
   };
 }
+
+export const ELARA_MOBILE_VIEWPORT_SYNC_EVENT = VIEWPORT_SYNC_EVENT;
