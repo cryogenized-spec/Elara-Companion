@@ -45,11 +45,12 @@ describe('memory maintenance', () => {
 
   it('archives explicit expirations without deleting history', () => {
     const now = new Date('2026-08-19T00:00:00.000Z');
-    const state: MemoryScratchpadState = { memories: [makeMemory({ id: 'expired', expiresAt: '2026-08-18T00:00:00.000Z' })], autoMaintenanceEnabled: true, schemaVersion: 2 };
+    const state: MemoryScratchpadState = { memories: [makeMemory({ id: 'expired', expiresAt: '2026-08-18T00:00:00.000Z' })], autoMaintenanceEnabled: true, schemaVersion: 3 };
     const next = applySafeMemoryMaintenance(state, buildMemoryMaintenancePlan(state.memories, { now }));
     assert.equal(next.memories[0].lifecycle, 'archived');
+    assert.equal(next.memories[0].state, 'archived');
     assert.equal(next.memories.length, 1);
-    assert.equal(next.schemaVersion, 2);
+    assert.equal(next.schemaVersion, 3);
   });
 
   it('rewards reinforcement and importance in the maintenance score', () => {
