@@ -126,33 +126,41 @@ export async function getDbWorldState(): Promise<WorldState> {
 }
 export async function setDbWorldState(data: WorldState) { await set(WORLD_STATE_KEY, data); }
 
-export async function getDbMemoryState(): Promise<MemoryScratchpadState> {
+export interface GetDbMemoryStateOptions {
+  runMaintenance?: boolean;
+  updateProjections?: boolean;
+}
+
+export async function getDbMemoryState(options: GetDbMemoryStateOptions = {}): Promise<MemoryScratchpadState> {
+  const runMaintenance = options.runMaintenance !== false;
+  const updateProjections = options.updateProjections !== false;
   const raw = await get(MEMORY_STATE_KEY);
   const normalized = normalizeMemoryState(raw);
-  const maintenance = runMemoryMaintenanceCycle(normalized);
+  const maintenance = runMaintenance ? runMemoryMaintenanceCycle(normalized) : { ran: false, state: normalized };
   const state = maintenance.ran ? maintenance.state : normalized;
 
-  if (state.schemaVersion === MEMORY_SCHEMA_VERSION && raw && typeof raw === 'object' && !maintenance.ran) {
-    // Already current and maintenance is not due.
-  } else {
-    await set(MEMORY_STATE_KEY, state);
-  }
+  if (updateProjections) {
+    if (state.schemaVersion !== MEMORY_SCHEMA_VERSION || !raw || typeof raw !== 'object' || maintenance.ran) {
+      await set(MEMORY_STATE_KEY, state);
+    }
 
-  mirrorMemoryState(state);
+    mirrorMemoryState(state);
 
-  if (state.memories.length > 0) {
-    const scratchpad = [
-      '[ELARA PERSISTENT SCRATCHPAD]',
-      'Cross-session working memory about the user and ongoing relationship/context.',
-      'Do not invent facts. Treat uncertain observations as uncertain and prefer current user statements.',
-      ...state.memories.slice(0, 80).map((memory) => `- [${memory.isPrivate ? 'PRIVATE' : 'SHARED'}] [${memory.category}] [${memory.importance}/${memory.confidence}] ${memory.content}`),
-      '[/ELARA PERSISTENT SCRATCHPAD]',
-    ].join('\n');
-    saveActiveScratchpad(scratchpad);
+    if (state.memories.length > 0) {
+      const scratchpad = [
+        '[ELARA PERSISTENT SCRATCHPAD]',
+        'Cross-session working memory about the user and ongoing relationship/context.',
+        'Do not invent facts. Treat uncertain observations as uncertain and prefer current user statements.',
+        ...state.memories.slice(0, 80).map((memory) => `- [${memory.isPrivate ? 'PRIVATE' : 'SHARED'}] [${memory.category}] [${memory.importance}/${memory.confidence}] ${memory.content}`),
+        '[/ELARA PERSISTENT SCRATCHPAD]',
+      ].join('\n');
+      saveActiveScratchpad(scratchpad);
+    }
   }
 
   return state;
 }
+
 export async function setDbMemoryState(data: MemoryScratchpadState) {
   const normalized = normalizeMemoryState(data);
   await set(MEMORY_STATE_KEY, normalized);
