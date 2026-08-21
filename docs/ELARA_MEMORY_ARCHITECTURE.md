@@ -34,7 +34,7 @@ The current schema therefore reserves fields for supporting memory IDs, conflict
 
 Gemini's memory extractor now records small, grounded details as atomic `observation` records. These are deliberately low-resolution: a single observation is evidence, not automatically a permanent fact. The processor stamps provenance, observation time, evidence count, and active state deterministically.
 
-Observations are allowed to accumulate across conversations. The current prompt projection may still show only a limited importance-ranked subset; contextual retrieval will later replace that flat projection.
+Observations are allowed to accumulate across conversations. The current prompt projection may still show only a limited importance-ranked subset; contextual retrieval now replaces that flat projection for Gemini context.
 
 ## Consolidation and promotion
 
@@ -44,9 +44,9 @@ Observations may be promoted only after repeated reinforcement/evidence. Promoti
 
 ## Contextual retrieval
 
-Pass 4 introduces a standalone ranked retrieval engine over the structured memory store. `retrieveRelevantMemories()` combines content similarity, topic hints, project relationships, freshness, importance, resolution, lifecycle state, reinforcement, and evidence into a bounded relevance score. Archived and superseded memories are excluded by default, while conflicted memories are also excluded unless explicitly requested.
+Pass 4 introduced a standalone ranked retrieval engine over the structured memory store. `retrieveRelevantMemories()` combines content similarity, topic hints, project relationships, freshness, importance, resolution, lifecycle state, reinforcement, and evidence into a bounded relevance score. Archived and superseded memories are excluded by default, while conflicted memories are also excluded unless explicitly requested.
 
-The retrieval engine is intentionally side-effect-free in this pass. It returns ranked memory records plus human-readable relevance reasons and can format the result into a compact context block. Prompt assembly is not changed until the next pass, allowing retrieval behavior to be tested independently before it becomes part of Gemini's live context.
+Pass 5 now uses that retrieval layer during prompt assembly. The normalized IndexedDB memory state is mirrored locally for synchronous lookup, stable core memories are kept in a small bounded set, and query-relevant contextual memories are ranked and injected into `[RETRIEVED MEMORY CONTEXT]`. The legacy flat scratchpad string is no longer injected into Gemini. The Scratchpad itself remains available as the user-facing inspection surface.
 
 ## Promotion principle
 
@@ -58,7 +58,7 @@ New evidence should not blindly create duplicates. Later passes will compare new
 
 ## Retrieval principle
 
-The structured memory store is authoritative. The derived active scratchpad text is a presentation/cache projection. Contextual retrieval should select only the memories relevant to the current conversation instead of injecting a fixed flat list.
+The structured memory store is authoritative. The derived active scratchpad text is a presentation/cache projection. Contextual retrieval selects only the memories relevant to the current conversation instead of injecting a fixed flat list.
 
 ## Compatibility
 
@@ -69,4 +69,5 @@ Schema changes must be additive and migration-safe. Existing records are normali
 - **Pass 1 — Schema & architecture contract:** implemented.
 - **Pass 2 — Observation stream:** implemented.
 - **Pass 3 — Deduplication, reconciliation & promotion:** implemented conservatively; destructive merge remains later.
-- **Pass 4 — Contextual retrieval engine:** implemented as a side-effect-free ranked retrieval layer; prompt integration remains Pass 5.
+- **Pass 4 — Contextual retrieval engine:** implemented as a side-effect-free ranked retrieval layer.
+- **Pass 5 — Gemini context integration:** implemented; core memories remain bounded while contextual retrieval replaces the flat scratchpad injection.
