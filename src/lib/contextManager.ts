@@ -118,6 +118,7 @@ export function buildSystemPayload({
   activeModelId,
   uiSettingsSummary,
   userProfileNotes,
+  activeScratchpad: _activeScratchpad,
 }: {
   baseSystemInstruction: string;
   personaProtocol: string;
@@ -128,6 +129,7 @@ export function buildSystemPayload({
   activeModelId: string;
   uiSettingsSummary: string;
   userProfileNotes: string;
+  activeScratchpad?: string;
 }): string {
   const timestamp = new Date().toLocaleString();
   const agentOperatingPolicy = loadAgentOperatingPolicy();
