@@ -115,34 +115,42 @@ export function consolidateMemories(memories: MemoryItem[], now = new Date()): M
   const next = memories.map((memory) => ({ ...memory }));
   const candidates: MemoryConsolidationCandidate[] = [];
   const tokenSets = next.map((memory) => tokenSet(memory.content));
+  const candidateTargetsBySource = new Map<number, number[]>();
   const nowIso = now.toISOString();
 
-  for (const [index, otherIndex] of buildCandidatePairs(next)) {
-    const source = next[index];
-    const target = next[otherIndex];
-    if (memoryState(source) !== 'active' || memoryState(target) !== 'active') continue;
-
-    const similarity = jaccard(tokenSets[index], tokenSets[otherIndex]);
-    if (similarity >= 0.82) {
-      candidates.push({ sourceId: source.id, targetId: target.id, kind: 'duplicate', score: similarity, reason: 'High semantic similarity; candidate for later merge.' });
-      const preferred = (target.importance === 'core' || target.importance === 'important') && target.importance !== source.importance ? target : source;
-      preferred.reinforcementCount = (preferred.reinforcementCount || 0) + 1;
-      preferred.evidenceCount = Math.max(preferred.evidenceCount || 0, (source.evidenceCount || 0) + (target.evidenceCount || 0), 1);
-      preferred.lastObservedAt = nowIso;
-      preferred.updatedAt = nowIso;
-      preferred.resolution = preferred.resolution || 'observation';
-      preferred.state = preferred.state || 'active';
-    } else if (similarity >= 0.5 && isContradictory(source, target)) {
-      source.state = 'conflicted';
-      target.state = 'conflicted';
-      source.conflictMemoryIds = Array.from(new Set([...(source.conflictMemoryIds || []), target.id]));
-      target.conflictMemoryIds = Array.from(new Set([...(target.conflictMemoryIds || []), source.id]));
-      candidates.push({ sourceId: source.id, targetId: target.id, kind: 'conflict', score: similarity, reason: 'Related memories contain potentially contradictory claims.' });
-    }
+  for (const [sourceIndex, targetIndex] of buildCandidatePairs(next)) {
+    const bucket = candidateTargetsBySource.get(sourceIndex);
+    if (bucket) bucket.push(targetIndex);
+    else candidateTargetsBySource.set(sourceIndex, [targetIndex]);
   }
 
-  for (const source of next) {
+  for (let index = 0; index < next.length; index++) {
+    const source = next[index];
     if (memoryState(source) !== 'active') continue;
+
+    for (const otherIndex of candidateTargetsBySource.get(index) || []) {
+      const target = next[otherIndex];
+      if (memoryState(target) !== 'active') continue;
+
+      const similarity = jaccard(tokenSets[index], tokenSets[otherIndex]);
+      if (similarity >= 0.82) {
+        candidates.push({ sourceId: source.id, targetId: target.id, kind: 'duplicate', score: similarity, reason: 'High semantic similarity; candidate for later merge.' });
+        const preferred = (target.importance === 'core' || target.importance === 'important') && target.importance !== source.importance ? target : source;
+        preferred.reinforcementCount = (preferred.reinforcementCount || 0) + 1;
+        preferred.evidenceCount = Math.max(preferred.evidenceCount || 0, (source.evidenceCount || 0) + (target.evidenceCount || 0), 1);
+        preferred.lastObservedAt = nowIso;
+        preferred.updatedAt = nowIso;
+        preferred.resolution = preferred.resolution || 'observation';
+        preferred.state = preferred.state || 'active';
+      } else if (similarity >= 0.5 && isContradictory(source, target)) {
+        source.state = 'conflicted';
+        target.state = 'conflicted';
+        source.conflictMemoryIds = Array.from(new Set([...(source.conflictMemoryIds || []), target.id]));
+        target.conflictMemoryIds = Array.from(new Set([...(target.conflictMemoryIds || []), source.id]));
+        candidates.push({ sourceId: source.id, targetId: target.id, kind: 'conflict', score: similarity, reason: 'Related memories contain potentially contradictory claims.' });
+      }
+    }
+
     if (shouldPromote(source)) {
       const resolution = promotedResolution(source);
       source.resolution = resolution;
