@@ -153,8 +153,8 @@ export function applySafeMemoryMaintenance(
   const memories = state.memories.map((memory) => {
     if (!expiredIds.has(memory.id)) return memory;
     if (memory.pinned || memory.lifecycle === 'core' || memory.importance === 'core') return memory;
-    return { ...memory, lifecycle: 'archived' as const, updatedAt: plan.generatedAt };
+    return { ...memory, lifecycle: 'archived' as const, state: 'archived' as const, updatedAt: plan.generatedAt };
   });
 
-  return { ...state, memories, lastMaintenanceAt: plan.generatedAt, schemaVersion: 2 };
+  return { ...state, memories, lastMaintenanceAt: plan.generatedAt, schemaVersion: 3 };
 }
