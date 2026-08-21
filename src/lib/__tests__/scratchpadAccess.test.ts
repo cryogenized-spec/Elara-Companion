@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
 import { normalizeMemoryItem, normalizeMemoryState } from '../memoryStorage';
 
 describe('memory scratchpad normalization', () => {
@@ -14,13 +15,22 @@ describe('memory scratchpad normalization', () => {
       updatedAt: '2026-08-20T00:00:00.000Z',
     });
 
-    expect(memory).toMatchObject({
-      confidence: 'likely',
-      importance: 'important',
-      kind: 'observation',
-      lifecycle: 'persistent',
-      source: 'system',
-    });
+    assert.deepEqual(
+      {
+        confidence: memory?.confidence,
+        importance: memory?.importance,
+        kind: memory?.kind,
+        lifecycle: memory?.lifecycle,
+        source: memory?.source,
+      },
+      {
+        confidence: 'likely',
+        importance: 'important',
+        kind: 'observation',
+        lifecycle: 'persistent',
+        source: 'system',
+      },
+    );
   });
 
   it('drops malformed records while returning a safe state', () => {
@@ -41,7 +51,7 @@ describe('memory scratchpad normalization', () => {
       ],
     });
 
-    expect(state.memories).toHaveLength(1);
-    expect(state.memories[0].id).toBe('good');
+    assert.equal(state.memories.length, 1);
+    assert.equal(state.memories[0].id, 'good');
   });
 });
