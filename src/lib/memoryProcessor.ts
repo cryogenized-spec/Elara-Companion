@@ -1,5 +1,6 @@
 import { MemoryAction, MemoryItem, MemoryLink, MemoryScratchpadState } from '../types';
 import { consolidateMemories } from './memoryConsolidation';
+import { recordLiveMemoryActivity } from './thinkingLiveRuntime';
 
 const ACTIVE_SCRATCHPAD_KEY = 'elara_active_scratchpad_v1';
 const SCRATCHPAD_EVENT = 'elara:scratchpad-updated';
@@ -108,6 +109,10 @@ export function applyMemoryActions(state: MemoryScratchpadState, actions: Memory
         supersedesMemoryId: action.memory.supersedesMemoryId, supersededByMemoryId: action.memory.supersededByMemoryId, conflictMemoryIds: action.memory.conflictMemoryIds || [],
       });
       stateModified = true;
+    }
+
+    if (typeof window !== 'undefined' && action.type !== 'NO_ACTION') {
+      recordLiveMemoryActivity(action, action.reason);
     }
   }
   const consolidated = consolidateMemories(currentMemories);

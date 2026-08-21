@@ -4,6 +4,7 @@ import { getModelProfile } from './modelRegistry';
 import { agentToolDeclarations, executeAgentTool, AgentToolExecution } from './agentToolRegistry';
 import { buildWorkspaceContextPrompt } from './workspaceTools';
 import { TEXT_PROCESSING_POLICY } from '../constants/textProcessingPolicy';
+import { recordLiveToolActivity } from './thinkingLiveRuntime';
 
 export const MAX_AGENT_ITERATIONS = 5;
 
@@ -92,7 +93,6 @@ export function buildRuntimeConfig(options: RuntimeConfigOptions): any {
   const combinedPrompt = [TEXT_PROCESSING_POLICY, options.systemPrompt || '', workspaceContext].filter(Boolean).join('\n\n').trim();
   if (combinedPrompt) config.systemInstruction = combinedPrompt;
 
-  // Blanket enforcement: safety settings are ALWAYS applied. No opt-out path exists.
   config.safetySettings = ELARA_SAFETY_SETTINGS;
 
   if (profile.supportsTemperature && typeof options.temperature === 'number') {
@@ -127,6 +127,15 @@ export async function executeAgentToolCall(
   googleToken?: string,
 ): Promise<AgentToolExecution> {
   const execution = await executeAgentTool(workspace, toolName, args, googleToken);
+
+  if (typeof window !== 'undefined') {
+    recordLiveToolActivity({
+      name: toolName,
+      args,
+      result: execution.result,
+    });
+  }
+
   if (typeof window !== 'undefined' && execution.createdArtifactId) {
     const artifact = execution.updatedWorkspace.artifacts.find((item) => item.id === execution.createdArtifactId);
     if (artifact) {
