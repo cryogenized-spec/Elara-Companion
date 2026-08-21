@@ -3,7 +3,8 @@ import {
   DEFAULT_ELARA_SYSTEM_PROMPT,
   DEFAULT_PERSONA_PROTOCOL,
   DEFAULT_INTIMACY_MODULE,
-  DEFAULT_RUNTIME_RULES
+  DEFAULT_RUNTIME_RULES,
+  DEFAULT_ADULT_FICTION_MODULE,
 } from '../constants/defaultPrompt';
 import { DEFAULT_GEMINI_MODEL, GEMINI_MODEL_PROFILES } from './modelRegistry';
 import { applySettingsAppearance } from './themeManager';
@@ -29,6 +30,8 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
   personaProtocol: DEFAULT_PERSONA_PROTOCOL,
   intimacyModule: DEFAULT_INTIMACY_MODULE,
   runtimeRules: DEFAULT_RUNTIME_RULES,
+  adultFictionEnabled: true,
+  adultFictionModule: DEFAULT_ADULT_FICTION_MODULE,
   userName: 'User',
   model: DEFAULT_GEMINI_MODEL,
   temperature: 0.85,
@@ -73,6 +76,11 @@ export function loadSettings(): ElaraSettings {
     }
     const parsed = JSON.parse(raw);
     const loaded = { ...DEFAULT_SETTINGS, ...parsed };
+    // Ensure new fields exist for users who had older settings
+    if (typeof loaded.adultFictionEnabled !== 'boolean') loaded.adultFictionEnabled = true;
+    if (typeof loaded.adultFictionModule !== 'string' || !loaded.adultFictionModule.trim()) {
+      loaded.adultFictionModule = DEFAULT_ADULT_FICTION_MODULE;
+    }
     const isActiveModel = GEMINI_MODEL_PROFILES.some((m) => m.id === loaded.model);
     if (!loaded.model || !isActiveModel) loaded.model = DEFAULT_GEMINI_MODEL;
     applySettingsAppearance(loaded);

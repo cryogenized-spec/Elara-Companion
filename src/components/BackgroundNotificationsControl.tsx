@@ -40,7 +40,7 @@ export const BackgroundNotificationsControl: React.FC = () => {
   };
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-[90] mx-auto max-w-md rounded-2xl border border-sky-500/20 bg-[#111114]/95 p-3 shadow-2xl backdrop-blur-xl md:left-auto md:right-5">
+    <div className="fixed left-3 right-3 top-16 z-[90] mx-auto max-w-md rounded-2xl border border-sky-500/20 bg-[#111114]/95 p-3 shadow-2xl backdrop-blur-xl sm:left-auto sm:right-5 sm:top-5">
       <div className="flex items-start gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 text-sky-400">
           <Bell className="h-4 w-4" />

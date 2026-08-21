@@ -44,13 +44,25 @@ export function getCachedModels(): DiscoveredModel[] | null {
   return cached?.models || null;
 }
 
+function deduplicateModels(models: DiscoveredModel[]): DiscoveredModel[] {
+  const seen = new Set<string>();
+  return models.filter((model) => {
+    const id = model.id.trim().toLowerCase();
+    const name = model.name.trim().toLowerCase();
+    const key = id || name;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export async function discoverGeminiModels(apiKey: string, forceRefresh = false): Promise<DiscoveredModel[]> {
   const cached = readCache();
   if (!forceRefresh && cached && Date.now() - cached.savedAt < MODEL_CACHE_TTL_MS) {
-    return cached.models;
+    return deduplicateModels(cached.models);
   }
 
-  if (!apiKey?.trim()) return GEMINI_MODEL_PROFILES;
+  if (!apiKey?.trim()) return deduplicateModels(GEMINI_MODEL_PROFILES);
 
   try {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey.trim())}`);
@@ -72,9 +84,10 @@ export async function discoverGeminiModels(apiKey: string, forceRefresh = false)
       }))
       .filter((m: DiscoveredModel) => m.id.startsWith('gemini-'));
 
-    if (discovered.length > 0) writeCache(discovered);
-    return discovered.length > 0 ? discovered : GEMINI_MODEL_PROFILES;
+    const uniqueModels = deduplicateModels(discovered);
+    if (uniqueModels.length > 0) writeCache(uniqueModels);
+    return uniqueModels.length > 0 ? uniqueModels : deduplicateModels(GEMINI_MODEL_PROFILES);
   } catch {
-    return cached?.models || GEMINI_MODEL_PROFILES;
+    return deduplicateModels(cached?.models || GEMINI_MODEL_PROFILES);
   }
 }

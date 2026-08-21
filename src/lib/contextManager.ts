@@ -1,4 +1,5 @@
 import { loadAgentOperatingPolicy } from './agentPolicy';
+import { TEXT_PROCESSING_POLICY } from '../constants/textProcessingPolicy';
 
 export const USER_PROFILE_NOTES_KEY = 'elara_user_profile_notes_v1';
 export const ACTIVE_SCRATCHPAD_KEY = 'elara_active_scratchpad_v1';
@@ -66,6 +67,8 @@ export function buildSystemPayload({
   personaProtocol,
   intimacyModule,
   runtimeRules,
+  adultFictionEnabled,
+  adultFictionModule,
   activeModelId,
   uiSettingsSummary,
   userProfileNotes,
@@ -75,6 +78,8 @@ export function buildSystemPayload({
   personaProtocol: string;
   intimacyModule: string;
   runtimeRules: string;
+  adultFictionEnabled?: boolean;
+  adultFictionModule?: string;
   activeModelId: string;
   uiSettingsSummary: string;
   userProfileNotes: string;
@@ -83,7 +88,15 @@ export function buildSystemPayload({
   const timestamp = new Date().toLocaleString();
   const agentOperatingPolicy = loadAgentOperatingPolicy();
 
+  const adultFictionBlock =
+    adultFictionEnabled !== false && adultFictionModule && adultFictionModule.trim()
+      ? `\n${adultFictionModule.trim()}\n`
+      : '';
+
   return `--- BEGIN SYSTEM PAYLOAD TEMPLATE ---
+[TEXT PROCESSING CONTEXT]
+${TEXT_PROCESSING_POLICY}
+
 [SYSTEM INSTRUCTIONS & PERSONA]
 ${baseSystemInstruction}
 
@@ -92,7 +105,7 @@ ${personaProtocol}
 ${intimacyModule}
 
 ${runtimeRules}
-
+${adultFictionBlock}
 [AGENT OPERATING POLICY — USER CONFIGURABLE]
 ${agentOperatingPolicy}
 

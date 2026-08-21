@@ -1,5 +1,6 @@
 import express from "express";
 import { getGeminiClient } from "../services/gemini";
+import { ELARA_SAFETY_SETTINGS } from "../../src/lib/chatRuntime";
 
 export interface ServerSpaceWebhook {
   id: string;
@@ -260,6 +261,7 @@ Guidelines:
           config: {
             temperature: 0.7,
             maxOutputTokens: 1000,
+            safetySettings: ELARA_SAFETY_SETTINGS,
           },
         });
         if (geminiRes.text) {
