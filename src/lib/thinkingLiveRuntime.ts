@@ -1,25 +1,33 @@
 import type { ThoughtStep, MemoryAction } from '../types';
 import type { ThinkingEvent } from './thinkingEvents';
 import { createThinkingStreamBuffer, pushThought, pushToolActivity, snapshotThinkingStream, completeThinkingStream, type ThinkingStreamBuffer, type ThinkingToolChunk } from './thinkingStream';
+import { flushLiveThinkingEvents, persistLiveThinkingEvents } from './thinkingEventPersistence';
 
 let activeStream: ThinkingStreamBuffer | null = null;
 
+function snapshotAndPersist(): ThinkingEvent[] {
+  const events = activeStream ? snapshotThinkingStream(activeStream) : [];
+  persistLiveThinkingEvents(events);
+  return events;
+}
+
 export function beginLiveThinkingStream(): void {
   activeStream = createThinkingStreamBuffer();
+  persistLiveThinkingEvents([]);
 }
 
 export function syncLiveThoughtSteps(steps: ThoughtStep[]): ThinkingEvent[] {
   if (!activeStream) beginLiveThinkingStream();
   const incoming = steps.at(-1);
   if (incoming) pushThought(activeStream!, incoming.step_title, incoming.summary, incoming.timestamp);
-  return snapshotThinkingStream(activeStream!);
+  return snapshotAndPersist();
 }
 
 export function recordLiveToolActivity(chunk: ThinkingToolChunk): ThinkingEvent[] {
   if (typeof window === 'undefined') return getLiveThinkingEvents();
   if (!activeStream) beginLiveThinkingStream();
   pushToolActivity(activeStream!, chunk);
-  return snapshotThinkingStream(activeStream!);
+  return snapshotAndPersist();
 }
 
 export function recordLiveMemoryActivity(action: Pick<MemoryAction, 'type' | 'targetId' | 'reason'>, summary?: string): ThinkingEvent[] {
@@ -56,13 +64,16 @@ export function recordLiveMemoryActivity(action: Pick<MemoryAction, 'type' | 'ta
     call.source = 'memory';
     call.title = label;
   }
+  persistLiveThinkingEvents(events);
   return snapshotThinkingStream(activeStream!);
 }
 
 export function completeLiveThinkingStream(durationMs?: number): ThinkingEvent[] {
   if (!activeStream) return [];
   completeThinkingStream(activeStream, durationMs);
-  return snapshotThinkingStream(activeStream);
+  const events = snapshotAndPersist();
+  void flushLiveThinkingEvents();
+  return events;
 }
 
 export function getLiveThinkingEvents(): ThinkingEvent[] {
