@@ -1,4 +1,4 @@
-import type { MemoryItem, MemoryLifecycle, MemoryScratchpadState } from '../types';
+import type { MemoryItem, MemoryLifecycle, MemoryScratchpadState, MemoryState } from '../types';
 
 export interface MemoryMaintenanceConfig {
   now?: Date;
@@ -187,8 +187,8 @@ export function applySafeMemoryMaintenance(
     const nextEvidenceIds = Array.from(new Set(memory.evidenceMemoryIds || [])).slice(-normalizedConfig.maxEvidenceMemoryIds);
     const nextEvidenceCount = Math.max(memory.evidenceCount || 0, nextEvidenceIds.length);
     const recentEnough = !staleIds.has(memory.id);
-    const currentState = memory.state || 'active';
-    const nextState = currentState === 'conflicted' || currentState === 'superseded'
+    const currentState: MemoryState = memory.state || 'active';
+    const nextState: MemoryState = currentState === 'conflicted' || currentState === 'superseded'
       ? currentState
       : recentEnough ? 'active' : 'stale';
 
