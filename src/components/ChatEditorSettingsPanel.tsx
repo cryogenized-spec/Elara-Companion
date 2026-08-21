@@ -10,6 +10,7 @@ import {
 } from '../lib/outgoingRecoveryStorage';
 import { MarkdownHelpButton } from './MarkdownHelpButton';
 import { MemoryTransparencySettingsPanel } from './MemoryTransparencySettingsPanel';
+import { MemoryRetrievalTransparencyPanel } from './MemoryRetrievalTransparencyPanel';
 
 const TEXTAREA_SELECTOR = 'textarea[placeholder*="Message Elara"]';
 
@@ -93,6 +94,7 @@ export const ChatEditorSettingsPanel: React.FC = () => {
         </div>
 
         <MemoryTransparencySettingsPanel />
+        <MemoryRetrievalTransparencyPanel />
 
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3.5 space-y-3">
           <div className="flex items-center gap-2">

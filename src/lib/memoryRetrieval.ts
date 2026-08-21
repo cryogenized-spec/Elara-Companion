@@ -16,6 +16,26 @@ export interface MemoryRetrievalResult {
   reasons: string[];
 }
 
+export type MemoryRetrievalDisposition = 'selected' | 'below-threshold' | 'filtered-archived' | 'filtered-conflicted' | 'filtered-superseded' | 'trimmed-by-limit';
+
+export interface MemoryRetrievalCandidate extends MemoryRetrievalResult {
+  disposition: MemoryRetrievalDisposition;
+}
+
+export interface MemoryRetrievalTrace {
+  query: string;
+  generatedAt: string;
+  limit: number;
+  minimumScore: number;
+  contextMaxChars: number;
+  candidateCount: number;
+  selectedCount: number;
+  injectedCount: number;
+  contextChars: number;
+  selectedIds: string[];
+  candidates: MemoryRetrievalCandidate[];
+}
+
 const DEFAULT_LIMIT = 8;
 const DEFAULT_MINIMUM_SCORE = 0.18;
 export const DEFAULT_MEMORY_CONTEXT_MAX_CHARS = 6000;
@@ -33,7 +53,7 @@ function freshnessWeight(memory: MemoryItem, nowMs: number): number { const refe
 function topicScore(memory: MemoryItem, queryTokens: Set<string>, topicHints: string[]): number { const searchable = [memory.content, memory.category, memory.kind || '', ...(memory.tags || [])].join(' '); const score = jaccard(queryTokens, tokenSet(searchable)); if (topicHints.length === 0) return score; const hints = tokenSet(topicHints.join(' ')); return Math.max(score, jaccard(hints, tokenSet(searchable)) * 0.95); }
 function projectScore(memory: MemoryItem, projectId?: string): number { if (!projectId) return 0; if (memory.sourceArtifactId === projectId) return 1; return memory.relatedMemoryIds?.includes(projectId) ? 0.8 : 0; }
 
-function scoreMemory(memory: MemoryItem, queryTokens: Set<string>, options: MemoryRetrievalOptions): MemoryRetrievalResult {
+export function scoreMemory(memory: MemoryItem, queryTokens: Set<string>, options: MemoryRetrievalOptions): MemoryRetrievalResult {
   const nowMs = (options.now || new Date()).getTime();
   const semantic = jaccard(queryTokens, tokenSet(memory.content));
   const topic = topicScore(memory, queryTokens, options.topicHints || []);
@@ -57,23 +77,75 @@ function scoreMemory(memory: MemoryItem, queryTokens: Set<string>, options: Memo
   return { memory, score, reasons };
 }
 
+function sortResults(results: MemoryRetrievalResult[]): MemoryRetrievalResult[] {
+  return [...results].sort((left, right) => {
+    if (right.score !== left.score) return right.score - left.score;
+    const updated = (right.memory.updatedAt || '').localeCompare(left.memory.updatedAt || '');
+    if (updated !== 0) return updated;
+    return left.memory.id.localeCompare(right.memory.id);
+  });
+}
+
 export function retrieveRelevantMemories(memories: MemoryItem[], query: string, options: MemoryRetrievalOptions = {}): MemoryRetrievalResult[] {
   const limit = Math.max(1, Math.min(32, options.limit ?? DEFAULT_LIMIT));
   const minimumScore = Math.max(0, Math.min(1, options.minimumScore ?? DEFAULT_MINIMUM_SCORE));
   const queryTokens = tokenSet(query);
-  return memories
+  return sortResults(memories
     .filter((memory) => options.includeArchived || memory.state !== 'archived')
     .filter((memory) => options.includeConflicted || memory.state !== 'conflicted')
     .filter((memory) => memory.state !== 'superseded')
     .map((memory) => scoreMemory(memory, queryTokens, options))
     .filter((result) => result.score >= minimumScore)
-    .sort((left, right) => {
-      if (right.score !== left.score) return right.score - left.score;
-      const updated = (right.memory.updatedAt || '').localeCompare(left.memory.updatedAt || '');
-      if (updated !== 0) return updated;
-      return left.memory.id.localeCompare(right.memory.id);
-    })
-    .slice(0, limit);
+  ).slice(0, limit);
+}
+
+export function inspectMemoryRetrieval(memories: MemoryItem[], query: string, options: MemoryRetrievalOptions = {}): MemoryRetrievalTrace {
+  const limit = Math.max(1, Math.min(32, options.limit ?? DEFAULT_LIMIT));
+  const minimumScore = Math.max(0, Math.min(1, options.minimumScore ?? DEFAULT_MINIMUM_SCORE));
+  const now = options.now || new Date();
+  const queryTokens = tokenSet(query);
+  const scored = memories.map((memory) => scoreMemory(memory, queryTokens, options));
+  const candidates: MemoryRetrievalCandidate[] = scored.map((result) => {
+    let disposition: MemoryRetrievalDisposition = 'selected';
+    if (!options.includeArchived && result.memory.state === 'archived') disposition = 'filtered-archived';
+    else if (!options.includeConflicted && result.memory.state === 'conflicted') disposition = 'filtered-conflicted';
+    else if (result.memory.state === 'superseded') disposition = 'filtered-superseded';
+    else if (result.score < minimumScore) disposition = 'below-threshold';
+    return { ...result, disposition };
+  });
+  const eligible = sortResults(scored.filter((result) => {
+    if (!options.includeArchived && result.memory.state === 'archived') return false;
+    if (!options.includeConflicted && result.memory.state === 'conflicted') return false;
+    if (result.memory.state === 'superseded') return false;
+    return result.score >= minimumScore;
+  }));
+  const selected = eligible.slice(0, limit);
+  const selectedIds = new Set(selected.map((result) => result.memory.id));
+  for (const candidate of candidates) {
+    if (candidate.disposition === 'selected' && !selectedIds.has(candidate.memory.id)) candidate.disposition = 'trimmed-by-limit';
+  }
+  return {
+    query,
+    generatedAt: now.toISOString(),
+    limit,
+    minimumScore,
+    contextMaxChars: DEFAULT_MEMORY_CONTEXT_MAX_CHARS,
+    candidateCount: memories.length,
+    selectedCount: selected.length,
+    injectedCount: 0,
+    contextChars: 0,
+    selectedIds: selected.map((result) => result.memory.id),
+    candidates: sortResults(candidates),
+  };
+}
+
+export function withInjectedMemoryTrace(trace: MemoryRetrievalTrace, injectedResults: MemoryRetrievalResult[], context: string): MemoryRetrievalTrace {
+  return {
+    ...trace,
+    injectedCount: injectedResults.length,
+    contextChars: context.length,
+    selectedIds: injectedResults.map((result) => result.memory.id),
+  };
 }
 
 export function formatRetrievedMemoryContext(results: MemoryRetrievalResult[], maxChars = DEFAULT_MEMORY_CONTEXT_MAX_CHARS): string {
