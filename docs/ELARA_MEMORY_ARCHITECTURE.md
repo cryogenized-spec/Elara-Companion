@@ -58,7 +58,9 @@ Core and pinned records are protected. Conflicted and superseded states are pres
 
 ## Transparency and inspection
 
-Pass 7 adds a human-readable memory health surface without creating a second source of truth. The Scratchpad now shows a compact summary derived directly from the structured memory state: schema version, total/active/stale/archived counts, core and pinned counts, privacy count, evidence coverage, conflict count, and the last maintenance timestamp.
+Pass 7 adds an **Insights** control inside the existing Scratchpad. It opens a read-only inspection surface derived directly from the structured memory state: total/active/stale/archived/core/pinned/conflicted/evidence-backed counts, last maintenance time, and per-memory explanations for why the record exists.
+
+Per-memory inspection exposes resolution, state, confidence, importance, evidence/reinforcement, provenance, freshness, related/conflicting memories, and supersession relationships. The panel does not edit or delete records and does not create a second memory store or retrieval path.
 
 The summary explicitly distinguishes the authoritative structured store from the Scratchpad projection. This makes it possible to inspect memory hygiene without implying that the displayed Scratchpad text is itself the canonical memory database.
 
