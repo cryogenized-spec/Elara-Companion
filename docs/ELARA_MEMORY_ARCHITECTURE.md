@@ -36,6 +36,8 @@ Gemini's memory extractor records small, grounded details as atomic `observation
 
 Observations are allowed to accumulate across conversations. The Scratchpad remains a human-facing projection, while the structured memory store remains authoritative.
 
+The client-side and server-side Gemini adapters both use the same public extraction contract: CREATE/UPDATE/NO_ACTION only, observation resolution, active state, conservative lifecycle/importance, and no direct destructive or promotion actions. The existing `applyMemoryActions()` processor remains the single mutation authority.
+
 ## Consolidation and promotion
 
 The consolidation engine compares active observations and related memories using normalized token similarity. High-similarity observations are treated as duplicate candidates and reinforce the preferred record rather than being immediately deleted. Potentially contradictory related records are marked `conflicted` with reciprocal links so later reconciliation can resolve them.
@@ -58,7 +60,7 @@ Pass 6 strengthens the existing maintenance system rather than creating another 
 
 Maintenance marks stale working/contextual/persistent records as `stale` without deleting them, archives records whose explicit expiry has elapsed, restores eligible stale records to `active` when their freshness is renewed, detects exact duplicate groups for later reconciliation, and compacts supporting evidence ID lists while preserving the aggregate evidence count.
 
-Core and pinned records are protected. Conflicted and superseded states are preserved rather than silently overwritten. Maintenance is schema-v3 aware.
+Core and pinned records are protected. Conflicted and superseded states are preserved rather than silently overwritten. Maintenance is schema-v3 aware and fails soft at the persistence boundary.
 
 ## Transparency and inspection
 
@@ -66,18 +68,24 @@ Pass 7 adds an **Insights** control inside the existing Scratchpad. It opens a r
 
 Per-memory inspection exposes resolution, state, confidence, importance, evidence/reinforcement, provenance, freshness, related/conflicting memories, and supersession relationships. The panel does not edit or delete records and does not create a second memory store or retrieval path.
 
-The summary explicitly distinguishes the authoritative structured store from the Scratchpad projection. Memory-state explanations are deterministic and non-destructive.
+Retrieval transparency remains an ephemeral diagnostic trace and is not persisted as memory.
 
 ## Final hardening invariants
 
-Pass 8 makes the memory subsystem defensive around its boundaries:
+The memory architecture now has explicit boundaries:
 
-- schema normalization repairs malformed booleans and evidence-count drift instead of trusting persisted types.
-- retrieval order is deterministic and formatted context is hard-bounded by character count.
+- IndexedDB memory state is the single authoritative store.
+- The local structured memory mirror and Scratchpad text are derived projections only.
+- `applyMemoryActions()` is the single mutation processor for memory records.
+- `retrieveRelevantMemories()` is the canonical retrieval engine.
+- `buildSystemPayload()` is the canonical context-assembly path.
+- Memory maintenance is bounded to the existing scheduler/persistence boundary.
+- Read-only inspection paths explicitly disable maintenance and projection writes.
+- Memory extraction adapters fail soft and cannot directly delete, merge, or promote memories.
+- Retrieval order is deterministic and formatted context is hard-bounded by character count.
 - `MERGE` preserves original records as `superseded` and points the synthesized record back to them as evidence/provenance.
-- memory persistence helpers are safe in browser and non-browser runtimes.
-- memory reads can explicitly opt out of maintenance and derived projection writes for genuinely read-only inspection paths.
-- structured memory remains the single source of truth; the text Scratchpad is only a derived projection.
+- Schema normalization isolates malformed records instead of invalidating the whole notebook.
+- Chat remains usable when memory extraction, maintenance, or persistence fails.
 
 ## Compatibility
 
@@ -92,6 +100,7 @@ Schema changes must be additive and migration-safe. Existing records are normali
 - **Pass 5 — Gemini context integration:** implemented.
 - **Pass 6 — Consolidation, decay & maintenance:** implemented on the existing persistence boundary.
 - **Pass 7 — Transparency & inspection:** implemented.
-- **Pass 8 — Final hardening & regression:** implemented.
+- **Pass 8 — Failure & recovery hardening:** implemented.
+- **Pass 9 — Final architecture audit:** in progress; live-path audit has identified and corrected a second server-side extraction contract, while unreferenced legacy memory UI/retrieval files are tracked for cleanup review.
 
-The memory architecture is complete. New work should preserve these invariants and extend the existing authoritative boundaries instead of creating parallel memory stores, retrieval paths, or UI surfaces.
+The architecture is considered coherent only when the final audit confirms these invariants against the live repository and the production verification gate passes.

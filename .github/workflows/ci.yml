@@ -34,5 +34,8 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Memory scaling benchmark
+        run: npm run benchmark:memory
+
       - name: Build
         run: npm run build
