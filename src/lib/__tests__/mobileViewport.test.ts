@@ -4,18 +4,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 describe('mobile viewport resume contract', () => {
-  it('keeps delayed Android IME resync checkpoints and active-editor recovery', () => {
+  it('keeps resume layout checkpoints but never restores editor focus', () => {
     const source = fs.readFileSync(
       path.resolve(process.cwd(), 'src/lib/mobileViewport.ts'),
       'utf8',
     );
 
     assert.match(source, /RESUME_SETTLE_DELAYS_MS = \[0, 120, 350, 700\]/);
+    assert.match(source, /function blurActiveEditor\(\)/);
+    assert.match(source, /window\.addEventListener\('blur', handleWindowBlur\)/);
+    assert.match(source, /window\.addEventListener\('pagehide', handlePageHide\)/);
+    assert.match(source, /window\.addEventListener\('focus', handleWindowFocus\)/);
     assert.match(source, /document\.addEventListener\('focusin', handleFocusIn\)/);
     assert.match(source, /scrollActiveEditorIntoView/);
-    assert.match(source, /for \(const delay of RESUME_SETTLE_DELAYS_MS\.slice\(1\)\)/);
-    assert.match(source, /window\.setTimeout\(\(\) => \{[\s\S]*scrollActiveEditorIntoView\(\)/);
-    assert.match(source, /document\.visibilityState === 'hidden'/);
-    assert.match(source, /activeEditor\?\.blur\(\)/);
+    assert.doesNotMatch(source, /resumeTimers\.push\(-frame\);[\s\S]*scrollActiveEditorIntoView/);
   });
 });
