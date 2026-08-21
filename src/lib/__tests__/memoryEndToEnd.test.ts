@@ -34,11 +34,15 @@ describe('memory lifecycle end-to-end', () => {
   it('flows observation -> reinforcement -> promotion -> retrieval -> prompt injection', () => {
     installBrowserStubs();
     let state = emptyState();
-    const actions = [
-      { type: 'ADD' as const, memory: { content: 'User prefers coffee in the morning.', kind: 'preference' as const, resolution: 'observation' as const, evidenceMemoryIds: [] } },
-      { type: 'ADD' as const, memory: { content: 'User prefers coffee in the morning!', kind: 'preference' as const, resolution: 'observation' as const, evidenceMemoryIds: [] } },
-      { type: 'ADD' as const, memory: { content: 'User prefers coffee in the morning before work.', kind: 'preference' as const, resolution: 'observation' as const, evidenceMemoryIds: [] } },
-    ];
+    const actions = [0, 1, 2, 3].map(() => ({
+      type: 'ADD' as const,
+      memory: {
+        content: 'User prefers coffee in the morning.',
+        kind: 'preference' as const,
+        resolution: 'observation' as const,
+        evidenceMemoryIds: [],
+      },
+    }));
 
     for (const action of actions) state = applyMemoryActions(state, [action], 'conv-memory-e2e');
 
