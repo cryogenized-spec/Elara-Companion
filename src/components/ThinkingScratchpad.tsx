@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Sparkles, CheckCircle2 } from 'lucide-react';
+import type { ThinkingEvent } from '../lib/thinkingEvents';
 import { ThoughtStep } from '../types';
 import { ThinkingTimeline } from './ThinkingTimeline';
+import { ThinkingEventTimeline } from './ThinkingEventTimeline';
 import { DEFAULT_THINKING_DISPLAY_MODE, loadThinkingDisplayMode, THINKING_DISPLAY_EVENT, type ThinkingDisplayMode } from '../lib/thinkingDisplay';
 
 interface ThinkingScratchpadProps {
@@ -9,6 +11,7 @@ interface ThinkingScratchpadProps {
   isStreaming: boolean;
   activeSentence?: string;
   thoughts?: ThoughtStep[];
+  thinkingEvents?: ThinkingEvent[];
   rawThoughts?: string;
   thoughtDurationMs?: number;
 }
@@ -18,6 +21,7 @@ export const ThinkingScratchpad: React.FC<ThinkingScratchpadProps> = ({
   isStreaming,
   activeSentence,
   thoughts = [],
+  thinkingEvents = [],
   rawThoughts,
   thoughtDurationMs,
 }) => {
@@ -35,7 +39,7 @@ export const ThinkingScratchpad: React.FC<ThinkingScratchpadProps> = ({
 
   if (displayMode === 'off') return null;
 
-  const hasThoughts = thoughts.length > 0 || Boolean(rawThoughts?.trim());
+  const hasThoughts = thoughts.length > 0 || Boolean(rawThoughts?.trim()) || thinkingEvents.length > 0;
   if (!isThinking && !hasThoughts) return null;
 
   const liveStep = thoughts.length > 0 ? thoughts[thoughts.length - 1].step_title : 'Evaluating parameters and synthesizing response...';
@@ -52,6 +56,10 @@ export const ThinkingScratchpad: React.FC<ThinkingScratchpadProps> = ({
         <p className="mt-1 pl-5 text-xs text-zinc-400 truncate">{liveStep}</p>
       </div>
     );
+  }
+
+  if (thinkingEvents.length > 0) {
+    return <ThinkingEventTimeline events={thinkingEvents} isStreaming={isThinking || isStreaming} thoughtDurationMs={thoughtDurationMs} />;
   }
 
   return (
