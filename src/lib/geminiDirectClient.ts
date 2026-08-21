@@ -167,15 +167,23 @@ export async function runDirectMemoryExtraction(apiKey: string, userMessage: str
     const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
     const ctx = await buildInCharacterUtilityContext();
     const formattedExisting = currentMemories?.length
-      ? currentMemories.slice(0, 40).map((m) => `[ID: ${m.id}] [Kind: ${m.kind || 'context'}] [Lifecycle: ${m.lifecycle || 'persistent'}] [Category: ${m.category}] [Confidence: ${m.confidence}] [Importance: ${m.importance}] \"${m.content}\"`).join('\n')
+      ? currentMemories.slice(0, 40).map((m) => `[ID: ${m.id}] [Resolution: ${m.resolution || 'contextual'}] [Kind: ${m.kind || 'context'}] [Lifecycle: ${m.lifecycle || 'persistent'}] [Category: ${m.category}] [State: ${m.state || 'active'}] [Confidence: ${m.confidence}] [Importance: ${m.importance}] \"${m.content}\"`).join('\n')
       : 'No existing memories recorded yet.';
-    const prompt = `Using the system/persona above, quietly maintain Elara's persistent memory notebook in-character. You are deciding what, if anything, is genuinely worth carrying across future sessions.
+    const prompt = `Using the system/persona above, maintain Elara's memory as a quiet stream of small, useful observations.
 
-Write notes as natural observations in Elara's own voice, not database labels and not robotic telemetry. Prefer a complete, human-readable sentence that records the meaning rather than merely repeating a quote. Do not invent facts, infer sensitive traits from weak evidence, or treat a one-off passing remark as a permanent preference. Prefer NO_ACTION when the information is transient, trivial, already captured, or uncertain.
+The first job here is NOT to decide what becomes permanent memory. Instead, notice potentially useful details revealed by the interaction and capture them as atomic observations that can be evaluated, reinforced, contradicted, promoted, or allowed to become stale later.
 
-For a durable item, choose the most appropriate kind: fact, preference, observation, episode, project, relationship, plan, working, or context. Choose a lifecycle: working for short-lived state, contextual for temporary-but-relevant context, persistent for durable memory, or core only when it is genuinely foundational. Set source to elara for an observation produced by Elara, conversation when the memory principally records a conversational event, artifact when tied to an artifact, or user when it is an explicit user-provided fact.
+Good observations include small facts about the user's circumstances, current activities, projects, plans, preferences, routines, interests, relationships, purchases, places, worries, decisions, or one-off events that could become relevant in a later conversation. A detail does not need to be important today to be worth recording. The point is to preserve useful dots and let later memory passes decide which dots form durable patterns.
 
-Return ONLY valid JSON using this schema: {\"actions\":[{\"type\":\"CREATE\"|\"UPDATE\"|\"DELETE\"|\"NO_ACTION\",\"targetId\":\"string\",\"memory\":{\"content\":\"natural-language memory note in Elara's voice\",\"kind\":\"fact|preference|observation|episode|project|relationship|plan|working|context\",\"lifecycle\":\"working|contextual|persistent|core\",\"source\":\"user|elara|conversation|artifact|system|imported\",\"category\":\"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other\",\"importance\":\"core|important|normal|low\",\"confidence\":\"certain|likely|uncertain\",\"isPrivate\":true,\"tags\":[\"string\"],\"eventDate\":\"optional YYYY-MM-DD\",\"expiresAt\":\"optional ISO timestamp\",\"sourceArtifactId\":\"optional artifact id\",\"relatedMemoryIds\":[\"optional ids\"]},\"reason\":\"brief reason\"}]}.
+Write notes as natural, human-readable observations in Elara's own voice, not database labels and not robotic telemetry. Prefer a concise complete sentence that records the meaning rather than merely repeating a quote.
+
+Do not invent facts. Do not infer sensitive traits from weak evidence. Do not diagnose, speculate about, or permanently assign identities, beliefs, politics, religion, health, sexuality, ethnicity, or other sensitive traits merely from implication. Do not record credentials, secrets, passwords, API keys, financial credentials, or other authentication material. Do not turn a fleeting emotional statement into a stable personality trait.
+
+CREATE an observation when a detail is reasonably grounded in what the user actually said or did. UPDATE an existing note when the interaction clearly provides a newer or more precise version of the same observation. Prefer NO_ACTION when there is genuinely nothing useful to preserve.
+
+For this pass, newly created observations MUST use resolution=observation and state=active. Keep their lifecycle contextual or working as appropriate; do not promote observations directly to core or persistent memory. Use low or normal importance unless the user explicitly indicates that the detail matters more. Confidence should reflect the evidence actually present in the interaction.
+
+Return ONLY valid JSON using this schema: {\"actions\":[{\"type\":\"CREATE\"|\"UPDATE\"|\"NO_ACTION\",\"targetId\":\"existing ID when updating\",\"memory\":{\"content\":\"natural-language observation in Elara's voice\",\"kind\":\"fact|preference|observation|episode|project|relationship|plan|working|context\",\"lifecycle\":\"working|contextual|persistent|core\",\"source\":\"user|elara|conversation|artifact|system|imported\",\"category\":\"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other\",\"importance\":\"core|important|normal|low\",\"confidence\":\"certain|likely|uncertain\",\"isPrivate\":true,\"tags\":[\"string\"],\"eventDate\":\"optional YYYY-MM-DD\",\"expiresAt\":\"optional ISO timestamp\",\"sourceArtifactId\":\"optional artifact id\",\"relatedMemoryIds\":[\"optional ids\"]},\"reason\":\"brief reason\"}]}.
 
 RECENT INTERACTION:
 User: \"${userMessage.slice(0, 1400)}\"
@@ -191,7 +199,7 @@ USER NAME: ${userName || ctx.userName}`;
       config: {
         temperature: 0.15,
         responseMimeType: 'application/json',
-        maxOutputTokens: 900,
+        maxOutputTokens: 1000,
         safetySettings: ELARA_SAFETY_SETTINGS,
       },
     });
@@ -208,7 +216,7 @@ export async function runDirectMemoryMaintenance(apiKey: string, memories: Memor
   try {
     const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
     const ctx = await buildInCharacterUtilityContext();
-    const formattedList = memories.map((m) => `[ID: ${m.id}] [Kind: ${m.kind || 'context'}] [Lifecycle: ${m.lifecycle || 'persistent'}] [Category: ${m.category}] [Importance: ${m.importance}] [Confidence: ${m.confidence}] \"${m.content}\"`).join('\n');
+    const formattedList = memories.map((m) => `[ID: ${m.id}] [Resolution: ${m.resolution || 'contextual'}] [Kind: ${m.kind || 'context'}] [Lifecycle: ${m.lifecycle || 'persistent'}] [State: ${m.state || 'active'}] [Category: ${m.category}] [Importance: ${m.importance}] [Confidence: ${m.confidence}] \"${m.content}\"`).join('\n');
     const prompt = `Using the system/persona above, audit Elara's long-term memory notebook without breaking character. Look for genuinely duplicate notes, stale working/context material, contradictions, and notes that should be strengthened or weakened because newer information supersedes them. Preserve core and pinned memories. Do not delete solely because a memory is old; prefer an UPDATE or NO_ACTION when uncertain. Return ONLY valid JSON: {\"summary\":\"Brief 1-2 sentence explanation of maintenance performed\",\"actions\":[{\"type\":\"DELETE\"|\"UPDATE\"|\"MERGE\"|\"NO_ACTION\",\"targetId\":\"ID\",\"mergeTargetIds\":[\"optional ids\"],\"memory\":{\"content\":\"updated natural-language note if updating\",\"kind\":\"fact|preference|observation|episode|project|relationship|plan|working|context\",\"lifecycle\":\"working|contextual|persistent|core\",\"source\":\"user|elara|conversation|artifact|system|imported\",\"importance\":\"core|important|normal|low\",\"confidence\":\"certain|likely|uncertain\",\"category\":\"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other\"},\"reason\":\"why\"}]}`;
     const res = await ai.models.generateContent({
       model: normalizeModel(ctx.model),
