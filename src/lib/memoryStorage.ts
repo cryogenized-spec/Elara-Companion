@@ -1,7 +1,7 @@
 import { MemoryItem, MemoryKind, MemoryLifecycle, MemoryScratchpadState, MemorySource, MemoryConfidence, MemoryImportance, MemoryCategory, MemoryResolution, MemoryState } from '../types';
 
 const MEMORY_STORAGE_KEY = 'elara_memory_scratchpad_v1';
-const MEMORY_SCHEMA_VERSION = 3;
+export const MEMORY_SCHEMA_VERSION = 3;
 
 export const DEFAULT_MEMORIES: MemoryItem[] = [];
 
