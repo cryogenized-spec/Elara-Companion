@@ -55,6 +55,11 @@ export type MemoryConfidence = 'certain' | 'likely' | 'uncertain';
 export type MemoryImportance = 'low' | 'normal' | 'important' | 'core';
 export type MemoryCategory = 'User' | 'Elara' | 'Relationship' | 'Home' | 'Work' | 'Projects' | 'Preferences' | 'People' | 'Places' | 'Experiences' | 'Observations' | 'Plans' | 'Other';
 
+/** Pass 1 memory architecture resolution. Optional for backwards compatibility. */
+export type MemoryResolution = 'core' | 'contextual' | 'episodic' | 'observation' | 'synthesized';
+/** Pass 1 memory lifecycle state. Optional for backwards compatibility. */
+export type MemoryState = 'active' | 'stale' | 'archived' | 'superseded' | 'conflicted';
+
 export interface MemoryLink {
   type: 'conversation' | 'artifact' | 'memory';
   id: string;
@@ -83,6 +88,17 @@ export interface MemoryItem {
   sourceArtifactId?: string;
   relatedMemoryIds?: string[];
   links?: MemoryLink[];
+
+  /** Pass 1 additive architecture metadata. */
+  resolution?: MemoryResolution;
+  state?: MemoryState;
+  lastObservedAt?: string;
+  retrievalCount?: number;
+  evidenceCount?: number;
+  evidenceMemoryIds?: string[];
+  supersedesMemoryId?: string;
+  supersededByMemoryId?: string;
+  conflictMemoryIds?: string[];
 }
 
 export interface MemoryScratchpadState {
@@ -112,6 +128,12 @@ export interface MemoryAction {
     relatedMemoryIds?: string[];
     tags?: string[];
     links?: MemoryLink[];
+    resolution?: MemoryResolution;
+    state?: MemoryState;
+    evidenceMemoryIds?: string[];
+    supersedesMemoryId?: string;
+    supersededByMemoryId?: string;
+    conflictMemoryIds?: string[];
   };
   reason?: string;
 }
