@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { CanvasData, Message } from '../types';
 import { MarkdownMessageRenderer } from './MarkdownMessageRenderer';
 import {
@@ -48,6 +48,13 @@ const UserMarkdownMessage: React.FC<ChatMessageProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('elara:user-message-rendered', {
+      detail: { id: message.id, content: message.content },
+    }));
+  }, [message.id, message.content]);
+
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
     setCopied(true);
@@ -67,7 +74,7 @@ const UserMarkdownMessage: React.FC<ChatMessageProps> = ({
   };
 
   return (
-    <div className="w-full py-2.5 transition-colors">
+    <div className="w-full py-2.5 transition-colors" data-elara-message-id={message.id} data-elara-message-role="user">
       <div className="w-full">
         <div className="flex flex-col items-end space-y-1.5 group w-full">
           {message.image && (
