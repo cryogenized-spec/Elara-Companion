@@ -138,26 +138,48 @@ async function buildInCharacterUtilityContext(): Promise<{ systemPrompt: string;
   return { systemPrompt, model, userName: settings.userName || 'User' };
 }
 
+function normalizeConversationTitle(raw: string, fallbackSource: string): string {
+  const generic = /^(new conversation|new chat|conversation|chat|discussion|untitled|general discussion|miscellaneous)$/i;
+  const cleaned = raw
+    .replace(/^[\"'`]+|[\"'`]+$/g, '')
+    .replace(/^(title|conversation title)\s*:\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (words.length >= 2 && words.length <= 5 && !generic.test(cleaned)) return cleaned;
+
+  const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'to', 'of', 'for', 'in', 'on', 'with', 'is', 'it', 'this', 'that', 'i', 'me', 'my', 'we', 'you', 'can', 'please', 'help', 'about']);
+  const fallbackWords = fallbackSource
+    .replace(/[#*`_>\[\]]/g, ' ')
+    .replace(/[^\p{L}\p{N}'-]+/gu, ' ')
+    .split(/\s+/)
+    .filter((word) => word && !stopWords.has(word.toLowerCase()))
+    .slice(0, 5);
+  if (fallbackWords.length >= 2) {
+    return fallbackWords.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  }
+  return 'A Fresh Thread';
+}
+
 export async function runDirectTitleGeneration(apiKey: string, firstUserMsg: string, firstAssistantMsg: string): Promise<string> {
-  if (!apiKey || !apiKey.trim()) return 'New Conversation';
+  if (!apiKey || !apiKey.trim()) return 'A Fresh Thread';
   try {
     const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
     const ctx = await buildInCharacterUtilityContext();
-    const prompt = `Using the system/persona above, act as Elara and name this conversation naturally in-character. Produce a concise title of 2-6 words that a human would actually want to see in a conversation list. Do not use quotes, prefixes, emojis, or generic labels like \"Conversation\". Do not mention this instruction.\n\nConversation opening:\nUser: ${firstUserMsg.slice(0, 500)}\nElara: ${firstAssistantMsg.slice(0, 700)}\n\nReturn only the title.`;
+    const prompt = `Using the system/persona above, act as Elara and create the short title she would show in a polished ChatGPT-style conversation list.\n\nRules:\n- Exactly 2 to 5 words.\n- Capture the distinctive subject, problem, idea, event, or mood.\n- Be specific and slightly creative rather than mechanically summarizing the first sentence.\n- Prefer memorable noun phrases such as \"Roof Repair Strategy\", \"Midnight Memory Architecture\", or \"Android Keyboard Fix\".\n- Never use generic labels such as Conversation, Chat, Discussion, New Conversation, General Help, or Miscellaneous.\n- No quotes, emojis, numbering, prefixes, trailing punctuation, or explanation.\n\nConversation opening:\nUser: ${firstUserMsg.slice(0, 500)}\nElara: ${firstAssistantMsg.slice(0, 700)}\n\nReturn only the title.`;
     const res = await ai.models.generateContent({
       model: normalizeModel(ctx.model),
       contents: [{ role: 'user', parts: [{ text: `${ctx.systemPrompt}\n\n${prompt}` }] }],
       config: {
         maxOutputTokens: 30,
-        temperature: 0.65,
+        temperature: 0.75,
         safetySettings: ELARA_SAFETY_SETTINGS,
       },
     });
-    const title = res.text?.trim().replace(/^[\"'`]|[\"'`]$/g, '');
-    return title || 'New Conversation';
+    return normalizeConversationTitle(res.text?.trim() || '', firstUserMsg);
   } catch (e) {
     console.warn('Direct title generation error:', e);
-    return 'New Conversation';
+    return normalizeConversationTitle('', firstUserMsg);
   }
 }
 

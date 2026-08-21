@@ -1,10 +1,37 @@
 import { loadAgentOperatingPolicy } from './agentPolicy';
 import { TEXT_PROCESSING_POLICY } from '../constants/textProcessingPolicy';
-import { retrieveRelevantMemories, formatRetrievedMemoryContext } from './memoryRetrieval';
+import {
+  inspectMemoryRetrieval,
+  retrieveRelevantMemories,
+  formatRetrievedMemoryContext,
+  withInjectedMemoryTrace,
+  type MemoryRetrievalTrace,
+} from './memoryRetrieval';
 
 export const USER_PROFILE_NOTES_KEY = 'elara_user_profile_notes_v1';
 export const ACTIVE_SCRATCHPAD_KEY = 'elara_active_scratchpad_v1';
 export const MEMORY_CONTEXT_MIRROR_KEY = 'elara_memory_context_mirror_v3';
+
+let lastMemoryRetrievalTrace: MemoryRetrievalTrace | null = null;
+let nextMemoryRetrievalQuery: string | null = null;
+
+export function getLastMemoryRetrievalTrace(): MemoryRetrievalTrace | null {
+  return lastMemoryRetrievalTrace;
+}
+
+export function setNextMemoryRetrievalQuery(query: string): void {
+  nextMemoryRetrievalQuery = query.trim() || null;
+}
+
+export function clearNextMemoryRetrievalQuery(): void {
+  nextMemoryRetrievalQuery = null;
+}
+
+function consumeMemoryRetrievalQuery(): string {
+  const query = nextMemoryRetrievalQuery || '';
+  nextMemoryRetrievalQuery = null;
+  return query.trim();
+}
 
 function getStructuredMemoryMirror(): any[] {
   try {
@@ -16,38 +43,30 @@ function getStructuredMemoryMirror(): any[] {
   }
 }
 
-function getLiveRetrievalQuery(): string {
-  try {
-    const active = document.activeElement as Element & { value?: string } | null;
-    if (active && typeof active.value === 'string' && active.value.trim()) return active.value.trim();
-    const textarea = document.querySelector('textarea') as HTMLTextAreaElement | null;
-    return textarea?.value?.trim() || '';
-  } catch {
-    return '';
-  }
-}
-
 function buildRetrievedMemoryContext(): string {
   const memories = getStructuredMemoryMirror();
-  const query = getLiveRetrievalQuery();
-  if (memories.length === 0 || !query) return '';
+  const query = consumeMemoryRetrievalQuery();
+  if (memories.length === 0 || !query) {
+    lastMemoryRetrievalTrace = null;
+    return '';
+  }
 
   const typedMemories = memories.filter((memory) => memory && typeof memory === 'object' && typeof memory.content === 'string');
+  const retrievalOptions = { limit: 6, minimumScore: 0.18 };
+  const baseTrace = inspectMemoryRetrieval(typedMemories as any, query, retrievalOptions);
   const core = typedMemories
     .filter((memory) => memory.resolution === 'core' || memory.lifecycle === 'core' || memory.importance === 'core')
     .sort((a, b) => (b.importance === 'core' ? 1 : 0) - (a.importance === 'core' ? 1 : 0) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
     .slice(0, 4);
 
-  const retrieved = retrieveRelevantMemories(typedMemories as any, query, {
-    limit: 6,
-    minimumScore: 0.18,
-  });
-
+  const retrieved = retrieveRelevantMemories(typedMemories as any, query, retrievalOptions);
   const combined = [...core.map((memory) => ({ memory, score: 1, reasons: ['stable core memory'] })), ...retrieved]
     .filter((item, index, all) => all.findIndex((candidate) => candidate.memory.id === item.memory.id) === index)
     .slice(0, 8);
 
-  return formatRetrievedMemoryContext(combined);
+  const context = formatRetrievedMemoryContext(combined);
+  lastMemoryRetrievalTrace = withInjectedMemoryTrace(baseTrace, combined, context);
+  return context;
 }
 
 export function loadUserProfileNotes(): string {
