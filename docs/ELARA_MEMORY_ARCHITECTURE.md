@@ -28,7 +28,7 @@ This lifecycle state is additive to the existing `MemoryLifecycle` taxonomy. Exi
 
 Memory must remain traceable. Records may reference the source conversation, source artifact, related memories, and supporting evidence. A synthesized memory should be able to point back to the observations/episodes that support it.
 
-The current schema therefore reserves fields for supporting memory IDs, conflicts, supersession, retrieval count, evidence count, and observation timestamps.
+The schema reserves fields for supporting memory IDs, conflicts, supersession, retrieval count, evidence count, and observation timestamps.
 
 ## Observation stream
 
@@ -40,17 +40,21 @@ Observations are allowed to accumulate across conversations. The Scratchpad rema
 
 The consolidation engine compares active observations and related memories using normalized token similarity. High-similarity observations are treated as duplicate candidates and reinforce the preferred record rather than being immediately deleted. Potentially contradictory related records are marked `conflicted` with reciprocal links so later reconciliation can resolve them.
 
-Observations may be promoted only after repeated reinforcement/evidence. Promotion is conservative: preferences/facts can become `core`, while project/plan/working material becomes `contextual` and other repeated observations become `episodic`. Destructive merging remains a later, explicitly reconciled operation.
+Observations may be promoted only after repeated reinforcement/evidence. Promotion is conservative: preferences/facts can become `core`, while project/plan/working material becomes `contextual` and other repeated observations become `episodic`.
 
 ## Contextual retrieval
 
 Pass 4 introduced a standalone ranked retrieval engine over the structured memory store. `retrieveRelevantMemories()` combines content similarity, topic hints, project relationships, freshness, importance, resolution, lifecycle state, reinforcement, and evidence into a bounded relevance score. Archived and superseded memories are excluded by default, while conflicted memories are also excluded unless explicitly requested.
 
-Pass 5 now uses that retrieval layer during prompt assembly. The normalized IndexedDB memory state is mirrored locally for synchronous lookup, stable core memories are kept in a small bounded set, and query-relevant contextual memories are ranked and injected into `[RETRIEVED MEMORY CONTEXT]`. The legacy flat scratchpad string is no longer injected into Gemini. The Scratchpad itself remains available as the user-facing inspection surface.
+Retrieval is deterministic: equal scores resolve by update time and finally memory ID. Formatted context has a hard character budget so memory growth cannot cause unbounded prompt expansion.
+
+## Gemini context integration
+
+Pass 5 now uses the retrieval layer during prompt assembly. The normalized IndexedDB memory state is mirrored locally for synchronous lookup, stable core memories are kept in a small bounded set, and query-relevant contextual memories are ranked and injected into `[RETRIEVED MEMORY CONTEXT]`. The legacy flat scratchpad string is no longer injected into Gemini. The Scratchpad itself remains available as the user-facing inspection surface.
 
 ## Maintenance and decay
 
-Pass 6 strengthens the existing maintenance system rather than creating another scheduler. Maintenance runs at the persistence boundary on the existing daily interval when automatic maintenance is enabled, so app startup/reload is sufficient to trigger due maintenance without an always-running background timer.
+Pass 6 strengthens the existing maintenance system rather than creating another scheduler. Maintenance runs at the persistence boundary on the existing daily interval when automatic maintenance is enabled.
 
 Maintenance marks stale working/contextual/persistent records as `stale` without deleting them, archives records whose explicit expiry has elapsed, restores eligible stale records to `active` when their freshness is renewed, detects exact duplicate groups for later reconciliation, and compacts supporting evidence ID lists while preserving the aggregate evidence count.
 
@@ -62,34 +66,30 @@ Pass 7 adds an **Insights** control inside the existing Scratchpad. It opens a r
 
 Per-memory inspection exposes resolution, state, confidence, importance, evidence/reinforcement, provenance, freshness, related/conflicting memories, and supersession relationships. The panel does not edit or delete records and does not create a second memory store or retrieval path.
 
-The summary explicitly distinguishes the authoritative structured store from the Scratchpad projection. This makes it possible to inspect memory hygiene without implying that the displayed Scratchpad text is itself the canonical memory database.
+The summary explicitly distinguishes the authoritative structured store from the Scratchpad projection. Memory-state explanations are deterministic and non-destructive.
 
-Memory-state explanations are deterministic and non-destructive: `active` records are normally eligible for retrieval, `stale` records remain as evidence at reduced weight, archived records remain for history, conflicted records remain visible as unresolved evidence, and superseded records remain available for provenance.
+## Final hardening invariants
 
-The transparency layer is read-only with respect to memory semantics. It does not change retrieval scoring, promotion rules, maintenance policy, or persisted memory records.
+Pass 8 makes the memory subsystem defensive around its boundaries:
 
-## Promotion principle
-
-A single observation should normally remain an observation. Repetition, confirmation, specificity, importance, or explicit user statements can increase confidence and allow later passes to promote it into contextual, persistent, or core memory.
-
-## Reconciliation principle
-
-New evidence should not blindly create duplicates. Later passes will compare new observations against existing memories and may reinforce, update, merge, supersede, or flag conflicts.
-
-## Retrieval principle
-
-The structured memory store is authoritative. The derived active scratchpad text is a presentation/cache projection. Contextual retrieval selects only the memories relevant to the current conversation instead of injecting a fixed flat list.
+- schema normalization repairs malformed booleans and evidence-count drift instead of trusting persisted types.
+- retrieval order is deterministic and formatted context is hard-bounded by character count.
+- `MERGE` preserves original records as `superseded` and points the synthesized record back to them as evidence/provenance.
+- memory persistence helpers are safe in browser and non-browser runtimes.
+- memory reads can explicitly opt out of maintenance and derived projection writes for genuinely read-only inspection paths.
+- structured memory remains the single source of truth; the text Scratchpad is only a derived projection.
 
 ## Compatibility
 
-Schema changes must be additive and migration-safe. Existing records are normalized into the current shape instead of being discarded. `schemaVersion: 3` identifies the current memory schema. New fields are optional so pre-v3 records continue to load safely.
+Schema changes must be additive and migration-safe. Existing records are normalized into the current shape instead of being discarded. `schemaVersion: 3` identifies the current memory schema.
 
 ## Pass status
 
 - **Pass 1 — Schema & architecture contract:** implemented.
 - **Pass 2 — Observation stream:** implemented.
-- **Pass 3 — Deduplication, reconciliation & promotion:** implemented conservatively; destructive merge remains later.
-- **Pass 4 — Contextual retrieval engine:** implemented as a side-effect-free ranked retrieval layer.
-- **Pass 5 — Gemini context integration:** implemented; core memories remain bounded while contextual retrieval replaces the flat scratchpad injection.
-- **Pass 6 — Consolidation, decay & maintenance:** implemented on the existing persistence boundary; no parallel scheduler retained.
-- **Pass 7 — Transparency & inspection:** implemented as a derived read-only health/provenance surface over the authoritative structured memory store.
+- **Pass 3 — Deduplication, reconciliation & promotion:** implemented conservatively.
+- **Pass 4 — Contextual retrieval engine:** implemented.
+- **Pass 5 — Gemini context integration:** implemented.
+- **Pass 6 — Consolidation, decay & maintenance:** implemented on the existing persistence boundary.
+- **Pass 7 — Transparency & inspection:** implemented.
+- **Pass 8 — Final hardening & regression:** in progress.
