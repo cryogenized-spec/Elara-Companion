@@ -56,6 +56,16 @@ Maintenance marks stale working/contextual/persistent records as `stale` without
 
 Core and pinned records are protected. Conflicted and superseded states are preserved rather than silently overwritten. Maintenance is schema-v3 aware.
 
+## Transparency and inspection
+
+Pass 7 adds a human-readable memory health surface without creating a second source of truth. The Scratchpad now shows a compact summary derived directly from the structured memory state: schema version, total/active/stale/archived counts, core and pinned counts, privacy count, evidence coverage, conflict count, and the last maintenance timestamp.
+
+The summary explicitly distinguishes the authoritative structured store from the Scratchpad projection. This makes it possible to inspect memory hygiene without implying that the displayed Scratchpad text is itself the canonical memory database.
+
+Memory-state explanations are deterministic and non-destructive: `active` records are normally eligible for retrieval, `stale` records remain as evidence at reduced weight, archived records remain for history, conflicted records remain visible as unresolved evidence, and superseded records remain available for provenance.
+
+The transparency layer is read-only with respect to memory semantics. It does not change retrieval scoring, promotion rules, maintenance policy, or persisted memory records.
+
 ## Promotion principle
 
 A single observation should normally remain an observation. Repetition, confirmation, specificity, importance, or explicit user statements can increase confidence and allow later passes to promote it into contextual, persistent, or core memory.
@@ -80,3 +90,4 @@ Schema changes must be additive and migration-safe. Existing records are normali
 - **Pass 4 — Contextual retrieval engine:** implemented as a side-effect-free ranked retrieval layer.
 - **Pass 5 — Gemini context integration:** implemented; core memories remain bounded while contextual retrieval replaces the flat scratchpad injection.
 - **Pass 6 — Consolidation, decay & maintenance:** implemented on the existing persistence boundary; no parallel scheduler retained.
+- **Pass 7 — Transparency & inspection:** implemented as a derived read-only health/provenance surface over the authoritative structured memory store.
