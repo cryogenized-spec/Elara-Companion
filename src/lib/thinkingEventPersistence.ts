@@ -12,20 +12,31 @@ async function flush(): Promise<void> {
 
   try {
     const conversations = await getDbConversations();
-    let changed = false;
+    const streamingAssistantMessages = conversations.flatMap((conversation) =>
+      conversation.messages
+        .filter((message) => message.role === 'assistant' && message.isStreaming)
+        .map((message) => ({ conversationId: conversation.id, message }))
+    );
+
+    const target = streamingAssistantMessages.reduce<typeof streamingAssistantMessages[number] | null>(
+      (latest, candidate) => (!latest || candidate.message.timestamp > latest.message.timestamp ? candidate : latest),
+      null,
+    );
+
+    if (!target) return;
+
     const now = Date.now();
     const next = conversations.map((conversation) => {
-      let conversationChanged = false;
-      const messages = conversation.messages.map((message) => {
-        if (message.role !== 'assistant' || !message.isStreaming) return message;
-        conversationChanged = true;
-        changed = true;
-        return { ...message, thinkingEvents: events, thoughtDurationMs: now - message.timestamp };
-      });
-      return conversationChanged ? { ...conversation, updatedAt: now, messages } : conversation;
+      if (conversation.id !== target.conversationId) return conversation;
+      const messages = conversation.messages.map((message) =>
+        message.id === target.message.id
+          ? { ...message, thinkingEvents: events, thoughtDurationMs: Math.max(0, now - message.timestamp) }
+          : message,
+      );
+      return { ...conversation, updatedAt: now, messages };
     });
 
-    if (changed) await setDbConversations(next);
+    await setDbConversations(next);
   } catch (error) {
     console.warn('Thinking-event persistence deferred:', error);
   }

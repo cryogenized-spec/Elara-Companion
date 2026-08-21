@@ -110,7 +110,7 @@ export const ThinkingEventTimeline: React.FC<ThinkingEventTimelineProps> = ({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-pink-200">
             <span>{isStreaming ? 'Thinking' : 'Thought for'}</span>
-            {isStreaming && <span className="h-1.5 w-1.5 rounded-full bg-pink-300 shadow-[0_0_8px_rgba(244,114,182,0.8)] animate-pulse" />}
+            {isStreaming && <span className="h-1.5 w-1.5 rounded-full bg-pink-300 shadow-[0_0_8px_rgba(244,114,182,0.8)] motion-safe:animate-pulse" />}
           </div>
           <div className="text-[10px] text-zinc-500">
             {isStreaming
@@ -118,7 +118,7 @@ export const ThinkingEventTimeline: React.FC<ThinkingEventTimelineProps> = ({
               : duration ? duration : `${ordered.length} ${ordered.length === 1 ? 'event' : 'events'}`}
           </div>
         </div>
-        {isStreaming && <Sparkles className="h-3.5 w-3.5 shrink-0 text-pink-300 animate-pulse" />}
+        {isStreaming && <Sparkles className="h-3.5 w-3.5 shrink-0 text-pink-300 motion-safe:animate-pulse" />}
       </button>
 
       {!collapsed && (
@@ -133,7 +133,7 @@ export const ThinkingEventTimeline: React.FC<ThinkingEventTimelineProps> = ({
               const isActive = event.status === 'active';
 
               return (
-                <div key={event.id} className="relative animate-[fadeIn_180ms_ease-out]">
+                <div key={event.id} className="relative motion-safe:animate-[fadeIn_180ms_ease-out]">
                   <div className={`absolute -left-7 sm:-left-8 top-2.5 z-10 flex h-5 w-5 items-center justify-center rounded-full border ${isActive ? 'border-pink-300/80 bg-pink-500/10 shadow-[0_0_12px_rgba(244,114,182,0.22)]' : 'border-pink-400/30 bg-zinc-950'} transition-all duration-300`}>
                     <EventIcon event={event} />
                   </div>
@@ -164,7 +164,7 @@ export const ThinkingEventTimeline: React.FC<ThinkingEventTimelineProps> = ({
                     ) : event.type === 'completion' ? (
                       <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
                     ) : (
-                      <Clock3 className={`mt-1 h-3 w-3 shrink-0 ${isActive ? 'text-pink-300 animate-pulse' : 'text-zinc-700'}`} />
+                      <Clock3 className={`mt-1 h-3 w-3 shrink-0 ${isActive ? 'text-pink-300 motion-safe:animate-pulse' : 'text-zinc-700'}`} />
                     )}
                   </button>
                   {index < ordered.length - 1 && <span className="sr-only">Next event</span>}
