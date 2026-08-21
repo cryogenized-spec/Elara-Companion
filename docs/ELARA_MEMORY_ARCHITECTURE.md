@@ -42,6 +42,12 @@ The consolidation engine compares active observations and related memories using
 
 Observations may be promoted only after repeated reinforcement/evidence. Promotion is conservative: preferences/facts can become `core`, while project/plan/working material becomes `contextual` and other repeated observations become `episodic`. Destructive merging remains a later, explicitly reconciled operation.
 
+## Contextual retrieval
+
+Pass 4 introduces a standalone ranked retrieval engine over the structured memory store. `retrieveRelevantMemories()` combines content similarity, topic hints, project relationships, freshness, importance, resolution, lifecycle state, reinforcement, and evidence into a bounded relevance score. Archived and superseded memories are excluded by default, while conflicted memories are also excluded unless explicitly requested.
+
+The retrieval engine is intentionally side-effect-free in this pass. It returns ranked memory records plus human-readable relevance reasons and can format the result into a compact context block. Prompt assembly is not changed until the next pass, allowing retrieval behavior to be tested independently before it becomes part of Gemini's live context.
+
 ## Promotion principle
 
 A single observation should normally remain an observation. Repetition, confirmation, specificity, importance, or explicit user statements can increase confidence and allow later passes to promote it into contextual, persistent, or core memory.
@@ -52,7 +58,7 @@ New evidence should not blindly create duplicates. Later passes will compare new
 
 ## Retrieval principle
 
-The structured memory store is authoritative. The derived active scratchpad text is a presentation/cache projection. Later passes will introduce contextual retrieval so only memories relevant to the current conversation are injected into Gemini.
+The structured memory store is authoritative. The derived active scratchpad text is a presentation/cache projection. Contextual retrieval should select only the memories relevant to the current conversation instead of injecting a fixed flat list.
 
 ## Compatibility
 
@@ -62,4 +68,5 @@ Schema changes must be additive and migration-safe. Existing records are normali
 
 - **Pass 1 — Schema & architecture contract:** implemented.
 - **Pass 2 — Observation stream:** implemented.
-- **Pass 3 — Deduplication, reconciliation & promotion:** implemented conservatively; destructive merge and full contextual retrieval remain later passes.
+- **Pass 3 — Deduplication, reconciliation & promotion:** implemented conservatively; destructive merge remains later.
+- **Pass 4 — Contextual retrieval engine:** implemented as a side-effect-free ranked retrieval layer; prompt integration remains Pass 5.
