@@ -92,4 +92,6 @@ Schema changes must be additive and migration-safe. Existing records are normali
 - **Pass 5 — Gemini context integration:** implemented.
 - **Pass 6 — Consolidation, decay & maintenance:** implemented on the existing persistence boundary.
 - **Pass 7 — Transparency & inspection:** implemented.
-- **Pass 8 — Final hardening & regression:** in progress.
+- **Pass 8 — Final hardening & regression:** implemented.
+
+The memory architecture is complete. New work should preserve these invariants and extend the existing authoritative boundaries instead of creating parallel memory stores, retrieval paths, or UI surfaces.
