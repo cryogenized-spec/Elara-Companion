@@ -8,7 +8,7 @@ const baseState = (...memories: MemoryItem[]): MemoryScratchpadState => ({ memor
 const memory = (overrides: Partial<MemoryItem> = {}): MemoryItem => ({
   id: 'memory-1', content: 'Temporary note.', kind: 'context', lifecycle: 'contextual', resolution: 'contextual', state: 'active',
   source: 'conversation', confidence: 'certain', importance: 'normal', isPrivate: true, category: 'Observations',
-  createdAt: '2026-08-19T00:00:00.000Z', updatedAt: '2026-08-19T00:00:00.000Z', expiresAt: '2026-08-19T06:00:00.000Z',
+  createdAt: '2026-08-19T00:00:00.000Z', updatedAt: '2026-08-19T00:00:00.000Z',
   evidenceCount: 0, evidenceMemoryIds: [], ...overrides,
 });
 
@@ -22,7 +22,7 @@ describe('memory maintenance scheduler', () => {
   });
 
   it('does not run before the maintenance interval has elapsed', () => {
-    const state = baseState(memory({ expiresAt: undefined }));
+    const state = baseState(memory());
     const now = new Date('2026-08-19T12:00:00.000Z');
     assert.equal(shouldRunMemoryMaintenance(state, now), false);
     const result = runMemoryMaintenanceCycle(state, { now });
@@ -33,9 +33,9 @@ describe('memory maintenance scheduler', () => {
   it('archives expired memories and marks stale memories without deleting evidence', () => {
     const state = baseState(
       memory({ id: 'expired', expiresAt: '2026-08-19T06:00:00.000Z' }),
-      memory({ id: 'stale', expiresAt: undefined, updatedAt: '2026-06-01T00:00:00.000Z', lastObservedAt: '2026-06-01T00:00:00.000Z' }),
-      memory({ id: 'duplicate-a', expiresAt: undefined, content: 'Same note.' }),
-      memory({ id: 'duplicate-b', expiresAt: undefined, content: 'Same note.' }),
+      memory({ id: 'stale', updatedAt: '2026-06-01T00:00:00.000Z', lastObservedAt: '2026-06-01T00:00:00.000Z' }),
+      memory({ id: 'duplicate-a', content: 'Same note.' }),
+      memory({ id: 'duplicate-b', content: 'Same note.' }),
     );
     const now = new Date('2026-08-21T07:00:00.000Z');
     const result = runMemoryMaintenanceCycle(state, { now });
