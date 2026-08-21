@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Sparkles, CheckCircle2 } from 'lucide-react';
 import type { ThinkingEvent } from '../lib/thinkingEvents';
+import '../lib/thinkingEventMessage';
 import { ThoughtStep } from '../types';
 import { ThinkingTimeline } from './ThinkingTimeline';
 import { ThinkingEventTimeline } from './ThinkingEventTimeline';
