@@ -79,6 +79,17 @@ describe('memory maintenance', () => {
     assert.equal(next.memories[0].state, 'active');
   });
 
+  it('preserves conflicted state on protected core memories', () => {
+    const now = new Date('2026-08-19T00:00:00.000Z');
+    const state: MemoryScratchpadState = {
+      memories: [makeMemory({ id: 'core-conflict', lifecycle: 'core', resolution: 'core', importance: 'core', state: 'conflicted' })],
+      autoMaintenanceEnabled: true,
+      schemaVersion: 3,
+    };
+    const next = applySafeMemoryMaintenance(state, buildMemoryMaintenancePlan(state.memories, { now }));
+    assert.equal(next.memories[0].state, 'conflicted');
+  });
+
   it('rewards reinforcement and importance in the maintenance score', () => {
     const now = new Date('2026-08-19T00:00:00.000Z');
     const weak = calculateMemoryMaintenanceScore(makeMemory({ updatedAt: '2026-06-01T00:00:00.000Z', reinforcementCount: 0 }), now);
