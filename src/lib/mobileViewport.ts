@@ -1,11 +1,28 @@
 const VIEWPORT_HEIGHT_VAR = '--elara-viewport-height';
 const VIEWPORT_SYNC_EVENT = 'elara:mobile-viewport-sync';
+const RESUME_SETTLE_DELAYS_MS = [0, 120, 350, 700] as const;
+const EDITABLE_SELECTOR = 'textarea, input, [contenteditable="true"]';
+
+function getEditableElement(): HTMLElement | null {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return null;
+  return active.matches(EDITABLE_SELECTOR) ? active : null;
+}
+
+function scrollActiveEditorIntoView(): void {
+  const editor = getEditableElement();
+  if (!editor) return;
+  try {
+    editor.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  } catch {
+    // Some Android WebView implementations can reject scrollIntoView during IME transitions.
+  }
+}
 
 export function installMobileViewportSync(): () => void {
   if (typeof window === 'undefined' || typeof document === 'undefined') return () => {};
 
-  let resumeTimer: number | null = null;
-  let delayedResumeTimer: number | null = null;
+  const resumeTimers: number[] = [];
 
   const update = () => {
     const height = window.visualViewport?.height || window.innerHeight;
@@ -14,43 +31,59 @@ export function installMobileViewportSync(): () => void {
   };
 
   const clearResumeTimers = () => {
-    if (resumeTimer !== null) {
-      window.cancelAnimationFrame(resumeTimer);
-      resumeTimer = null;
-    }
-    if (delayedResumeTimer !== null) {
-      window.clearTimeout(delayedResumeTimer);
-      delayedResumeTimer = null;
+    while (resumeTimers.length > 0) {
+      const timer = resumeTimers.pop();
+      if (timer === undefined) continue;
+      if (timer < 0) window.cancelAnimationFrame(Math.abs(timer));
+      else window.clearTimeout(timer);
     }
   };
 
   const scheduleResumeSync = () => {
     clearResumeTimers();
-
-    // Android can restore the IME after the page becomes visible. Re-measure
-    // immediately, on the next frame, and once more after the browser settles.
     update();
-    resumeTimer = window.requestAnimationFrame(() => {
-      resumeTimer = null;
+
+    const frame = window.requestAnimationFrame(() => {
       update();
-      delayedResumeTimer = window.setTimeout(() => {
-        delayedResumeTimer = null;
-        update();
-      }, 120);
+      scrollActiveEditorIntoView();
     });
+    resumeTimers.push(-frame);
+
+    for (const delay of RESUME_SETTLE_DELAYS_MS.slice(1)) {
+      const timer = window.setTimeout(() => {
+        update();
+        scrollActiveEditorIntoView();
+      }, delay);
+      resumeTimers.push(timer);
+    }
   };
 
   const handleVisibilityChange = () => {
-    if (document.visibilityState === 'visible') scheduleResumeSync();
+    if (document.visibilityState === 'hidden') {
+      const activeEditor = getEditableElement();
+      activeEditor?.blur();
+      clearResumeTimers();
+      return;
+    }
+    scheduleResumeSync();
   };
 
   const handlePageShow = () => scheduleResumeSync();
+  const handleFocusIn = (event: FocusEvent) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !target.matches(EDITABLE_SELECTOR)) return;
+    window.setTimeout(() => {
+      update();
+      scrollActiveEditorIntoView();
+    }, 0);
+  };
 
   update();
   window.visualViewport?.addEventListener('resize', update);
   window.visualViewport?.addEventListener('scroll', update);
   window.addEventListener('resize', update);
   document.addEventListener('visibilitychange', handleVisibilityChange);
+  document.addEventListener('focusin', handleFocusIn);
   window.addEventListener('pageshow', handlePageShow);
 
   return () => {
@@ -59,6 +92,7 @@ export function installMobileViewportSync(): () => void {
     window.visualViewport?.removeEventListener('scroll', update);
     window.removeEventListener('resize', update);
     document.removeEventListener('visibilitychange', handleVisibilityChange);
+    document.removeEventListener('focusin', handleFocusIn);
     window.removeEventListener('pageshow', handlePageShow);
   };
 }

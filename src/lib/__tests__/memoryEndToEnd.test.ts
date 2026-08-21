@@ -60,7 +60,7 @@ describe('memory lifecycle end-to-end', () => {
 
     const promoted = state.memories.find((memory) => memory.resolution === 'core' && memory.content.includes('prefers coffee'));
     assert.ok(promoted, 'repeated evidence should promote a preference to core');
-    assert.ok((promoted.reinforcementCount || 0) >= 3, 'promotion should retain reinforcement evidence');
+    assert.ok((promoted.evidenceCount || 0) >= 3, 'promotion should retain evidence coverage');
 
     const storedMirror = JSON.parse((globalThis as any).localStorage.getItem(MEMORY_CONTEXT_MIRROR_KEY) || '{}');
     assert.equal(storedMirror.schemaVersion, 3);

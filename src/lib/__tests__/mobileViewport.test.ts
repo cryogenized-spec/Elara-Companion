@@ -13,7 +13,9 @@ describe('mobile viewport resume contract', () => {
     assert.match(source, /RESUME_SETTLE_DELAYS_MS = \[0, 120, 350, 700\]/);
     assert.match(source, /document\.addEventListener\('focusin', handleFocusIn\)/);
     assert.match(source, /scrollActiveEditorIntoView/);
-    assert.match(source, /window\.setTimeout\(update, 120\)/);
+    assert.match(source, /for \(const delay of RESUME_SETTLE_DELAYS_MS\.slice\(1\)\)/);
     assert.match(source, /window\.setTimeout\(\(\) => \{[\s\S]*scrollActiveEditorIntoView\(\)/);
+    assert.match(source, /document\.visibilityState === 'hidden'/);
+    assert.match(source, /activeEditor\?\.blur\(\)/);
   });
 });
