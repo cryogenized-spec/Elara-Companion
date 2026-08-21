@@ -6,7 +6,7 @@ import { saveActiveScratchpad, clearActiveScratchpad, clearUserProfileNotes, USE
 import { clearWorkspace } from './workspaceStorage';
 import { DEFAULT_WORLD_STATE } from '../constants/defaultWorldState';
 import { applySettingsAppearance } from './themeManager';
-import { normalizeMemoryState } from './memoryStorage';
+import { MEMORY_SCHEMA_VERSION, normalizeMemoryState } from './memoryStorage';
 
 const CONVERSATIONS_KEY = 'elara_conversations_v2';
 const SETTINGS_KEY = 'elara_settings_v2';
@@ -118,7 +118,15 @@ export async function getDbWorldState(): Promise<WorldState> {
 export async function setDbWorldState(data: WorldState) { await set(WORLD_STATE_KEY, data); }
 
 export async function getDbMemoryState(): Promise<MemoryScratchpadState> {
-  const state = normalizeMemoryState(await get(MEMORY_STATE_KEY));
+  const raw = await get(MEMORY_STATE_KEY);
+  const state = normalizeMemoryState(raw);
+
+  if (state.schemaVersion === MEMORY_SCHEMA_VERSION && raw && typeof raw === 'object') {
+    // Already current; no write needed.
+  } else {
+    // Persist the normalized representation once so legacy records are upgraded at rest.
+    await set(MEMORY_STATE_KEY, state);
+  }
 
   if (state.memories.length > 0) {
     const scratchpad = [
