@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Sparkles, CheckCircle2, ChevronRight } from 'lucide-react';
+import { Sparkles, CheckCircle2 } from 'lucide-react';
 import { ThoughtStep } from '../types';
-import { ThoughtLogModal } from './ThoughtLogModal';
+import { ThinkingTimeline } from './ThinkingTimeline';
 import { DEFAULT_THINKING_DISPLAY_MODE, loadThinkingDisplayMode, THINKING_DISPLAY_EVENT, type ThinkingDisplayMode } from '../lib/thinkingDisplay';
 
 interface ThinkingScratchpadProps {
@@ -21,7 +21,6 @@ export const ThinkingScratchpad: React.FC<ThinkingScratchpadProps> = ({
   rawThoughts,
   thoughtDurationMs,
 }) => {
-  const [modalOpen, setModalOpen] = useState(false);
   const [displayMode, setDisplayMode] = useState<ThinkingDisplayMode>(DEFAULT_THINKING_DISPLAY_MODE);
 
   useEffect(() => {
@@ -39,86 +38,30 @@ export const ThinkingScratchpad: React.FC<ThinkingScratchpadProps> = ({
   const hasThoughts = thoughts.length > 0 || Boolean(rawThoughts?.trim());
   if (!isThinking && !hasThoughts) return null;
 
-  const liveStep = thoughts.length > 0
-    ? thoughts[thoughts.length - 1].step_title
-    : 'Evaluating parameters and synthesizing response...';
+  const liveStep = thoughts.length > 0 ? thoughts[thoughts.length - 1].step_title : 'Evaluating parameters and synthesizing response...';
   const liveSummary = activeSentence || liveStep;
-  const formattedDuration = thoughtDurationMs ? `${(thoughtDurationMs / 1000).toFixed(1)}s` : null;
   const isStepOnly = displayMode === 'steps';
 
-  const handleOpen = () => {
-    if (!isStepOnly) setModalOpen(true);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (isStepOnly || (e.key !== 'Enter' && e.key !== ' ')) return;
-    e.preventDefault();
-    setModalOpen(true);
-  };
+  if (isStepOnly) {
+    return (
+      <div className="w-full mb-2.5 px-3.5 py-2.5 rounded-xl border border-zinc-800/80 bg-zinc-950/45 shadow-sm">
+        <div className="flex items-center gap-2 min-h-7">
+          {isThinking ? <Sparkles className="w-3.5 h-3.5 text-pink-300 animate-pulse" /> : <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400/90" />}
+          <span className="text-[11px] font-semibold tracking-wide uppercase font-mono text-pink-300">{isThinking ? 'Thinking steps' : 'Steps completed'}</span>
+        </div>
+        <p className="mt-1 pl-5 text-xs text-zinc-400 truncate">{liveStep}</p>
+      </div>
+    );
+  }
 
   return (
     <>
-      <div
-        role={isStepOnly ? undefined : 'button'}
-        tabIndex={isStepOnly ? undefined : 0}
-        aria-label={isStepOnly ? 'Thinking steps' : 'Open thinking summary'}
-        aria-expanded={!isStepOnly ? modalOpen : undefined}
-        onClick={handleOpen}
-        onKeyDown={handleKeyDown}
-        className={`w-full mb-2.5 px-3.5 py-2.5 rounded-xl transition-all duration-300 select-none group border backdrop-blur-md ${!isStepOnly ? 'cursor-pointer touch-manipulation focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950' : ''} ${isThinking ? 'bg-sky-950/40 border-sky-500/40 hover:border-sky-400/70 shadow-[0_0_15px_rgba(112,161,255,0.12)]' : 'bg-zinc-900/65 border-zinc-800/80 hover:border-sky-500/30 hover:bg-zinc-900/85'}`}
-      >
-        <div className="flex items-center justify-between gap-2 min-h-7">
-          <div className="flex items-center space-x-2 min-w-0">
-            {isThinking ? (
-              <div className="relative flex items-center justify-center shrink-0">
-                <span className="w-2 h-2 rounded-full bg-[#70A1FF] animate-ping absolute" />
-                <Sparkles className="w-3.5 h-3.5 text-[#70A1FF] animate-pulse" />
-              </div>
-            ) : (
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400/90 shrink-0" />
-            )}
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className={`text-[11px] font-semibold tracking-wide uppercase font-mono ${isThinking ? 'text-[#70A1FF]' : 'text-zinc-400 group-hover:text-sky-300'}`}>
-                {isStepOnly ? (isThinking ? 'Thinking steps' : 'Steps completed') : (isThinking ? 'Thinking...' : 'Thinking completed')}
-              </span>
-              {thoughts.length > 0 && (
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-950/70 border border-sky-800/40 text-sky-300 font-mono">
-                  {thoughts.length} {thoughts.length === 1 ? 'step' : 'steps'}
-                </span>
-              )}
-              {formattedDuration && !isThinking && (
-                <span className="text-[10px] text-zinc-500 font-mono hidden sm:inline">• {formattedDuration}</span>
-              )}
-            </div>
-          </div>
-
-          {!isStepOnly && (
-            <div className="flex items-center min-h-10 -my-1.5 -mr-1 px-3 text-[11px] text-zinc-500 group-hover:text-sky-300 transition-colors shrink-0">
-              <span className="text-[10px] hidden sm:inline">View summary</span>
-              <ChevronRight className={`w-3.5 h-3.5 ml-1 text-zinc-500 group-hover:text-sky-300 transition-transform ${modalOpen ? 'rotate-90' : 'group-hover:translate-x-0.5'}`} />
-            </div>
-          )}
+      <ThinkingTimeline thoughts={thoughts} isStreaming={isThinking || isStreaming} thoughtDurationMs={thoughtDurationMs} />
+      {thoughts.length === 0 && (
+        <div className="w-full mb-2.5 px-3.5 py-2.5 rounded-xl border border-zinc-800/80 bg-zinc-950/45">
+          <div className="flex items-center gap-2"><Sparkles className="w-3.5 h-3.5 text-pink-300 animate-pulse" /><span className="text-[11px] font-semibold uppercase tracking-wide text-pink-300">Thinking</span></div>
+          <p className="mt-1 pl-5 text-xs text-zinc-400 truncate">“{liveSummary}”</p>
         </div>
-
-        <div className="mt-1 pl-5 overflow-hidden">
-          <p
-            key={isStepOnly ? liveStep : liveSummary}
-            className="text-xs truncate transition-opacity duration-300 ease-in-out animate-in fade-in slide-in-from-bottom-1 font-sans leading-normal"
-            style={{ color: isThinking ? 'rgba(112, 161, 255, 0.88)' : 'rgba(148, 163, 184, 0.8)' }}
-          >
-            {isStepOnly ? liveStep : `“${liveSummary}”`}
-          </p>
-        </div>
-      </div>
-
-      {!isStepOnly && (
-        <ThoughtLogModal
-          isOpen={modalOpen}
-          onClose={() => setModalOpen(false)}
-          thoughts={thoughts}
-          isStreaming={isThinking || isStreaming}
-          thoughtDurationMs={thoughtDurationMs}
-        />
       )}
     </>
   );
