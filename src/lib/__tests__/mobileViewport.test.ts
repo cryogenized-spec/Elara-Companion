@@ -16,7 +16,15 @@ describe('mobile viewport resume contract', () => {
     assert.match(source, /window\.addEventListener\('pagehide', handlePageHide\)/);
     assert.match(source, /window\.addEventListener\('focus', handleWindowFocus\)/);
     assert.match(source, /document\.addEventListener\('focusin', handleFocusIn\)/);
-    assert.match(source, /scrollActiveEditorIntoView/);
-    assert.doesNotMatch(source, /resumeTimers\.push\(-frame\);[\s\S]*scrollActiveEditorIntoView/);
+
+    const scheduleResumeMatch = source.match(/const scheduleResumeSync = \(\) => \{[\s\S]*?\n  \};/);
+    assert.ok(scheduleResumeMatch, 'resume scheduler should remain explicit');
+    const scheduleResumeSource = scheduleResumeMatch[0];
+    assert.match(scheduleResumeSource, /resumeTimers\.push\(-frame\)/);
+    assert.doesNotMatch(scheduleResumeSource, /scrollActiveEditorIntoView/);
+
+    const focusInMatch = source.match(/const handleFocusIn = \(event: FocusEvent\) => \{[\s\S]*?\n  \};/);
+    assert.ok(focusInMatch, 'user focus recovery should remain explicit');
+    assert.match(focusInMatch[0], /scrollActiveEditorIntoView/);
   });
 });
