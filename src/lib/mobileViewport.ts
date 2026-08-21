@@ -11,10 +11,19 @@ export function installMobileViewportSync(): () => void {
     document.documentElement.style.setProperty(VIEWPORT_HEIGHT_VAR, `${Math.round(height)}px`);
   };
 
+  const isEditableElement = (element: Element | null): element is HTMLElement => {
+    return element instanceof HTMLElement && element.matches('textarea, input, [contenteditable="true"]');
+  };
+
+  const blurActiveEditor = () => {
+    const activeElement = document.activeElement;
+    if (!isEditableElement(activeElement)) return;
+    activeElement.blur();
+  };
+
   const scrollActiveEditorIntoView = () => {
     const activeElement = document.activeElement;
-    if (!(activeElement instanceof HTMLElement)) return;
-    if (!(activeElement.matches('textarea, input, [contenteditable="true"]'))) return;
+    if (!isEditableElement(activeElement)) return;
 
     activeElement.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
   };
@@ -42,12 +51,21 @@ export function installMobileViewportSync(): () => void {
   };
 
   const handleVisibilityChange = () => {
+    if (document.visibilityState === 'hidden') {
+      // Android can otherwise restore focus to the composer when the PWA resumes,
+      // which may reopen the IME over the editor even when the user dismissed it.
+      clearResumeTimers();
+      blurActiveEditor();
+      return;
+    }
+
     if (document.visibilityState === 'visible') {
       resyncAfterResume();
     }
   };
 
   const handlePageShow = () => {
+    // Do not focus or reopen the IME on pageshow. Only resync viewport geometry.
     resyncAfterResume();
   };
 
