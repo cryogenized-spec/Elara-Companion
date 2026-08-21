@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { normalizeMemoryState } from '../memoryStorage';
+import { runMemoryMaintenanceCycle } from '../memoryMaintenanceScheduler';
 import type { MemoryScratchpadState } from '../../types';
 
 describe('memory failure recovery', () => {
@@ -33,15 +34,20 @@ describe('memory failure recovery', () => {
     assert.equal(state.schemaVersion, 3);
   });
 
-  it('keeps a valid canonical state shape even when maintenance is due', () => {
+  it('keeps the canonical state intact when maintenance runs on an empty store', () => {
     const state: MemoryScratchpadState = {
       schemaVersion: 3,
       memories: [],
       lastMaintenanceAt: '2026-08-19T00:00:00.000Z',
       autoMaintenanceEnabled: true,
     };
+    const cycle = runMemoryMaintenanceCycle(state, {
+      now: new Date('2026-08-21T00:00:00.000Z'),
+      intervalMs: 0,
+    });
 
-    assert.equal(state.schemaVersion, 3);
-    assert.ok(Array.isArray(state.memories));
+    assert.equal(cycle.ran, true);
+    assert.equal(cycle.state.schemaVersion, 3);
+    assert.ok(Array.isArray(cycle.state.memories));
   });
 });
