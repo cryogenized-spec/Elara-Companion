@@ -14,13 +14,13 @@ const VALID_CATEGORIES = new Set(['User', 'Elara', 'Relationship', 'Home', 'Work
 const VALID_CONFIDENCE = new Set(['certain', 'likely', 'uncertain']);
 const VALID_IMPORTANCE = new Set(['low', 'normal']);
 
-function sanitizeObservationActions(value: unknown): { actions: MemoryExtractionAction[] } {
+export function sanitizeObservationActions(value: unknown): { actions: MemoryExtractionAction[] } {
   const actions = Array.isArray((value as any)?.actions) ? (value as any).actions : [];
   const sanitized = actions.flatMap((action: MemoryExtractionAction) => {
     if (!action || typeof action !== 'object') return [];
     if (action.type === 'NO_ACTION') return [{ type: 'NO_ACTION' }];
     if (action.type !== 'CREATE' && action.type !== 'ADD' && action.type !== 'UPDATE') return [];
-    if ((action.type === 'UPDATE' || action.type === 'ADD') && typeof action.targetId !== 'string' && action.type === 'UPDATE') return [];
+    if (action.type === 'UPDATE' && typeof action.targetId !== 'string') return [];
     if (!action.memory || typeof action.memory !== 'object' || typeof action.memory.content !== 'string' || !action.memory.content.trim()) return [];
 
     const memory = action.memory;
