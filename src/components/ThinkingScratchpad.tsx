@@ -62,7 +62,12 @@ export const ThinkingScratchpad: React.FC<ThinkingScratchpadProps> = ({
   }
 
   if (liveEvents.length > 0) {
-    return <ThinkingEventTimeline events={liveEvents} isStreaming={isThinking || isStreaming} thoughtDurationMs={thoughtDurationMs} />;
+    return <ThinkingEventTimeline
+      events={liveEvents}
+      isStreaming={isThinking || isStreaming}
+      thoughtDurationMs={thoughtDurationMs}
+      defaultCollapsed={!isThinking && !isStreaming}
+    />;
   }
 
   return (
