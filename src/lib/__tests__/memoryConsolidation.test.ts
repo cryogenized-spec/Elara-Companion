@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { MemoryItem } from '../../types';
-import { consolidateMemories, semanticMemorySimilarity } from '../memoryConsolidation';
+import { consolidateMemories, getConsolidationCandidateStats, semanticMemorySimilarity } from '../memoryConsolidation';
 
 const observation = (id: string, content: string, overrides: Partial<MemoryItem> = {}): MemoryItem => ({
   id,
@@ -58,5 +58,27 @@ describe('memory consolidation', () => {
 
     assert.equal(result.memories[0].resolution, 'core');
     assert.ok(result.candidates.some((candidate) => candidate.kind === 'promote'));
+  });
+
+  it('prunes impossible pairwise comparisons for disjoint memory vocabularies', () => {
+    const memories = Array.from({ length: 1000 }, (_, index) => observation(`m-${index}`, `topic${index} detail${index}`));
+    const stats = getConsolidationCandidateStats(memories);
+    assert.equal(stats.activeMemoryCount, 1000);
+    assert.equal(stats.theoreticalPairCount, 499500);
+    assert.equal(stats.candidatePairCount, 0);
+  });
+
+  it('preserves duplicate/conflict detection after candidate indexing', () => {
+    const memories = [
+      observation('dup-a', 'User prefers coffee in the morning.'),
+      observation('dup-b', 'User prefers coffee in the morning!'),
+      observation('conflict-a', 'User prefers tea.'),
+      observation('conflict-b', 'User avoids tea.'),
+      observation('unrelated', 'User likes astronomy and telescopes.'),
+    ];
+    const result = consolidateMemories(memories);
+    assert.ok(result.candidates.some((candidate) => candidate.kind === 'duplicate' && candidate.sourceId === 'dup-a' && candidate.targetId === 'dup-b'));
+    assert.ok(result.candidates.some((candidate) => candidate.kind === 'conflict' && candidate.sourceId === 'conflict-a' && candidate.targetId === 'conflict-b'));
+    assert.equal(result.memories.find((memory) => memory.id === 'unrelated')?.state, 'active');
   });
 });

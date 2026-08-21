@@ -13,6 +13,12 @@ export interface MemoryConsolidationResult {
   candidates: MemoryConsolidationCandidate[];
 }
 
+export interface MemoryConsolidationCandidateStats {
+  activeMemoryCount: number;
+  theoreticalPairCount: number;
+  candidatePairCount: number;
+}
+
 const normalizeText = (value: string): string => value
   .toLocaleLowerCase()
   .replace(/[\u2018\u2019]/g, "'")
@@ -66,25 +72,74 @@ function promotedResolution(memory: MemoryItem): MemoryResolution {
   return 'episodic';
 }
 
+function buildCandidatePairs(memories: MemoryItem[]): Array<[number, number]> {
+  const activeIndices: number[] = [];
+  const tokenIndex = new Map<string, number[]>();
+
+  memories.forEach((memory, index) => {
+    if (memoryState(memory) !== 'active') return;
+    activeIndices.push(index);
+    for (const token of tokenSet(memory.content)) {
+      const bucket = tokenIndex.get(token);
+      if (bucket) bucket.push(index);
+      else tokenIndex.set(token, [index]);
+    }
+  });
+
+  const pairs: Array<[number, number]> = [];
+  for (const sourceIndex of activeIndices) {
+    const targetIndexes = new Set<number>();
+    for (const token of tokenSet(memories[sourceIndex].content)) {
+      for (const targetIndex of tokenIndex.get(token) || []) {
+        if (targetIndex > sourceIndex) targetIndexes.add(targetIndex);
+      }
+    }
+    for (const targetIndex of Array.from(targetIndexes).sort((left, right) => left - right)) {
+      pairs.push([sourceIndex, targetIndex]);
+    }
+  }
+  return pairs;
+}
+
+export function getConsolidationCandidateStats(memories: MemoryItem[]): MemoryConsolidationCandidateStats {
+  const activeMemoryCount = memories.reduce((count, memory) => count + (memoryState(memory) === 'active' ? 1 : 0), 0);
+  const theoreticalPairCount = activeMemoryCount < 2 ? 0 : (activeMemoryCount * (activeMemoryCount - 1)) / 2;
+  return {
+    activeMemoryCount,
+    theoreticalPairCount,
+    candidatePairCount: buildCandidatePairs(memories).length,
+  };
+}
+
 export function consolidateMemories(memories: MemoryItem[], now = new Date()): MemoryConsolidationResult {
   const next = memories.map((memory) => ({ ...memory }));
   const candidates: MemoryConsolidationCandidate[] = [];
+  const tokenSets = next.map((memory) => tokenSet(memory.content));
+  const candidateTargetsBySource = new Map<number, number[]>();
+  const nowIso = now.toISOString();
+
+  for (const [sourceIndex, targetIndex] of buildCandidatePairs(next)) {
+    const bucket = candidateTargetsBySource.get(sourceIndex);
+    if (bucket) bucket.push(targetIndex);
+    else candidateTargetsBySource.set(sourceIndex, [targetIndex]);
+  }
 
   for (let index = 0; index < next.length; index++) {
     const source = next[index];
     if (memoryState(source) !== 'active') continue;
 
-    for (let otherIndex = index + 1; otherIndex < next.length; otherIndex++) {
+    for (const otherIndex of candidateTargetsBySource.get(index) || []) {
       const target = next[otherIndex];
       if (memoryState(target) !== 'active') continue;
-      const similarity = semanticMemorySimilarity(source, target);
+
+      const similarity = jaccard(tokenSets[index], tokenSets[otherIndex]);
       if (similarity >= 0.82) {
         candidates.push({ sourceId: source.id, targetId: target.id, kind: 'duplicate', score: similarity, reason: 'High semantic similarity; candidate for later merge.' });
         const preferred = (target.importance === 'core' || target.importance === 'important') && target.importance !== source.importance ? target : source;
         preferred.reinforcementCount = (preferred.reinforcementCount || 0) + 1;
         preferred.evidenceCount = Math.max(preferred.evidenceCount || 0, (source.evidenceCount || 0) + (target.evidenceCount || 0), 1);
-        preferred.lastObservedAt = now.toISOString();
-        preferred.updatedAt = now.toISOString();
+        preferred.lastObservedAt = nowIso;
+        preferred.updatedAt = nowIso;
         preferred.resolution = preferred.resolution || 'observation';
         preferred.state = preferred.state || 'active';
       } else if (similarity >= 0.5 && isContradictory(source, target)) {
