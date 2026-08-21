@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
-import type { MemoryScratchpadState } from '../../types';
+import type { MemoryAction, MemoryItem, MemoryScratchpadState } from '../../types';
 import { applyMemoryActions } from '../memoryProcessor';
 import { buildSystemPayload, MEMORY_CONTEXT_MIRROR_KEY, clearNextMemoryRetrievalQuery, setNextMemoryRetrievalQuery } from '../contextManager';
 import { retrieveRelevantMemories } from '../memoryRetrieval';
@@ -21,8 +21,28 @@ function installBrowserStubs(): void {
 }
 
 function emptyState(): MemoryScratchpadState {
-  return { schemaVersion: 3, memories: [] } as MemoryScratchpadState;
+  return { schemaVersion: 3, memories: [], autoMaintenanceEnabled: false };
 }
+
+const observationAction = (content: string): MemoryAction => ({
+  type: 'ADD',
+  memory: {
+    content,
+    kind: 'preference',
+    lifecycle: 'contextual',
+    source: 'user',
+    confidence: 'certain',
+    importance: 'normal',
+    isPrivate: true,
+    category: 'Preferences',
+    resolution: 'observation',
+    state: 'active',
+    evidenceMemoryIds: [],
+    tags: [],
+    relatedMemoryIds: [],
+    links: [],
+  },
+});
 
 afterEach(() => {
   clearNextMemoryRetrievalQuery();
@@ -34,15 +54,7 @@ describe('memory lifecycle end-to-end', () => {
   it('flows observation -> reinforcement -> promotion -> retrieval -> prompt injection', () => {
     installBrowserStubs();
     let state = emptyState();
-    const actions = [0, 1, 2, 3].map(() => ({
-      type: 'ADD' as const,
-      memory: {
-        content: 'User prefers coffee in the morning.',
-        kind: 'preference' as const,
-        resolution: 'observation' as const,
-        evidenceMemoryIds: [],
-      },
-    }));
+    const actions = [0, 1, 2, 3].map(() => observationAction('User prefers coffee in the morning.'));
 
     for (const action of actions) state = applyMemoryActions(state, [action], 'conv-memory-e2e');
 
@@ -75,8 +87,8 @@ describe('memory lifecycle end-to-end', () => {
     installBrowserStubs();
     let state = emptyState();
     state = applyMemoryActions(state, [
-      { type: 'ADD', memory: { content: 'User prefers coffee.', kind: 'preference' as const, resolution: 'observation' as const } },
-      { type: 'ADD', memory: { content: 'User avoids coffee.', kind: 'preference' as const, resolution: 'observation' as const } },
+      observationAction('User prefers coffee.'),
+      observationAction('User avoids coffee.'),
     ], 'conv-conflict-e2e');
 
     const conflicted = state.memories.filter((memory) => memory.state === 'conflicted');
@@ -88,23 +100,23 @@ describe('memory lifecycle end-to-end', () => {
   });
 
   it('allows an old episode to regain retrieval relevance after being observed again', () => {
-    const old = {
+    const old: MemoryItem = {
       id: 'old-roof',
       content: 'User worked on the roof repair.',
-      kind: 'episode' as const,
-      lifecycle: 'persistent' as const,
-      source: 'conversation' as const,
-      confidence: 'likely' as const,
-      importance: 'normal' as const,
+      kind: 'episode',
+      lifecycle: 'persistent',
+      source: 'conversation',
+      confidence: 'likely',
+      importance: 'normal',
       isPrivate: true,
       category: 'Home',
       createdAt: '2025-01-01T00:00:00.000Z',
       updatedAt: '2025-01-01T00:00:00.000Z',
-      resolution: 'episodic' as const,
-      state: 'active' as const,
+      resolution: 'episodic',
+      state: 'active',
       lastObservedAt: '2025-01-01T00:00:00.000Z',
     };
-    const renewed = { ...old, lastObservedAt: '2026-08-21T12:00:00.000Z', updatedAt: '2026-08-21T12:00:00.000Z' };
+    const renewed: MemoryItem = { ...old, lastObservedAt: '2026-08-21T12:00:00.000Z', updatedAt: '2026-08-21T12:00:00.000Z' };
     const query = 'roof repair';
 
     const oldResult = retrieveRelevantMemories([old], query, { now: new Date('2026-08-21T12:00:00.000Z'), minimumScore: 0 });
