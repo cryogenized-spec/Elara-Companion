@@ -3,6 +3,11 @@ import { AlertTriangle, Archive, Clock3, GitBranch, Link2, Search, ShieldCheck }
 import type { MemoryItem, MemoryScratchpadState, MemoryState } from '../types';
 import { getDbMemoryState } from '../lib/db';
 
+export const MEMORY_TRANSPARENCY_READ_OPTIONS = Object.freeze({
+  runMaintenance: false,
+  updateProjections: false,
+} as const);
+
 const STATE_LABEL: Record<MemoryState, string> = {
   active: 'Active', stale: 'Stale', archived: 'Archived', superseded: 'Superseded', conflicted: 'Conflicted',
 };
@@ -85,7 +90,7 @@ export const MemoryTransparencySettingsPanel: React.FC = () => {
   const refresh = React.useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const next = await getDbMemoryState();
+      const next = await getDbMemoryState(MEMORY_TRANSPARENCY_READ_OPTIONS);
       setState(next);
       setSelectedId((current) => current && next.memories.some((memory) => memory.id === current) ? current : next.memories[0]?.id || null);
     } catch (cause) {
