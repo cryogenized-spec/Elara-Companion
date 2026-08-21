@@ -45,7 +45,7 @@ export const MemoryModal: React.FC<MemoryModalProps> = (props) => {
       >
         {showInsights ? 'Close insights' : 'Insights'}
       </button>
-      {showInsights && <div id="elara-memory-insights"><MemoryInsightPanel memories={safeMemoryState.memories} onClose={() => setShowInsights(false)} /></div>}
+      {showInsights && <div id="elara-memory-insights"><MemoryInsightPanel memories={safeMemoryState.memories} lastMaintenanceAt={safeMemoryState.lastMaintenanceAt} onClose={() => setShowInsights(false)} /></div>}
     </>
   );
 };
