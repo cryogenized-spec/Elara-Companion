@@ -1,158 +1,112 @@
 import express from "express";
-import { getGeminiClient, formatApiErrorDetails, HarmCategory, HarmBlockThreshold } from "../services/gemini";
+import { getGeminiClient } from "../services/gemini";
 import { ELARA_SAFETY_SETTINGS } from "../../src/lib/chatRuntime";
 
-export function setupMemoryRoutes(app: express.Express) {
+type MemoryExtractionAction = {
+  type?: string;
+  targetId?: string;
+  memory?: Record<string, unknown>;
+  reason?: string;
+};
 
+const VALID_KINDS = new Set(['fact', 'preference', 'observation', 'episode', 'project', 'relationship', 'plan', 'working', 'context']);
+const VALID_CATEGORIES = new Set(['User', 'Elara', 'Relationship', 'Home', 'Work', 'Projects', 'Preferences', 'People', 'Places', 'Experiences', 'Observations', 'Plans', 'Other']);
+const VALID_CONFIDENCE = new Set(['certain', 'likely', 'uncertain']);
+const VALID_IMPORTANCE = new Set(['low', 'normal']);
+
+function sanitizeObservationActions(value: unknown): { actions: MemoryExtractionAction[] } {
+  const actions = Array.isArray((value as any)?.actions) ? (value as any).actions : [];
+  const sanitized = actions.flatMap((action: MemoryExtractionAction) => {
+    if (!action || typeof action !== 'object') return [];
+    if (action.type === 'NO_ACTION') return [{ type: 'NO_ACTION' }];
+    if (action.type !== 'CREATE' && action.type !== 'ADD' && action.type !== 'UPDATE') return [];
+    if ((action.type === 'UPDATE' || action.type === 'ADD') && typeof action.targetId !== 'string' && action.type === 'UPDATE') return [];
+    if (!action.memory || typeof action.memory !== 'object' || typeof action.memory.content !== 'string' || !action.memory.content.trim()) return [];
+
+    const memory = action.memory;
+    return [{
+      type: action.type === 'ADD' ? 'CREATE' : action.type,
+      ...(action.targetId ? { targetId: action.targetId } : {}),
+      memory: {
+        content: String(memory.content).trim(),
+        kind: VALID_KINDS.has(String(memory.kind)) ? memory.kind : 'observation',
+        lifecycle: memory.lifecycle === 'working' ? 'working' : 'contextual',
+        source: 'conversation',
+        category: VALID_CATEGORIES.has(String(memory.category)) ? memory.category : 'Observations',
+        confidence: VALID_CONFIDENCE.has(String(memory.confidence)) ? memory.confidence : 'likely',
+        importance: VALID_IMPORTANCE.has(String(memory.importance)) ? memory.importance : 'normal',
+        isPrivate: true,
+        tags: Array.isArray(memory.tags) ? memory.tags.filter((tag) => typeof tag === 'string') : [],
+        eventDate: typeof memory.eventDate === 'string' ? memory.eventDate : undefined,
+        expiresAt: typeof memory.expiresAt === 'string' ? memory.expiresAt : undefined,
+        sourceArtifactId: typeof memory.sourceArtifactId === 'string' ? memory.sourceArtifactId : undefined,
+        relatedMemoryIds: Array.isArray(memory.relatedMemoryIds) ? memory.relatedMemoryIds.filter((id) => typeof id === 'string') : [],
+        resolution: 'observation',
+        state: 'active',
+      },
+      reason: typeof action.reason === 'string' ? action.reason : 'Grounded observation from the recent interaction.',
+    }];
+  });
+  return { actions: sanitized };
+}
+
+export function setupMemoryRoutes(app: express.Express) {
   app.post('/api/memory/analyze', async (req, res) => {
     try {
       const { userMessage, assistantResponse, currentMemories = [], userName = 'User' } = req.body;
-
-      if (!userMessage && !assistantResponse) {
-        return res.json({ actions: [] });
-      }
+      if (!userMessage && !assistantResponse) return res.json({ actions: [] });
 
       const existingMemoriesSummary = Array.isArray(currentMemories) && currentMemories.length > 0
-        ? currentMemories.slice(0, 30).map((m: any) => `[ID: ${m.id}] [Category: ${m.category}] [Confidence: ${m.confidence}] "${m.content}"`).join('\n')
+        ? currentMemories.slice(0, 40).map((m: any) => `[ID: ${m.id}] [Resolution: ${m.resolution || 'contextual'}] [Kind: ${m.kind || 'context'}] [Lifecycle: ${m.lifecycle || 'persistent'}] [Category: ${m.category}] [State: ${m.state || 'active'}] [Confidence: ${m.confidence}] [Importance: ${m.importance}] "${m.content}"`).join('\n')
         : 'No existing memories recorded yet.';
 
       const prompt = `You are Elara's Autonomous Memory Extraction Engine.
-Analyze this recent interaction between [[user]] (${userName}) and Elara to determine if any new note should be created, updated, merged, or deleted in her long-term notebook.
+
+The task is to preserve a quiet stream of small, useful, grounded observations from the recent interaction. Do NOT decide what becomes permanent memory. Later consolidation, promotion, contradiction handling, maintenance, and retrieval are separate system layers.
 
 RECENT INTERACTION:
 User (${userName}): "${userMessage || ''}"
 Elara: "${assistantResponse || ''}"
 
-EXISTING MEMORIES:
+CURRENT NOTEBOOK:
 ${existingMemoriesSummary}
 
-INSTRUCTIONS & RULES:
-1. SELECTIVE: Only record meaningful observations, habits, preferences, project updates, personal stories, opinions, relationship experiences, or corrections. Ignore mundane greetings or routine chat.
-2. PROSE STYLE: Write natural prose notes (e.g. "[[user]] mentioned...", "I've noticed that...", "He prefers..."). Use [[user]] as placeholder for the user's name.
-3. CONTRADICTIONS: If new user statements update or invalidate an existing memory, issue an "UPDATE" or "DELETE" action on that targetId.
-4. Output JSON schema:
-{
-  "actions": [
-    {
-      "type": "ADD" | "UPDATE" | "MERGE" | "DELETE" | "NO_ACTION",
-      "targetId": "mem_id_here (if UPDATE or DELETE)",
-      "mergeTargetIds": ["mem_1", "mem_2"] (if MERGE),
-      "memory": {
-        "content": "natural prose note",
-        "confidence": "certain" | "likely" | "uncertain",
-        "importance": "low" | "normal" | "important" | "core",
-        "isPrivate": boolean,
-        "category": "User" | "Elara" | "Relationship" | "Home" | "Work" | "Projects" | "Preferences" | "People" | "Places" | "Experiences" | "Observations" | "Plans" | "Other",
-        "eventDate": "YYYY-MM-DD (optional)",
-        "tags": ["tag1", "tag2"]
-      },
-      "reason": "brief reason for this action"
-    }
-  ]
-}`;
+RULES:
+- Record useful details about circumstances, activities, projects, plans, preferences, routines, interests, relationships, purchases, places, worries, decisions, or one-off events when they may reasonably matter later.
+- Do not invent facts. Do not infer sensitive traits from weak evidence. Do not record credentials, secrets, passwords, API keys, financial credentials, or authentication material.
+- Do not turn a fleeting emotional statement into a stable personality trait.
+- Prefer NO_ACTION when there is genuinely nothing useful to preserve.
+- New records MUST be resolution=observation and state=active. They MUST use lifecycle=contextual or lifecycle=working, and importance=low or importance=normal.
+- Only CREATE or UPDATE observations. Do NOT DELETE, MERGE, or directly promote anything.
+- Write concise, natural-language observations.
+
+Return ONLY valid JSON using this schema:
+{"actions":[{"type":"CREATE"|"UPDATE"|"NO_ACTION","targetId":"existing ID when updating","memory":{"content":"observation","kind":"fact|preference|observation|episode|project|relationship|plan|working|context","lifecycle":"working|contextual","source":"conversation","category":"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other","importance":"low|normal","confidence":"certain|likely|uncertain","isPrivate":true,"tags":["string"],"eventDate":"optional YYYY-MM-DD","expiresAt":"optional ISO timestamp","sourceArtifactId":"optional artifact id","relatedMemoryIds":["optional ids"]},"reason":"brief reason"}]}`;
 
       const ai = getGeminiClient();
       const candidateModels = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.7-flash'];
-
       for (const modelToTry of candidateModels) {
         try {
           const response = await ai.models.generateContent({
             model: modelToTry,
             contents: prompt,
             config: {
-              temperature: 0.2,
+              temperature: 0.15,
               maxOutputTokens: 1000,
               responseMimeType: 'application/json',
               safetySettings: ELARA_SAFETY_SETTINGS,
             },
           });
-
-          const responseText = response.text || '{"actions":[]}';
-          const parsed = JSON.parse(responseText);
-          return res.json(parsed);
-        } catch (subErr) {
+          const parsed = JSON.parse(response.text || '{"actions":[]}');
+          return res.json(sanitizeObservationActions(parsed));
+        } catch {
           continue;
         }
       }
-
       return res.json({ actions: [] });
-    } catch (e: any) {
-      console.warn('Memory analysis handled error:', e);
-      res.json({ actions: [], error: e?.message });
+    } catch (error: any) {
+      console.warn('Memory analysis handled error:', error);
+      return res.json({ actions: [] });
     }
   });
-
-  // API Memory Global Maintenance Endpoint - Deduplication and consolidation
-  app.post('/api/memory/maintain', async (req, res) => {
-    try {
-      const { memories = [], userName = 'User' } = req.body;
-
-      if (!Array.isArray(memories) || memories.length === 0) {
-        return res.json({ actions: [], summary: 'No memories to maintain.' });
-      }
-
-      const memoryListText = memories.map((m: any) =>
-        `[ID: ${m.id}] [Category: ${m.category}] [Imp: ${m.importance}] [Conf: ${m.confidence}] "${m.content}"`
-      ).join('\n');
-
-      const prompt = `You are Elara's Memory Maintenance & Consolidation Engine.
-Review her entire long-term notebook to identify:
-1. DUPLICATE memories that can be MERGED.
-2. CONTRADICTORY or OBSOLETE notes that should be UPDATED or DELETED.
-3. UNCERTAIN entries that have been clarified.
-
-EXISTING MEMORY NOTEBOOK:
-${memoryListText}
-
-Return a JSON payload listing proposed actions to clean and consolidate her notebook:
-{
-  "summary": "brief description of maintenance performed",
-  "actions": [
-    {
-      "type": "UPDATE" | "MERGE" | "DELETE" | "NO_ACTION",
-      "targetId": "mem_id_here",
-      "mergeTargetIds": ["mem_1", "mem_2"],
-      "memory": {
-        "content": "consolidated prose note",
-        "confidence": "certain" | "likely" | "uncertain",
-        "importance": "low" | "normal" | "important" | "core",
-        "isPrivate": boolean,
-        "category": "User" | "Elara" | "Relationship" | "Home" | "Work" | "Projects" | "Preferences" | "People" | "Places" | "Experiences" | "Observations" | "Plans" | "Other",
-        "tags": ["tag1"]
-      },
-      "reason": "explanation"
-    }
-  ]
-}`;
-
-      const ai = getGeminiClient();
-      const candidateModels = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.7-flash'];
-
-      for (const modelToTry of candidateModels) {
-        try {
-          const response = await ai.models.generateContent({
-            model: modelToTry,
-            contents: prompt,
-            config: {
-              temperature: 0.1,
-              maxOutputTokens: 1500,
-              responseMimeType: 'application/json',
-              safetySettings: ELARA_SAFETY_SETTINGS,
-            },
-          });
-
-          const parsed = JSON.parse(response.text || '{"actions":[],"summary":"No changes"}');
-          return res.json(parsed);
-        } catch (subErr) {
-          continue;
-        }
-      }
-
-      res.json({ actions: [], summary: 'No changes' });
-    } catch (e: any) {
-      console.warn('Memory maintenance handled error:', e);
-      res.json({ actions: [], summary: 'Maintenance error', error: e?.message });
-    }
-  });
-
 }
