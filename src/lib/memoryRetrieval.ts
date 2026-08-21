@@ -77,7 +77,7 @@ export function scoreMemory(memory: MemoryItem, queryTokens: Set<string>, option
   return { memory, score, reasons };
 }
 
-function sortResults(results: MemoryRetrievalResult[]): MemoryRetrievalResult[] {
+function sortResults<T extends MemoryRetrievalResult>(results: T[]): T[] {
   return [...results].sort((left, right) => {
     if (right.score !== left.score) return right.score - left.score;
     const updated = (right.memory.updatedAt || '').localeCompare(left.memory.updatedAt || '');
