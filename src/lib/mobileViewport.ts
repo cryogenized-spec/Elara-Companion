@@ -9,6 +9,10 @@ function getEditableElement(): HTMLElement | null {
   return active.matches(EDITABLE_SELECTOR) ? active : null;
 }
 
+function blurActiveEditor(): void {
+  getEditableElement()?.blur();
+}
+
 function scrollActiveEditorIntoView(): void {
   const editor = getEditableElement();
   if (!editor) return;
@@ -41,34 +45,45 @@ export function installMobileViewportSync(): () => void {
 
   const scheduleResumeSync = () => {
     clearResumeTimers();
+
+    // Resume is layout-only. Never use a restored editor focus as a reason to
+    // scroll the composer or otherwise resurrect the keyboard.
+    blurActiveEditor();
     update();
 
     const frame = window.requestAnimationFrame(() => {
+      blurActiveEditor();
       update();
-      scrollActiveEditorIntoView();
     });
     resumeTimers.push(-frame);
 
     for (const delay of RESUME_SETTLE_DELAYS_MS.slice(1)) {
       const timer = window.setTimeout(() => {
+        blurActiveEditor();
         update();
-        scrollActiveEditorIntoView();
       }, delay);
       resumeTimers.push(timer);
     }
   };
 
+  const handleBackground = () => {
+    blurActiveEditor();
+    clearResumeTimers();
+  };
+
   const handleVisibilityChange = () => {
     if (document.visibilityState === 'hidden') {
-      const activeEditor = getEditableElement();
-      activeEditor?.blur();
-      clearResumeTimers();
+      handleBackground();
       return;
     }
     scheduleResumeSync();
   };
 
+  const handlePageHide = () => handleBackground();
+  const handleWindowBlur = () => handleBackground();
+  const handleWindowFocus = () => scheduleResumeSync();
   const handlePageShow = () => scheduleResumeSync();
+
   const handleFocusIn = (event: FocusEvent) => {
     const target = event.target;
     if (!(target instanceof HTMLElement) || !target.matches(EDITABLE_SELECTOR)) return;
@@ -82,6 +97,9 @@ export function installMobileViewportSync(): () => void {
   window.visualViewport?.addEventListener('resize', update);
   window.visualViewport?.addEventListener('scroll', update);
   window.addEventListener('resize', update);
+  window.addEventListener('blur', handleWindowBlur);
+  window.addEventListener('focus', handleWindowFocus);
+  window.addEventListener('pagehide', handlePageHide);
   document.addEventListener('visibilitychange', handleVisibilityChange);
   document.addEventListener('focusin', handleFocusIn);
   window.addEventListener('pageshow', handlePageShow);
@@ -91,6 +109,9 @@ export function installMobileViewportSync(): () => void {
     window.visualViewport?.removeEventListener('resize', update);
     window.visualViewport?.removeEventListener('scroll', update);
     window.removeEventListener('resize', update);
+    window.removeEventListener('blur', handleWindowBlur);
+    window.removeEventListener('focus', handleWindowFocus);
+    window.removeEventListener('pagehide', handlePageHide);
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     document.removeEventListener('focusin', handleFocusIn);
     window.removeEventListener('pageshow', handlePageShow);
