@@ -2,7 +2,7 @@ import { get, set, del } from 'idb-keyval';
 import { Conversation, ElaraSettings, WorldState, MemoryScratchpadState, Folder, PersonaSnapshot } from '../types';
 import { DEFAULT_SETTINGS, normalizeSettings } from './storage';
 import { loadAgentOperatingPolicy, saveAgentOperatingPolicy, AGENT_OPERATING_POLICY_KEY } from './agentPolicy';
-import { saveActiveScratchpad, clearActiveScratchpad, clearUserProfileNotes, USER_PROFILE_NOTES_KEY, ACTIVE_SCRATCHPAD_KEY } from './contextManager';
+import { saveActiveScratchpad, clearActiveScratchpad, clearUserProfileNotes, USER_PROFILE_NOTES_KEY, ACTIVE_SCRATCHPAD_KEY, MEMORY_CONTEXT_MIRROR_KEY } from './contextManager';
 import { clearWorkspace } from './workspaceStorage';
 import { DEFAULT_WORLD_STATE } from '../constants/defaultWorldState';
 import { applySettingsAppearance } from './themeManager';
@@ -32,6 +32,14 @@ function getLocalStorage(): Storage | null {
 
 function readLegacy(key: string): string | null {
   try { return getLocalStorage()?.getItem(key) ?? null; } catch { return null; }
+}
+
+function mirrorMemoryState(state: MemoryScratchpadState): void {
+  try {
+    getLocalStorage()?.setItem(MEMORY_CONTEXT_MIRROR_KEY, JSON.stringify({ schemaVersion: state.schemaVersion, memories: state.memories }));
+  } catch (error) {
+    console.warn('Context memory mirror unavailable:', error);
+  }
 }
 
 async function migrateValue(idbKey: string, legacyKey: string, transform: (value: unknown) => unknown = (value) => value): Promise<boolean> {
@@ -124,9 +132,10 @@ export async function getDbMemoryState(): Promise<MemoryScratchpadState> {
   if (state.schemaVersion === MEMORY_SCHEMA_VERSION && raw && typeof raw === 'object') {
     // Already current; no write needed.
   } else {
-    // Persist the normalized representation once so legacy records are upgraded at rest.
     await set(MEMORY_STATE_KEY, state);
   }
+
+  mirrorMemoryState(state);
 
   if (state.memories.length > 0) {
     const scratchpad = [
@@ -141,7 +150,11 @@ export async function getDbMemoryState(): Promise<MemoryScratchpadState> {
 
   return state;
 }
-export async function setDbMemoryState(data: MemoryScratchpadState) { await set(MEMORY_STATE_KEY, normalizeMemoryState(data)); }
+export async function setDbMemoryState(data: MemoryScratchpadState) {
+  const normalized = normalizeMemoryState(data);
+  await set(MEMORY_STATE_KEY, normalized);
+  mirrorMemoryState(normalized);
+}
 
 export async function clearDbStorage() {
   await Promise.all([
@@ -164,6 +177,7 @@ export async function clearDbStorage() {
     storage?.removeItem(AGENT_OPERATING_POLICY_KEY);
     storage?.removeItem(USER_PROFILE_NOTES_KEY);
     storage?.removeItem(ACTIVE_SCRATCHPAD_KEY);
+    storage?.removeItem(MEMORY_CONTEXT_MIRROR_KEY);
   } catch (error) {
     console.error('Failed to clear browser persistence:', error);
   }
