@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Bell, Cloud, CloudCog, Grid2X2, X, BookOpen } from 'lucide-react';
+import { Bell, Cloud, CloudCog, Grid2X2, X, BookOpen, Layers3 } from 'lucide-react';
 import { ArtifactsPanel } from './ArtifactsPanel';
 import { GoogleWorkspaceSettingsPanel } from './GoogleWorkspaceSettingsPanel';
 import { DurableBackgroundPanel } from './DurableBackgroundPanel';
@@ -42,11 +42,16 @@ export const ElaraSurfaces: React.FC = () => {
         </div>
       )}
 
-      <div className="fixed bottom-4 right-4 z-30 flex max-w-[calc(100vw-2rem)] items-center gap-2 overflow-x-auto sm:bottom-5 sm:right-5">
-        <button onClick={() => setSurface('artifacts')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-violet-500/40 hover:text-white" title="Artifacts"><Grid2X2 className="h-4 w-4 text-violet-400" /> Artifacts</button>
-        <button onClick={() => setSurface('scratchpad')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-amber-500/40 hover:text-white" title="Scratchpad"><BookOpen className="h-4 w-4 text-amber-400" /> Scratchpad</button>
-        <button onClick={() => setSurface('google')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-sky-500/40 hover:text-white" title="Google Workspace"><Cloud className="h-4 w-4 text-sky-400" /> Google</button>
-        <button onClick={() => setSurface('background')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-violet-500/40 hover:text-white" title="Durable background runtime"><CloudCog className="h-4 w-4 text-violet-400" /> Background</button>
+      <div data-elara-surface-strip className="fixed bottom-4 right-4 z-30 flex max-w-[calc(100vw-2rem)] items-center gap-2 overflow-x-auto sm:bottom-5 sm:right-5">
+        <button type="button" className="mobile-surfaces-trigger inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl" onClick={() => setSurface(surface ? null : 'artifacts')} title="Open Elara surfaces">
+          <Layers3 className="h-4 w-4 text-violet-400" /> Surfaces
+        </button>
+        <div className="desktop-surface-actions flex items-center gap-2">
+          <button onClick={() => setSurface('artifacts')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-violet-500/40 hover:text-white" title="Artifacts"><Grid2X2 className="h-4 w-4 text-violet-400" /> Artifacts</button>
+          <button onClick={() => setSurface('scratchpad')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-amber-500/40 hover:text-white" title="Scratchpad"><BookOpen className="h-4 w-4 text-amber-400" /> Scratchpad</button>
+          <button onClick={() => setSurface('google')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-sky-500/40 hover:text-white" title="Google Workspace"><Cloud className="h-4 w-4 text-sky-400" /> Google</button>
+          <button onClick={() => setSurface('background')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-violet-500/40 hover:text-white" title="Durable background runtime"><CloudCog className="h-4 w-4 text-violet-400" /> Background</button>
+        </div>
       </div>
 
       {surface === 'artifacts' && <ArtifactsPanel onBack={() => setSurface(null)} />}

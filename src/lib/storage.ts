@@ -3,10 +3,13 @@ import {
   DEFAULT_ELARA_SYSTEM_PROMPT,
   DEFAULT_PERSONA_PROTOCOL,
   DEFAULT_INTIMACY_MODULE,
-  DEFAULT_RUNTIME_RULES
+  DEFAULT_RUNTIME_RULES,
+  DEFAULT_ADULT_FICTION_MODULE,
 } from '../constants/defaultPrompt';
 import { DEFAULT_GEMINI_MODEL, GEMINI_MODEL_PROFILES } from './modelRegistry';
 import { applySettingsAppearance } from './themeManager';
+import { DEFAULT_VOICE_SETTINGS, migrateLegacyVoiceSettings } from './voiceSettings';
+import { DEFAULT_RELIABILITY_SETTINGS, normalizeReliabilitySettings } from './reliabilitySettings';
 
 const CONVERSATIONS_STORAGE_KEY = 'elara_conversations_v1';
 const SETTINGS_STORAGE_KEY = 'elara_settings_v1';
@@ -29,6 +32,8 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
   personaProtocol: DEFAULT_PERSONA_PROTOCOL,
   intimacyModule: DEFAULT_INTIMACY_MODULE,
   runtimeRules: DEFAULT_RUNTIME_RULES,
+  adultFictionEnabled: true,
+  adultFictionModule: DEFAULT_ADULT_FICTION_MODULE,
   userName: 'User',
   model: DEFAULT_GEMINI_MODEL,
   temperature: 0.85,
@@ -58,11 +63,29 @@ export const DEFAULT_SETTINGS: ElaraSettings = {
   thinkingBudget: 4096,
   thinkingLevel: 'medium',
   sendOnEnter: false,
-  speechLanguage: 'en-US',
-  speechAutoSend: false,
-  speechAutoCapitalize: true,
-  speechPauseTimeout: 2000,
+  voiceSettings: { ...DEFAULT_VOICE_SETTINGS },
+  reliabilitySettings: { ...DEFAULT_RELIABILITY_SETTINGS, fallbackModels: [...DEFAULT_RELIABILITY_SETTINGS.fallbackModels] },
+  speechLanguage: DEFAULT_VOICE_SETTINGS.language,
+  speechAutoSend: DEFAULT_VOICE_SETTINGS.autoSendOnSilence,
+  speechAutoCapitalize: DEFAULT_VOICE_SETTINGS.autoCapitalize,
+  speechPauseTimeout: DEFAULT_VOICE_SETTINGS.silenceTimeoutMs,
 };
+
+export function normalizeSettings(settings: Partial<ElaraSettings> | null | undefined): ElaraSettings {
+  const merged = { ...DEFAULT_SETTINGS, ...(settings || {}) } as ElaraSettings;
+  const voiceSettings = migrateLegacyVoiceSettings(merged);
+  const reliabilitySettings = normalizeReliabilitySettings(merged.reliabilitySettings);
+  return {
+    ...merged,
+    voiceSettings,
+    reliabilitySettings,
+    // Keep the legacy fields synchronized for old exports/imports and compatibility consumers.
+    speechLanguage: voiceSettings.language,
+    speechAutoSend: voiceSettings.autoSendOnSilence,
+    speechAutoCapitalize: voiceSettings.autoCapitalize,
+    speechPauseTimeout: voiceSettings.silenceTimeoutMs,
+  };
+}
 
 export function loadSettings(): ElaraSettings {
   try {
@@ -72,7 +95,11 @@ export function loadSettings(): ElaraSettings {
       return DEFAULT_SETTINGS;
     }
     const parsed = JSON.parse(raw);
-    const loaded = { ...DEFAULT_SETTINGS, ...parsed };
+    const loaded = normalizeSettings(parsed);
+    if (typeof loaded.adultFictionEnabled !== 'boolean') loaded.adultFictionEnabled = true;
+    if (typeof loaded.adultFictionModule !== 'string' || !loaded.adultFictionModule.trim()) {
+      loaded.adultFictionModule = DEFAULT_ADULT_FICTION_MODULE;
+    }
     const isActiveModel = GEMINI_MODEL_PROFILES.some((m) => m.id === loaded.model);
     if (!loaded.model || !isActiveModel) loaded.model = DEFAULT_GEMINI_MODEL;
     applySettingsAppearance(loaded);
@@ -85,9 +112,10 @@ export function loadSettings(): ElaraSettings {
 }
 
 export function saveSettings(settings: ElaraSettings): void {
-  try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings)); }
+  const normalized = normalizeSettings(settings);
+  try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(normalized)); }
   catch (e) { console.error('Failed to save settings:', e); }
-  applySettingsAppearance(settings);
+  applySettingsAppearance(normalized);
 }
 
 const FOLDERS_STORAGE_KEY = 'elara_folders_v1';
@@ -145,7 +173,7 @@ export function saveConversations(conversations: Conversation[]): void {
 }
 
 export function exportAllDataJSON(conversations: Conversation[], settings: ElaraSettings): void {
-  const data = { version: '3.0', exportDate: new Date().toISOString(), settings, conversations };
+  const data = { version: '3.0', exportDate: new Date().toISOString(), settings: normalizeSettings(settings), conversations };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -185,7 +213,7 @@ export function importDataJSON(jsonStr: string): { conversations: Conversation[]
     }
 
     const validConversations = importedConversations.filter((c) => c && typeof c.id === 'string' && Array.isArray(c.messages));
-    return { conversations: validConversations, settings: importedSettings };
+    return { conversations: validConversations, settings: importedSettings ? normalizeSettings(importedSettings) : undefined };
   } catch (e) {
     throw new Error('Invalid JSON format for import');
   }

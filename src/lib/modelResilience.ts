@@ -1,0 +1,195 @@
+import { ClassifiedApiError, classifyApiError } from './apiError';
+import { DEFAULT_RETRY_POLICY, RetryPolicy, runWithRetry } from './retryPolicy';
+import type { ReliabilitySettings } from './reliabilitySettings';
+import {
+  DEFAULT_MODEL_COOLDOWN_MS,
+  ModelHealthState,
+  createModelHealthState,
+  recordModelFailure,
+  recordModelSuccess,
+  selectRuntimeModel,
+} from './modelHealth';
+
+export const DEFAULT_FALLBACK_MODELS = [
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-3.5-flash-lite',
+] as const;
+
+export interface ModelResiliencePolicy {
+  retryPolicy?: Partial<RetryPolicy>;
+  fallbackModels?: string[];
+  failoverEnabled?: boolean;
+  cooldownMs?: number;
+  autoRestorePreferredModel?: boolean;
+  retryableErrorCodes?: string[];
+  failoverErrorCodes?: string[];
+}
+
+export interface ModelResilienceContext {
+  model: string;
+  usedFallback: boolean;
+  probingPreferred: boolean;
+  attempts: number;
+}
+
+export interface ModelTurn<T> {
+  value: T;
+  emittedOutput?: boolean;
+}
+
+export interface ModelResilienceStateStore {
+  get(): ModelHealthState;
+  set(state: ModelHealthState): void;
+}
+
+let defaultModelHealthState: ModelHealthState = createModelHealthState();
+
+const defaultStateStore: ModelResilienceStateStore = {
+  get() {
+    return defaultModelHealthState;
+  },
+  set(next) {
+    defaultModelHealthState = next;
+  },
+};
+
+const DEFAULT_FAILOVER_CODES = new Set([
+  'API_RATE_LIMIT_RPM_429',
+  'API_QUOTA_DAILY_429',
+  'MODEL_NOT_FOUND_404',
+  'SERVER_ERROR_500',
+  'BAD_GATEWAY_502',
+  'SERVICE_UNAVAILABLE_503',
+  'GATEWAY_TIMEOUT_504',
+]);
+
+function shouldFailOver(error: ClassifiedApiError, configuredCodes?: string[]): boolean {
+  if ((error as any).failoverOverride === false) return false;
+  const allowed = configuredCodes ? new Set(configuredCodes) : DEFAULT_FAILOVER_CODES;
+  return allowed.has(error.code);
+}
+
+function getErrorFromThrown(error: unknown, modelId: string): ClassifiedApiError {
+  const attached = (error as any)?.apiError;
+  return attached || classifyApiError(error, modelId);
+}
+
+export function buildModelResiliencePolicy(settings?: ReliabilitySettings): ModelResiliencePolicy {
+  if (!settings) {
+    return {
+      retryPolicy: DEFAULT_RETRY_POLICY,
+      fallbackModels: [...DEFAULT_FALLBACK_MODELS],
+      failoverEnabled: true,
+      cooldownMs: DEFAULT_MODEL_COOLDOWN_MS,
+      autoRestorePreferredModel: true,
+    };
+  }
+
+  return {
+    retryPolicy: {
+      maxAttempts: settings.autoRetryEnabled ? settings.maxAttempts : 1,
+      baseDelayMs: settings.baseDelayMs,
+      maxDelayMs: settings.maxDelayMs,
+      jitterRatio: settings.jitterRatio,
+      honorRetryAfter: settings.honorRetryAfter,
+    },
+    fallbackModels: settings.fallbackModels,
+    failoverEnabled: settings.autoFailoverEnabled,
+    cooldownMs: settings.cooldownMs,
+    autoRestorePreferredModel: settings.autoRestorePreferredModel,
+    retryableErrorCodes: settings.retryableErrorCodes,
+    failoverErrorCodes: settings.failoverErrorCodes,
+  };
+}
+
+export async function runWithModelResilience<T>(
+  preferredModel: string,
+  executeTurn: (model: string, attempt: number) => Promise<ModelTurn<T>>,
+  options: ModelResiliencePolicy = {},
+  stateStore: ModelResilienceStateStore = defaultStateStore,
+): Promise<{ value: T; context: ModelResilienceContext }> {
+  const fallbackModels = options.fallbackModels || [...DEFAULT_FALLBACK_MODELS];
+  const failoverEnabled = options.failoverEnabled !== false;
+  const cooldownMs = options.cooldownMs ?? DEFAULT_MODEL_COOLDOWN_MS;
+  const attemptedModels = new Set<string>();
+  let state = stateStore.get();
+  const retryableCodes = options.retryableErrorCodes ? new Set(options.retryableErrorCodes) : undefined;
+
+  while (true) {
+    const selection = selectRuntimeModel({
+      preferredModel,
+      fallbackModels,
+      state,
+      now: Date.now(),
+      autoRestorePreferredModel: options.autoRestorePreferredModel,
+    });
+
+    const selectedModel = selection.model;
+    const normalized = selectedModel.trim().toLowerCase();
+    if (attemptedModels.has(normalized)) {
+      throw new Error(`Model resilience exhausted its available model path after attempting [${selectedModel}].`);
+    }
+    attemptedModels.add(normalized);
+
+    try {
+      const result = await runWithRetry(
+        async (attempt) => {
+          try {
+            const turn = await executeTurn(selectedModel, attempt);
+            state = recordModelSuccess(state, selectedModel);
+            stateStore.set(state);
+            return turn;
+          } catch (error) {
+            const classified = getErrorFromThrown(error, selectedModel);
+            if (retryableCodes && !retryableCodes.has(classified.code)) {
+              throw Object.assign(new Error(classified.message), {
+                apiError: { ...classified, retryable: false },
+              });
+            }
+            throw error;
+          }
+        },
+        {
+          policy: options.retryPolicy || DEFAULT_RETRY_POLICY,
+          modelId: selectedModel,
+        },
+      );
+
+      return {
+        value: result.value.value,
+        context: {
+          model: selectedModel,
+          usedFallback: selection.usedFallback,
+          probingPreferred: selection.probingPreferred,
+          attempts: result.attempts,
+        },
+      };
+    } catch (error) {
+      const classified = getErrorFromThrown(error, selectedModel);
+      state = recordModelFailure(state, selectedModel, classified, Date.now(), cooldownMs);
+      stateStore.set(state);
+
+      if (!failoverEnabled || !shouldFailOver(classified, options.failoverErrorCodes)) {
+        throw error;
+      }
+
+      const nextSelection = selectRuntimeModel({
+        preferredModel,
+        fallbackModels,
+        state,
+        now: Date.now(),
+        autoRestorePreferredModel: options.autoRestorePreferredModel,
+      });
+      if (nextSelection.model.trim().toLowerCase() === normalized) {
+        throw error;
+      }
+    }
+  }
+}
+
+export function resetModelResilienceState(stateStore: ModelResilienceStateStore = defaultStateStore): void {
+  stateStore.set(createModelHealthState());
+}
+
+export { defaultStateStore };

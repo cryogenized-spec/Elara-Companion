@@ -1,0 +1,73 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import type { MemoryItem, MemoryScratchpadState } from '../../types';
+import { MEMORY_MAINTENANCE_INTERVAL_MS, runMemoryMaintenanceCycle, shouldRunMemoryMaintenance } from '../memoryMaintenanceScheduler';
+
+const baseState = (...memories: MemoryItem[]): MemoryScratchpadState => ({ memories, autoMaintenanceEnabled: true, lastMaintenanceAt: '2026-08-19T07:00:00.000Z', schemaVersion: 3 });
+
+const memory = (overrides: Partial<MemoryItem> = {}): MemoryItem => ({
+  id: 'memory-1', content: 'Temporary note.', kind: 'context', lifecycle: 'contextual', resolution: 'contextual', state: 'active',
+  source: 'conversation', confidence: 'certain', importance: 'normal', isPrivate: true, category: 'Observations',
+  createdAt: '2026-08-19T00:00:00.000Z', updatedAt: '2026-08-19T00:00:00.000Z',
+  evidenceCount: 0, evidenceMemoryIds: [], ...overrides,
+});
+
+describe('memory maintenance scheduler', () => {
+  it('does not run when automatic maintenance is disabled', () => {
+    const state = { ...baseState(memory()), autoMaintenanceEnabled: false };
+    assert.equal(shouldRunMemoryMaintenance(state, new Date('2026-08-21T07:00:00.000Z')), false);
+    const result = runMemoryMaintenanceCycle(state, { now: new Date('2026-08-21T07:00:00.000Z') });
+    assert.equal(result.ran, false);
+    assert.equal(result.skippedReason, 'disabled');
+  });
+
+  it('does not run before the maintenance interval has elapsed', () => {
+    const state = baseState(memory());
+    const now = new Date('2026-08-19T12:00:00.000Z');
+    assert.equal(shouldRunMemoryMaintenance(state, now), false);
+    const result = runMemoryMaintenanceCycle(state, { now });
+    assert.equal(result.ran, false);
+    assert.equal(result.skippedReason, 'not-due');
+  });
+
+  it('archives expired memories and marks stale memories without deleting evidence', () => {
+    const state = baseState(
+      memory({ id: 'expired', expiresAt: '2026-08-19T06:00:00.000Z' }),
+      memory({ id: 'stale', updatedAt: '2026-06-01T00:00:00.000Z', lastObservedAt: '2026-06-01T00:00:00.000Z' }),
+      memory({ id: 'duplicate-a', content: 'Same note.' }),
+      memory({ id: 'duplicate-b', content: 'Same note.' }),
+    );
+    const now = new Date('2026-08-21T07:00:00.000Z');
+    const result = runMemoryMaintenanceCycle(state, { now });
+    assert.equal(result.ran, true);
+    assert.equal(result.plan?.expiredCandidates.length, 1);
+    assert.ok(result.plan?.staleCandidates.some((item) => item.memoryId === 'stale'));
+    assert.ok(result.plan?.duplicateGroups.some((group) => group.memoryIds.includes('duplicate-a')));
+    assert.equal(result.state.memories.find((item) => item.id === 'expired')?.lifecycle, 'archived');
+    assert.equal(result.state.memories.find((item) => item.id === 'expired')?.state, 'archived');
+    assert.equal(result.state.memories.find((item) => item.id === 'stale')?.state, 'stale');
+    assert.equal(result.state.schemaVersion, 3);
+  });
+
+  it('reactivates a previously stale memory when recent evidence is present', () => {
+    const state = baseState(memory({ state: 'stale', updatedAt: '2026-08-20T00:00:00.000Z', lastObservedAt: '2026-08-20T00:00:00.000Z' }));
+    const result = runMemoryMaintenanceCycle(state, { now: new Date('2026-08-21T07:00:00.000Z') });
+    assert.equal(result.state.memories[0].state, 'active');
+  });
+
+  it('compacts supporting evidence IDs without deleting the memory itself', () => {
+    const evidenceIds = Array.from({ length: 20 }, (_, index) => `e-${index}`);
+    const state = baseState(memory({ evidenceMemoryIds: evidenceIds, evidenceCount: 20 }));
+    const result = runMemoryMaintenanceCycle(state, { now: new Date('2026-08-21T07:00:00.000Z'), config: { maxEvidenceMemoryIds: 5 } });
+    assert.equal(result.state.memories[0].evidenceMemoryIds?.length, 5);
+    assert.equal(result.state.memories[0].evidenceCount, 20);
+    assert.equal(result.state.memories[0].content, 'Temporary note.');
+  });
+
+  it('uses the configurable interval without changing safe-maintenance policy', () => {
+    const state = baseState(memory({ expiresAt: '2026-08-19T06:00:00.000Z' }));
+    const now = new Date('2026-08-19T09:00:00.000Z');
+    assert.equal(shouldRunMemoryMaintenance(state, now, 60 * 60 * 1000), true);
+    assert.equal(shouldRunMemoryMaintenance(state, now, MEMORY_MAINTENANCE_INTERVAL_MS), false);
+  });
+});

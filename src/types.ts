@@ -10,8 +10,15 @@ export interface Message {
 export interface Folder { id: string; name: string; isExpanded?: boolean; }
 export interface Conversation { id: string; title: string; createdAt: number; updatedAt: number; messages: Message[]; model?: string; temperature?: number; maxOutputTokens?: number; folderId?: string; }
 
+import type { VoiceSettings } from './lib/voiceSettings';
+import type { ReliabilitySettings } from './lib/reliabilitySettings';
+
 export interface ElaraSettings {
   systemPrompt: string; personaProtocol: string; intimacyModule: string; runtimeRules: string;
+  /** When true, injects adultFictionModule into the system payload. Default true. */
+  adultFictionEnabled?: boolean;
+  /** Framing text that treats adult/NSFW content as consensual fiction & roleplay. */
+  adultFictionModule?: string;
   userName: string; model: string;
   temperature: number; maxOutputTokens: number; topP: number; topK: number; includeHistory: boolean;
   theme: 'dark' | 'light'; themeMode?: 'dark' | 'light' | 'system';
@@ -20,6 +27,10 @@ export interface ElaraSettings {
   userFontFamily?: string; userFontSource?: 'system' | 'google'; userFontWeight?: 300 | 400 | 500 | 600 | 700; userTextColor?: string; userFontSize?: number;
   assistantFontFamily?: string; assistantFontSource?: 'system' | 'google'; assistantFontWeight?: 300 | 400 | 500 | 600 | 700; assistantTextColor?: string; assistantFontSize?: number;
   thinkingBudget?: number; thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high'; sendOnEnter?: boolean; apiKey?: string; customBackendUrl?: string;
+  /** Canonical voice configuration. Legacy flat speech fields remain for export/migration compatibility. */
+  voiceSettings?: VoiceSettings;
+  /** Canonical user-owned retry/failover policy. Runtime health remains temporary and is never persisted here. */
+  reliabilitySettings?: ReliabilitySettings;
   speechLanguage?: string; speechAutoSend?: boolean; speechAutoCapitalize?: boolean; speechPauseTimeout?: number;
 }
 
@@ -35,13 +46,97 @@ export interface PreferenceEntry { id: string; category: string; detail: string;
 export interface WorldState { house: HouseStructure; elaraBelongings: InventoryItem[]; userBelongings: InventoryItem[]; sharedPossessions: InventoryItem[]; elaraRoutine: RoutineEntry[]; userRoutine: RoutineEntry[]; liveState: LiveState; temporaryEvents: TemporaryEvent[]; sharedMemories: SharedMemory[]; elaraPersonalLife: ElaraPersonalLife; preferences: PreferenceEntry[]; }
 
 export interface GeminiModelOption { id: string; name: string; description: string; isDefault?: boolean; }
+
+/** Canonical taxonomy for Elara's persistent memory layer. */
+export type MemoryKind = 'fact' | 'preference' | 'observation' | 'episode' | 'project' | 'relationship' | 'plan' | 'working' | 'context';
+export type MemoryLifecycle = 'working' | 'contextual' | 'persistent' | 'core' | 'archived';
+export type MemorySource = 'user' | 'elara' | 'conversation' | 'artifact' | 'system' | 'imported';
 export type MemoryConfidence = 'certain' | 'likely' | 'uncertain';
 export type MemoryImportance = 'low' | 'normal' | 'important' | 'core';
 export type MemoryCategory = 'User' | 'Elara' | 'Relationship' | 'Home' | 'Work' | 'Projects' | 'Preferences' | 'People' | 'Places' | 'Experiences' | 'Observations' | 'Plans' | 'Other';
-export interface MemoryItem { id: string; content: string; confidence: MemoryConfidence; importance: MemoryImportance; isPrivate: boolean; category: MemoryCategory; createdAt: string; updatedAt: string; eventDate?: string; pinned?: boolean; tags?: string[]; sourceConversationId?: string; }
-export interface MemoryScratchpadState { memories: MemoryItem[]; lastMaintenanceAt?: string; autoMaintenanceEnabled: boolean; }
+
+/** Pass 1 memory architecture resolution. Optional for backwards compatibility. */
+export type MemoryResolution = 'core' | 'contextual' | 'episodic' | 'observation' | 'synthesized';
+/** Pass 1 memory lifecycle state. Optional for backwards compatibility. */
+export type MemoryState = 'active' | 'stale' | 'archived' | 'superseded' | 'conflicted';
+
+export interface MemoryLink {
+  type: 'conversation' | 'artifact' | 'memory';
+  id: string;
+  label?: string;
+}
+
+export interface MemoryItem {
+  id: string;
+  content: string;
+  kind?: MemoryKind;
+  lifecycle?: MemoryLifecycle;
+  source?: MemorySource;
+  confidence: MemoryConfidence;
+  importance: MemoryImportance;
+  isPrivate: boolean;
+  category: MemoryCategory;
+  createdAt: string;
+  updatedAt: string;
+  eventDate?: string;
+  expiresAt?: string;
+  lastRecalledAt?: string;
+  reinforcementCount?: number;
+  pinned?: boolean;
+  tags?: string[];
+  sourceConversationId?: string;
+  sourceArtifactId?: string;
+  relatedMemoryIds?: string[];
+  links?: MemoryLink[];
+
+  /** Pass 1 additive architecture metadata. */
+  resolution?: MemoryResolution;
+  state?: MemoryState;
+  lastObservedAt?: string;
+  retrievalCount?: number;
+  evidenceCount?: number;
+  evidenceMemoryIds?: string[];
+  supersedesMemoryId?: string;
+  supersededByMemoryId?: string;
+  conflictMemoryIds?: string[];
+}
+
+export interface MemoryScratchpadState {
+  memories: MemoryItem[];
+  lastMaintenanceAt?: string;
+  autoMaintenanceEnabled: boolean;
+  schemaVersion?: number;
+}
+
 export type MemoryActionType = 'ADD' | 'CREATE' | 'UPDATE' | 'MERGE' | 'DELETE' | 'NO_ACTION';
-export interface MemoryAction { type: MemoryActionType; targetId?: string; mergeTargetIds?: string[]; memory?: { content: string; confidence: MemoryConfidence; importance: MemoryImportance; isPrivate: boolean; category: MemoryCategory; eventDate?: string; tags?: string[]; }; reason?: string; }
+export interface MemoryAction {
+  type: MemoryActionType;
+  targetId?: string;
+  mergeTargetIds?: string[];
+  memory?: {
+    content: string;
+    kind?: MemoryKind;
+    lifecycle?: MemoryLifecycle;
+    source?: MemorySource;
+    confidence: MemoryConfidence;
+    importance: MemoryImportance;
+    isPrivate: boolean;
+    category: MemoryCategory;
+    eventDate?: string;
+    expiresAt?: string;
+    sourceArtifactId?: string;
+    relatedMemoryIds?: string[];
+    tags?: string[];
+    links?: MemoryLink[];
+    resolution?: MemoryResolution;
+    state?: MemoryState;
+    evidenceMemoryIds?: string[];
+    supersedesMemoryId?: string;
+    supersededByMemoryId?: string;
+    conflictMemoryIds?: string[];
+  };
+  reason?: string;
+}
 
 export const AVAILABLE_MODELS: GeminiModelOption[] = [
   { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', description: 'Latest stable Flash for fast multimodal, general-purpose and agentic work.', isDefault: true },
@@ -62,4 +157,4 @@ export type RevisionSource = 'user' | 'agent' | 'google_sync' | 'restore' | 'sys
 export interface ArtifactRevision { id: string; artifactId: string; revisionNumber: number; content: string; createdAt: number; author: 'user' | 'agent' | 'system'; source: RevisionSource; contentHash: string; }
 export interface WorkspaceArtifact { id: string; name: string; content: string; createdAt: number; updatedAt: number; type: string; provider?: ArtifactProvider; externalId?: string; url?: string; linkedAt?: number; lastSyncedAt?: number; syncStatus?: SyncStatus; syncBaselineHash?: string; revisions?: ArtifactRevision[]; }
 export interface Workspace { id: string; name: string; artifacts: WorkspaceArtifact[]; activeArtifactId: string | null; }
-export interface PersonaSnapshot { id: string; name: string; timestamp: number; systemPrompt: string; personaProtocol: string; intimacyModule: string; runtimeRules: string; }
+export interface PersonaSnapshot { id: string; name: string; timestamp: number; systemPrompt: string; personaProtocol: string; intimacyModule: string; runtimeRules: string; adultFictionEnabled?: boolean; adultFictionModule?: string; }

@@ -1,0 +1,150 @@
+import React from 'react';
+import { AlertTriangle, Archive, Clock3, GitBranch, Link2, Search, ShieldCheck } from 'lucide-react';
+import type { MemoryItem, MemoryResolution, MemoryScratchpadState, MemoryState } from '../types';
+import { getDbMemoryState } from '../lib/db';
+
+export const MEMORY_TRANSPARENCY_READ_OPTIONS = Object.freeze({
+  runMaintenance: false,
+  updateProjections: false,
+} as const);
+
+export type MemoryResolutionFilter = 'all' | MemoryResolution;
+
+export const MEMORY_RESOLUTION_LABELS: Record<MemoryResolution, string> = {
+  core: 'Core', contextual: 'Contextual', episodic: 'Episodic', observation: 'Observations', synthesized: 'Synthesized',
+};
+
+export const MEMORY_RESOLUTION_FILTERS: MemoryResolutionFilter[] = ['all', 'core', 'contextual', 'episodic', 'observation', 'synthesized'];
+
+const STATE_LABEL: Record<MemoryState, string> = { active: 'Active', stale: 'Stale', archived: 'Archived', superseded: 'Superseded', conflicted: 'Conflicted' };
+const STATE_CLASS: Record<MemoryState, string> = {
+  active: 'border-emerald-500/20 bg-emerald-500/5 text-emerald-300', stale: 'border-amber-500/20 bg-amber-500/5 text-amber-300', archived: 'border-zinc-700 bg-zinc-900 text-zinc-400', superseded: 'border-violet-500/20 bg-violet-500/5 text-violet-300', conflicted: 'border-rose-500/20 bg-rose-500/5 text-rose-300',
+};
+
+const formatDate = (value?: string) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+};
+
+export const getMemoryResolution = (memory: MemoryItem): MemoryResolution =>
+  memory.resolution || (memory.lifecycle === 'core' ? 'core' : memory.kind === 'observation' ? 'observation' : memory.kind === 'episode' ? 'episodic' : 'contextual');
+
+export const countMemoryResolutions = (memories: MemoryItem[]): Record<MemoryResolutionFilter, number> => {
+  const counts: Record<MemoryResolutionFilter, number> = { all: memories.length, core: 0, contextual: 0, episodic: 0, observation: 0, synthesized: 0 };
+  for (const memory of memories) counts[getMemoryResolution(memory)] += 1;
+  return counts;
+};
+
+export const getMemoryRelationshipIds = (memory: MemoryItem): string[] => Array.from(new Set([
+  ...(memory.relatedMemoryIds || []), ...(memory.evidenceMemoryIds || []), ...(memory.conflictMemoryIds || []),
+  ...(memory.supersedesMemoryId ? [memory.supersedesMemoryId] : []), ...(memory.supersededByMemoryId ? [memory.supersededByMemoryId] : []),
+  ...(memory.links || []).filter((link) => link.type === 'memory').map((link) => link.id),
+]));
+
+const sourceLabel = (memory: MemoryItem) => memory.sourceConversationId ? 'Conversation' : memory.sourceArtifactId ? 'Artifact' : memory.source || 'conversation';
+
+const RelationshipButton: React.FC<{ memory: MemoryItem; label: string; tone?: string; onSelect: (id: string) => void }> = ({ memory, label, tone = 'text-zinc-300', onSelect }) => (
+  <button type="button" onClick={() => onSelect(memory.id)} className="w-full rounded-lg border border-zinc-800 bg-zinc-950/60 px-2.5 py-2 text-left transition hover:border-zinc-700 hover:bg-zinc-900">
+    <div className={`text-[9px] font-medium uppercase tracking-wide ${tone}`}>{label}</div>
+    <div className="mt-0.5 line-clamp-2 text-[10px] leading-relaxed text-zinc-300">{memory.content}</div>
+    <div className="mt-1 text-[9px] text-zinc-600">{MEMORY_RESOLUTION_LABELS[getMemoryResolution(memory)]} · {memory.id}</div>
+  </button>
+);
+
+const MemoryDetails: React.FC<{ memory: MemoryItem; allMemories: MemoryItem[]; onSelectMemory: (id: string) => void }> = ({ memory, allMemories, onSelectMemory }) => {
+  const state = memory.state || 'active';
+  const evidenceIds = memory.evidenceMemoryIds || [];
+  const evidenceCount = Math.max(memory.evidenceCount || 0, evidenceIds.length);
+  const relatedIds = new Set([...(memory.relatedMemoryIds || []), ...(memory.links || []).filter((link) => link.type === 'memory').map((link) => link.id)]);
+  const related = allMemories.filter((item) => relatedIds.has(item.id));
+  const evidence = allMemories.filter((item) => evidenceIds.includes(item.id));
+  const conflicts = allMemories.filter((item) => (memory.conflictMemoryIds || []).includes(item.id));
+  const supersedes = memory.supersedesMemoryId ? allMemories.find((item) => item.id === memory.supersedesMemoryId) : undefined;
+  const supersededBy = memory.supersededByMemoryId ? allMemories.find((item) => item.id === memory.supersededByMemoryId) : undefined;
+  const resolution = getMemoryResolution(memory);
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3"><p className="whitespace-pre-wrap text-xs leading-relaxed text-zinc-200">{memory.content}</p></div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-2.5"><span className="text-[10px] text-zinc-600">Resolution</span><p className="mt-1 text-xs text-zinc-200">{MEMORY_RESOLUTION_LABELS[resolution]}</p></div>
+        <div className={`rounded-xl border p-2.5 ${STATE_CLASS[state]}`}><span className="text-[10px] opacity-70">State</span><p className="mt-1 text-xs font-medium">{STATE_LABEL[state]}</p></div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-2.5"><span className="text-[10px] text-zinc-600">Confidence</span><p className="mt-1 text-xs text-zinc-200">{memory.confidence}</p></div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-2.5"><span className="text-[10px] text-zinc-600">Importance</span><p className="mt-1 text-xs text-zinc-200">{memory.importance}</p></div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3"><h4 className="flex items-center gap-2 text-[11px] font-semibold text-zinc-200"><ShieldCheck className="h-3.5 w-3.5 text-emerald-300" /> Why remembered</h4><dl className="mt-2 space-y-1.5 text-[10px]"><div className="flex justify-between gap-2"><dt className="text-zinc-600">Source</dt><dd className="text-right text-zinc-300">{sourceLabel(memory)}</dd></div><div className="flex justify-between gap-2"><dt className="text-zinc-600">Category</dt><dd className="text-right text-zinc-300">{memory.category}</dd></div><div className="flex justify-between gap-2"><dt className="text-zinc-600">Created</dt><dd className="text-right text-zinc-300">{formatDate(memory.createdAt)}</dd></div><div className="flex justify-between gap-2"><dt className="text-zinc-600">Last observed</dt><dd className="text-right text-zinc-300">{formatDate(memory.lastObservedAt)}</dd></div></dl></div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3"><h4 className="flex items-center gap-2 text-[11px] font-semibold text-zinc-200"><GitBranch className="h-3.5 w-3.5 text-violet-300" /> Evidence</h4><dl className="mt-2 space-y-1.5 text-[10px]"><div className="flex justify-between gap-2"><dt className="text-zinc-600">Evidence</dt><dd className="text-right text-zinc-300">{evidenceCount}</dd></div><div className="flex justify-between gap-2"><dt className="text-zinc-600">Reinforced</dt><dd className="text-right text-zinc-300">{memory.reinforcementCount || 0}×</dd></div><div className="flex justify-between gap-2"><dt className="text-zinc-600">Retrieved</dt><dd className="text-right text-zinc-300">{memory.retrievalCount || 0}×</dd></div><div className="flex justify-between gap-2"><dt className="text-zinc-600">Last recalled</dt><dd className="text-right text-zinc-300">{formatDate(memory.lastRecalledAt)}</dd></div></dl></div>
+      </div>
+
+      <div className="rounded-xl border border-sky-500/15 bg-sky-500/5 p-3"><h4 className="flex items-center gap-2 text-[11px] font-semibold text-zinc-200"><Link2 className="h-3.5 w-3.5 text-sky-300" /> Provenance</h4><dl className="mt-2 space-y-1.5 text-[10px] text-zinc-400"><div>Conversation: <span className="text-zinc-300">{memory.sourceConversationId || '—'}</span></div><div>Artifact: <span className="text-zinc-300">{memory.sourceArtifactId || '—'}</span></div><div>Memory relationships: <span className="text-zinc-300">{getMemoryRelationshipIds(memory).length}</span></div></dl></div>
+
+      {evidenceIds.length > 0 && <div className="rounded-xl border border-violet-500/15 bg-violet-500/5 p-3"><p className="text-[11px] font-semibold text-zinc-200">Supporting evidence chain</p><p className="mt-1 text-[9px] leading-relaxed text-zinc-500">Follow the evidence behind this memory. These controls only change the inspected record.</p><div className="mt-2 space-y-1.5">{evidence.map((item) => <RelationshipButton key={item.id} memory={item} label="Evidence" tone="text-violet-300" onSelect={onSelectMemory} />)}{evidence.length < evidenceIds.length && <p className="text-[9px] text-zinc-600">{evidenceIds.length - evidence.length} referenced evidence record(s) are not present in the current store.</p>}</div></div>}
+
+      {(supersedes || supersededBy || conflicts.length > 0 || (memory.conflictMemoryIds?.length || 0) > 0) && <div className="rounded-xl border border-amber-500/15 bg-amber-500/5 p-3"><p className="text-[11px] font-semibold text-zinc-200">Resolution history</p><div className="mt-2 space-y-1.5">{supersedes && <RelationshipButton memory={supersedes} label="This memory supersedes" tone="text-violet-300" onSelect={onSelectMemory} />}{supersededBy && <RelationshipButton memory={supersededBy} label="Superseded by" tone="text-violet-300" onSelect={onSelectMemory} />}{conflicts.map((item) => <RelationshipButton key={item.id} memory={item} label="Conflicting memory" tone="text-rose-300" onSelect={onSelectMemory} />)}{conflicts.length < (memory.conflictMemoryIds?.length || 0) && <p className="text-[9px] text-zinc-600">Some conflict references are not present in the current store.</p>}</div></div>}
+
+      {related.length > 0 && <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3"><p className="text-[11px] font-semibold text-zinc-200">Related memories</p><div className="mt-2 space-y-1.5">{related.map((item) => <RelationshipButton key={item.id} memory={item} label="Related" onSelect={onSelectMemory} />)}</div></div>}
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3"><h4 className="flex items-center gap-2 text-[11px] font-semibold text-zinc-200"><Clock3 className="h-3.5 w-3.5 text-amber-300" /> Lifecycle</h4><div className="mt-2 space-y-1.5 text-[10px] text-zinc-400"><div>Lifecycle: <span className="text-zinc-300">{memory.lifecycle || 'persistent'}</span></div><div>Expires: <span className="text-zinc-300">{formatDate(memory.expiresAt)}</span></div><div>Pinned: <span className="text-zinc-300">{memory.pinned ? 'Yes' : 'No'}</span></div></div></div>
+      {state === 'archived' && <div className="flex items-start gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-3 text-[10px] text-zinc-500"><Archive className="mt-0.5 h-3.5 w-3.5" /> Retained for history, but excluded from ordinary retrieval.</div>}
+    </div>
+  );
+};
+
+export const MemoryTransparencySettingsPanel: React.FC = () => {
+  const [state, setState] = React.useState<MemoryScratchpadState | null>(null);
+  const [query, setQuery] = React.useState('');
+  const [resolutionFilter, setResolutionFilter] = React.useState<MemoryResolutionFilter>('all');
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const refresh = React.useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const next = await getDbMemoryState(MEMORY_TRANSPARENCY_READ_OPTIONS);
+      setState(next);
+      setSelectedId((current) => current && next.memories.some((memory) => memory.id === current) ? current : next.memories[0]?.id || null);
+    } catch (cause) {
+      console.error('Failed to load memory transparency state:', cause);
+      setError('Memory data could not be loaded. The Scratchpad and chat are unaffected.');
+    } finally { setLoading(false); }
+  }, []);
+
+  React.useEffect(() => { void refresh(); }, [refresh]);
+
+  const memories = state?.memories || [];
+  const counts = React.useMemo(() => countMemoryResolutions(memories), [memories]);
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return memories.filter((memory) => {
+      if (resolutionFilter !== 'all' && getMemoryResolution(memory) !== resolutionFilter) return false;
+      if (!q) return true;
+      return [memory.content, memory.category, memory.kind, memory.resolution, memory.lifecycle, memory.state, ...(memory.tags || [])].some((value) => String(value || '').toLowerCase().includes(q));
+    }).sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }, [memories, query, resolutionFilter]);
+  const selected = memories.find((memory) => memory.id === selectedId) || null;
+  const staleCount = memories.filter((memory) => memory.state === 'stale').length;
+  const conflictedCount = memories.filter((memory) => memory.state === 'conflicted').length;
+  const archivedCount = memories.filter((memory) => memory.state === 'archived' || memory.lifecycle === 'archived').length;
+
+  React.useEffect(() => {
+    if (selected && resolutionFilter !== 'all' && getMemoryResolution(selected) !== resolutionFilter) setSelectedId(filtered[0]?.id || null);
+    else if (!selected && filtered.length > 0) setSelectedId(filtered[0].id);
+  }, [selected, filtered, resolutionFilter]);
+
+  return (
+    <section className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+      <div className="flex items-start justify-between gap-3"><div><h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-300"><Search className="h-4 w-4 text-amber-400" /> Memory transparency</h3><p className="mt-1 text-[11px] leading-relaxed text-zinc-500">Inspect what Elara remembers and why. This view is read-only.</p></div><button type="button" onClick={() => void refresh()} className="rounded-lg border border-zinc-700/60 bg-zinc-800 px-2.5 py-1.5 text-[10px] text-zinc-300 hover:bg-zinc-700">Refresh</button></div>
+      <div className="grid grid-cols-3 gap-2"><div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-2.5"><span className="text-[10px] text-zinc-600">Stored</span><p className="mt-1 text-sm font-semibold text-zinc-200">{memories.length}</p></div><div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-2.5"><span className="text-[10px] text-zinc-600">Stale</span><p className="mt-1 text-sm font-semibold text-amber-300">{staleCount}</p></div><div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-2.5"><span className="text-[10px] text-zinc-600">Conflicted</span><p className="mt-1 text-sm font-semibold text-rose-300">{conflictedCount}</p></div></div>
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-2"><div className="flex gap-1 overflow-x-auto pb-0.5">{MEMORY_RESOLUTION_FILTERS.map((filter) => { const label = filter === 'all' ? 'All' : MEMORY_RESOLUTION_LABELS[filter]; const count = counts[filter]; const active = resolutionFilter === filter; return <button key={filter} type="button" onClick={() => setResolutionFilter(filter)} className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-[10px] transition ${active ? 'border-amber-500/30 bg-amber-500/10 text-amber-200' : 'border-zinc-800 bg-zinc-900 text-zinc-500 hover:text-zinc-300'}`}>{label} <span className="ml-1 opacity-60">{count}</span></button>; })}</div></div>
+      {archivedCount > 0 && <p className="text-[9px] text-zinc-600">{archivedCount} archived record{archivedCount === 1 ? '' : 's'} retained for history.</p>}
+      <label className="relative block"><Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-600" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search memory details..." className="h-9 w-full rounded-xl border border-zinc-800 bg-zinc-950 pl-9 pr-3 text-xs text-zinc-200 outline-none focus:border-amber-500/50" /></label>
+      {error ? <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-3 text-[10px] text-rose-200">{error}</div> : loading ? <div className="rounded-xl border border-dashed border-zinc-800 px-3 py-8 text-center text-[11px] text-zinc-600">Loading memory state…</div> : filtered.length === 0 ? <div className="rounded-xl border border-dashed border-zinc-800 px-3 py-8 text-center text-[11px] text-zinc-600">No memories match this view.</div> : (
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]"><div className="max-h-[42rem] space-y-1.5 overflow-y-auto pr-1">{filtered.map((memory) => { const currentState = memory.state || 'active'; const selectedRow = memory.id === selectedId; return <button key={memory.id} type="button" onClick={() => setSelectedId(memory.id)} className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${selectedRow ? 'border-amber-500/30 bg-amber-500/5' : 'border-zinc-800 bg-zinc-950/50 hover:border-zinc-700'}`}><div className="flex items-center justify-between gap-2"><span className="truncate text-[10px] font-medium text-zinc-200">{memory.category} · {MEMORY_RESOLUTION_LABELS[getMemoryResolution(memory)]}</span><span className={`rounded-md border px-1.5 py-0.5 text-[9px] ${STATE_CLASS[currentState]}`}>{STATE_LABEL[currentState]}</span></div><p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-zinc-400">{memory.content}</p><div className="mt-2 flex items-center gap-2 text-[9px] text-zinc-600"><span>{memory.confidence}</span><span>·</span><span>{memory.importance}</span><span>·</span><span>{memory.reinforcementCount || 0}× reinforced</span></div></button>; })}</div><div className="min-w-0">{selected ? <MemoryDetails memory={selected} allMemories={memories} onSelectMemory={setSelectedId} /> : <div className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-[11px] text-zinc-600">Select a memory to inspect it.</div>}</div></div>
+      )}
+    </section>
+  );
+};

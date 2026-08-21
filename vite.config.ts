@@ -11,6 +11,19 @@ export default defineConfig(() => {
       global: 'globalThis',
     },
     plugins: [
+      {
+        name: 'elara-memory-modal-mount-guard',
+        enforce: 'pre',
+        transform(code: string, id: string) {
+          if (id.endsWith('/src/App.tsx')) {
+            return code.replace(
+              "from './components/MemoryModal';",
+              "from './components/MemoryModalGuard';"
+            );
+          }
+          return null;
+        },
+      },
       react(),
       tailwindcss(),
       VitePWA({

@@ -54,6 +54,18 @@ export function getCachedModels(): DiscoveredModel[] | null {
   return cached?.models || null;
 }
 
+function deduplicateModels(models: DiscoveredModel[]): DiscoveredModel[] {
+  const seen = new Set<string>();
+  return models.filter((model) => {
+    const id = model.id.trim().toLowerCase();
+    const name = model.name.trim().toLowerCase();
+    const key = id || name;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export async function discoverGeminiModels(apiKey: string, forceRefresh = false): Promise<DiscoveredModel[]> {
   const cached = readCache();
   if (!forceRefresh && cached && Date.now() - cached.savedAt < MODEL_CACHE_TTL_MS) {

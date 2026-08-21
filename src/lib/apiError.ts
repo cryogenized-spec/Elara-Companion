@@ -7,6 +7,9 @@ export type ElaraApiErrorCode =
   | 'CONTEXT_LIMIT_400'
   | 'INVALID_REQUEST_400'
   | 'CONTENT_SAFETY_400'
+  | 'REQUEST_TIMEOUT_408'
+  | 'SERVER_ERROR_500'
+  | 'BAD_GATEWAY_502'
   | 'SERVICE_UNAVAILABLE_503'
   | 'GATEWAY_TIMEOUT_504'
   | 'NETWORK_ERROR'
@@ -58,6 +61,17 @@ export function classifyApiError(error: any, modelId?: string): ClassifiedApiErr
   const rawMessage = extractRawMessage(error);
   const lower = rawMessage.toLowerCase();
   const status = extractHttpStatus(error);
+
+  if (error?.name === 'AbortError' || lower.includes('aborted by user') || lower.includes('aborterror')) {
+    return {
+      code: 'CLIENT_RUNTIME_ERROR',
+      httpStatus: status,
+      modelId,
+      message: 'The request was cancelled.',
+      retryable: false,
+      rawMessage,
+    };
+  }
 
   if (lower.includes('safety') || lower.includes('blocked by safety') || lower.includes('content policy')) {
     return {
@@ -118,6 +132,18 @@ export function classifyApiError(error: any, modelId?: string): ClassifiedApiErr
     };
   }
 
+  if (status === 408 || lower.includes('request timeout') || lower.includes('timed out')) {
+    return {
+      code: 'REQUEST_TIMEOUT_408',
+      httpStatus: 408,
+      modelId,
+      message: `Gemini did not complete the request in time${modelId ? ` for [${modelId}]` : ''}. Your conversation is safe; retry shortly.`,
+      retryable: true,
+      retryAfterMs: retryAfterMs(error) || 1000,
+      rawMessage,
+    };
+  }
+
   if (status === 503 || lower.includes('unavailable') || lower.includes('overloaded')) {
     return {
       code: 'SERVICE_UNAVAILABLE_503',
@@ -137,7 +163,31 @@ export function classifyApiError(error: any, modelId?: string): ClassifiedApiErr
       modelId,
       message: 'Gemini took too long to respond. Your conversation is safe; retry when ready.',
       retryable: true,
-      retryAfterMs: 3000,
+      retryAfterMs: retryAfterMs(error) || 3000,
+      rawMessage,
+    };
+  }
+
+  if (status === 502 || lower.includes('bad gateway')) {
+    return {
+      code: 'BAD_GATEWAY_502',
+      httpStatus: 502,
+      modelId,
+      message: 'The gateway to Gemini failed temporarily. Your conversation is safe; retry shortly.',
+      retryable: true,
+      retryAfterMs: retryAfterMs(error) || 2000,
+      rawMessage,
+    };
+  }
+
+  if (status === 500 || lower.includes('internal server error') || lower.includes('internal error')) {
+    return {
+      code: 'SERVER_ERROR_500',
+      httpStatus: 500,
+      modelId,
+      message: 'Gemini returned a temporary server error. Your conversation is safe; retry shortly.',
+      retryable: true,
+      retryAfterMs: retryAfterMs(error) || 2000,
       rawMessage,
     };
   }
