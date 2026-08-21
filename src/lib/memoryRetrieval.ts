@@ -18,6 +18,7 @@ export interface MemoryRetrievalResult {
 
 const DEFAULT_LIMIT = 8;
 const DEFAULT_MINIMUM_SCORE = 0.18;
+export const DEFAULT_MEMORY_CONTEXT_MAX_CHARS = 6000;
 
 function normalizeText(value: string): string {
   return value
@@ -155,16 +156,36 @@ export function retrieveRelevantMemories(
     .filter((result) => result.score >= minimumScore)
     .sort((left, right) => {
       if (right.score !== left.score) return right.score - left.score;
-      return (right.memory.updatedAt || '').localeCompare(left.memory.updatedAt || '');
+      const updated = (right.memory.updatedAt || '').localeCompare(left.memory.updatedAt || '');
+      if (updated !== 0) return updated;
+      return left.memory.id.localeCompare(right.memory.id);
     })
     .slice(0, limit);
 }
 
-export function formatRetrievedMemoryContext(results: MemoryRetrievalResult[]): string {
-  if (results.length === 0) return '';
-  return results.map(({ memory, score }) => {
+export function formatRetrievedMemoryContext(
+  results: MemoryRetrievalResult[],
+  maxChars = DEFAULT_MEMORY_CONTEXT_MAX_CHARS,
+): string {
+  if (results.length === 0 || maxChars <= 0) return '';
+
+  const lines: string[] = [];
+  let used = 0;
+  for (const { memory, score } of results) {
     const resolution = memory.resolution || 'contextual';
     const confidence = memory.confidence || 'uncertain';
-    return `- [${resolution}] [${confidence}] [relevance ${(score * 100).toFixed(0)}%] ${memory.content}`;
-  }).join('\n');
+    const prefix = `- [${resolution}] [${confidence}] [relevance ${(score * 100).toFixed(0)}%] `;
+    const available = maxChars - used;
+    if (available <= prefix.length + 1) break;
+    const content = memory.content.replace(/\s+/g, ' ').trim();
+    const lineBudget = available - prefix.length - 1;
+    const shortened = content.length > lineBudget
+      ? `${content.slice(0, Math.max(0, lineBudget - 1)).trimEnd()}…`
+      : content;
+    const line = `${prefix}${shortened}`;
+    lines.push(line);
+    used += line.length + 1;
+    if (line.length < prefix.length + content.length) break;
+  }
+  return lines.join('\n');
 }
