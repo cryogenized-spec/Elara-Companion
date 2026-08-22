@@ -20,6 +20,22 @@ export function buildLockboxStatus(env = process.env) {
   }));
 }
 
+export function summarizeLockboxStatus(rows) {
+  return {
+    total: rows.length,
+    configured: rows.filter((row) => row.status === 'configured').length,
+    missing: rows.filter((row) => row.status === 'missing').length,
+    managedByRuntime: rows.filter((row) => row.status === 'managed-by-runtime').length,
+  };
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  console.log(JSON.stringify({ environment: process.env.NODE_ENV || 'development', lockbox: buildLockboxStatus() }, null, 2));
+  const rows = buildLockboxStatus();
+  const summary = summarizeLockboxStatus(rows);
+  console.log(`Elara Lockbox — Pass ${manifest.pass}`);
+  console.log(`Configured: ${summary.configured} | Missing: ${summary.missing} | Managed by runtime: ${summary.managedByRuntime}`);
+  console.log('');
+  for (const row of rows) {
+    console.log(`${row.status === 'configured' ? '✓' : row.status === 'missing' ? '✗' : '•'} ${row.name} [${row.class}]`);
+  }
 }
