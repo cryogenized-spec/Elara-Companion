@@ -72,4 +72,12 @@ main > .relative.z-10 { position: sticky; bottom: 0; z-index: 40; }
   main > div > .absolute.top-20.z-20 { display: none !important; }
 }
 
+/* Rendering containment: historical chat rows are independently laid out/painted.
+   The live streaming row remains reactive; off-screen history can be skipped by the browser. */
+main [data-elara-message-id] {
+  content-visibility: auto;
+  contain: layout paint style;
+  contain-intrinsic-size: auto 96px;
+}
+
 button, input, textarea, select { font: inherit; }
