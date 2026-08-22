@@ -1,8 +1,11 @@
+import { createAutomationLockbox } from './automation-lockbox.mjs';
+
 const GH_API = 'https://api.github.com';
-const stateRepo = process.env.ELARA_STATE_REPO;
-const token = process.env.ELARA_STATE_TOKEN;
-const automationId = process.env.AUTOMATION_ID;
-const executionKey = process.env.EXECUTION_KEY;
+const lockbox = createAutomationLockbox();
+const stateRepo = lockbox.requireConfig('ELARA_STATE_REPO');
+const token = lockbox.secret('ELARA_STATE_TOKEN');
+const automationId = lockbox.requireConfig('AUTOMATION_ID');
+const executionKey = lockbox.requireConfig('EXECUTION_KEY');
 
 function headers() {
   return {
@@ -58,7 +61,7 @@ async function executeElaraAutomation(prompt, workspace, googleToken) {
     MAX_AGENT_ITERATIONS,
   } = await import('../src/lib/chatRuntime.ts');
 
-  const model = normalizeModelName(process.env.GEMINI_MODEL || 'gemini-3.6-flash');
+  const model = normalizeModelName(lockbox.config('GEMINI_MODEL') || 'gemini-3.6-flash');
   const ai = getGeminiClient();
   const systemPrompt = [
     '[SCHEDULED AUTOMATION CONTEXT]',
@@ -126,15 +129,6 @@ async function executeElaraAutomation(prompt, workspace, googleToken) {
 }
 
 async function main() {
-  if (!stateRepo || !token || !automationId || !executionKey) {
-    console.log('Automation executor is not configured or was invoked without a job.');
-    return;
-  }
-
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY is required for Pass 3 automation execution.');
-  }
-
   const automationsFile = await getStateFile('automations.json');
   const runtimeFile = await getStateFile('runtime.json');
   const automations = Array.isArray(automationsFile.value) ? automationsFile.value : [];
@@ -158,17 +152,15 @@ async function main() {
   runtime.jobs[executionKey] = {
     ...existingJob,
     status: 'running',
-    workerRunId: process.env.GITHUB_RUN_ID || null,
-    workerUrl: process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY
-      ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+    workerRunId: lockbox.config('GITHUB_RUN_ID') || null,
+    workerUrl: lockbox.config('GITHUB_SERVER_URL') && lockbox.config('GITHUB_REPOSITORY')
+      ? `${lockbox.config('GITHUB_SERVER_URL')}/${lockbox.config('GITHUB_REPOSITORY')}/actions/runs/${lockbox.config('GITHUB_RUN_ID')}`
       : null,
     startedAt: existingJob.startedAt || now,
     updatedAt: now,
   };
   await putStateFile('runtime.json', runtime, runtimeFile.sha, `automation: running ${executionKey}`);
 
-  // Automation executions intentionally start with an in-memory workspace.
-  // Pass 4 will persist/bridge this workspace and automation output properly.
   const workspace = {
     id: `automation-${automationId}`,
     name: automation.name || 'Automation Workspace',
@@ -177,7 +169,11 @@ async function main() {
   };
 
   try {
-    const result = await executeElaraAutomation(String(automation.prompt || ''), workspace, process.env.ELARA_GOOGLE_TOKEN);
+    const result = await executeElaraAutomation(
+      String(automation.prompt || ''),
+      workspace,
+      lockbox.optionalSecret('ELARA_GOOGLE_TOKEN'),
+    );
     const refreshedRuntime = await getStateFile('runtime.json');
     const refreshed = refreshedRuntime.value && typeof refreshedRuntime.value === 'object'
       ? refreshedRuntime.value
