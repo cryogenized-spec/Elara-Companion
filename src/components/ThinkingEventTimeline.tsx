@@ -70,7 +70,23 @@ function compactDuration(durationMs?: number): string | null {
   return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
-export const ThinkingEventTimeline: React.FC<ThinkingEventTimelineProps> = ({
+const areThinkingEventTimelinePropsEqual = (previous: ThinkingEventTimelineProps, next: ThinkingEventTimelineProps) => {
+  if (previous.isStreaming !== next.isStreaming || previous.thoughtDurationMs !== next.thoughtDurationMs || previous.defaultCollapsed !== next.defaultCollapsed) return false;
+  if (previous.events === next.events) return true;
+  if (previous.events.length !== next.events.length) return false;
+  if (previous.events.length === 0) return true;
+  const previousLast = previous.events[previous.events.length - 1];
+  const nextLast = next.events[next.events.length - 1];
+  return previousLast.id === nextLast.id
+    && previousLast.sequence === nextLast.sequence
+    && previousLast.status === nextLast.status
+    && previousLast.title === nextLast.title
+    && previousLast.summary === nextLast.summary
+    && previousLast.detail === nextLast.detail
+    && previousLast.durationMs === nextLast.durationMs;
+};
+
+const ThinkingEventTimelineBase: React.FC<ThinkingEventTimelineProps> = ({
   events,
   isStreaming = false,
   thoughtDurationMs,
@@ -177,3 +193,5 @@ export const ThinkingEventTimeline: React.FC<ThinkingEventTimelineProps> = ({
     </div>
   );
 };
+
+export const ThinkingEventTimeline = React.memo(ThinkingEventTimelineBase, areThinkingEventTimelinePropsEqual);
