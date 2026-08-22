@@ -1,17 +1,13 @@
+import { createAutomationLockbox } from './automation-lockbox.mjs';
+
 const GH_API = 'https://api.github.com';
-const stateRepo = process.env.ELARA_STATE_REPO;
-const token = process.env.ELARA_STATE_TOKEN;
-const ownerRepo = process.env.GITHUB_REPOSITORY;
-const automationIdFilter = process.env.AUTOMATION_ID || '';
+const lockbox = createAutomationLockbox();
+const stateRepo = lockbox.requireConfig('ELARA_STATE_REPO');
+const token = lockbox.secret('ELARA_STATE_TOKEN');
+const ownerRepo = lockbox.requireConfig('GITHUB_REPOSITORY');
+const automationIdFilter = lockbox.config('AUTOMATION_ID') || '';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function requireConfig() {
-  if (!stateRepo || !token || !ownerRepo) {
-    console.log('Elara automation worker is not configured yet. Set ELARA_STATE_REPO and ELARA_STATE_TOKEN.');
-    process.exit(0);
-  }
-}
 
 function headers() {
   return {
@@ -101,7 +97,6 @@ async function dispatchWithRetry(automation, executionKey) {
 }
 
 async function main() {
-  requireConfig();
   const now = new Date();
 
   const automationsFile = await getStateFile('automations.json');
@@ -159,7 +154,7 @@ async function main() {
         dispatchedAt: new Date().toISOString(),
       };
       runtime.schedules[automation.id] = {
-        nextRunAt: manual ? advanceNextRun(automation, scheduled.toISOString()) : advanceNextRun(automation, scheduled.toISOString()),
+        nextRunAt: advanceNextRun(automation, scheduled.toISOString()),
       };
       changed = true;
       console.log(`Dispatched automation ${automation.id} (${executionKey}) after ${attempts} attempt(s).`);
