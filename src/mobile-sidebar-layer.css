@@ -1,0 +1,15 @@
+/* Mobile navigation is a top-level UI plane. When open, release the app-shell
+   clipping boundary so the fixed sidebar can cover chat, portrait and COT surfaces. */
+@media (max-width: 767px) {
+  #root > div:has(> aside.fixed.translate-x-0) {
+    overflow: visible !important;
+  }
+
+  #root > div > aside.fixed {
+    z-index: 2147483647 !important;
+  }
+
+  #root > div > div.fixed.inset-0 {
+    z-index: 2147483646 !important;
+  }
+}
