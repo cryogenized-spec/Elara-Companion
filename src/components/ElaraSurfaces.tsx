@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Bell, Cloud, CloudCog, Grid2X2, X, BookOpen, Layers3 } from 'lucide-react';
+import { Cloud, CloudCog, Grid2X2, X, BookOpen, Layers3 } from 'lucide-react';
 import { ArtifactsPanel } from './ArtifactsPanel';
-import { GoogleWorkspaceSettingsPanel } from './GoogleWorkspaceSettingsPanel';
+import { GoogleCapabilitySettingsPanel } from './GoogleCapabilitySettingsPanel';
 import { DurableBackgroundPanel } from './DurableBackgroundPanel';
 import { ScratchpadPanel } from './ScratchpadPanel';
 import { WorkspaceArtifact } from '../types';
@@ -43,9 +43,7 @@ export const ElaraSurfaces: React.FC = () => {
       )}
 
       <div data-elara-surface-strip className="fixed bottom-4 right-4 z-30 flex max-w-[calc(100vw-2rem)] items-center gap-2 overflow-x-auto sm:bottom-5 sm:right-5">
-        <button type="button" className="mobile-surfaces-trigger inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl" onClick={() => setSurface(surface ? null : 'artifacts')} title="Open Elara surfaces">
-          <Layers3 className="h-4 w-4 text-violet-400" /> Surfaces
-        </button>
+        <button type="button" className="mobile-surfaces-trigger inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl" onClick={() => setSurface(surface ? null : 'artifacts')} title="Open Elara surfaces"><Layers3 className="h-4 w-4 text-violet-400" /> Surfaces</button>
         <div className="desktop-surface-actions flex items-center gap-2">
           <button onClick={() => setSurface('artifacts')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-violet-500/40 hover:text-white" title="Artifacts"><Grid2X2 className="h-4 w-4 text-violet-400" /> Artifacts</button>
           <button onClick={() => setSurface('scratchpad')} className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/95 px-4 text-xs font-semibold text-zinc-200 shadow-2xl shadow-black/30 backdrop-blur-xl hover:border-amber-500/40 hover:text-white" title="Scratchpad"><BookOpen className="h-4 w-4 text-amber-400" /> Scratchpad</button>
@@ -56,25 +54,8 @@ export const ElaraSurfaces: React.FC = () => {
 
       {surface === 'artifacts' && <ArtifactsPanel onBack={() => setSurface(null)} />}
       {surface === 'scratchpad' && <ScratchpadPanel onBack={() => setSurface(null)} />}
-      {surface === 'background' && (
-        <div className="fixed inset-0 z-30 flex h-[100dvh] w-full flex-col bg-[#09090b] text-zinc-100">
-          <header className="flex min-h-14 items-center gap-3 border-b border-zinc-800 bg-[#0d0d0f]/95 px-3 backdrop-blur-xl">
-            <button onClick={() => setSurface(null)} className="h-9 w-9 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100">←</button>
-            <div><div className="text-sm font-semibold">Background runtime</div><div className="text-[10px] text-zinc-500">Continue supported work after the page closes</div></div>
-          </header>
-          <main className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5"><DurableBackgroundPanel /></main>
-        </div>
-      )}
-
-      {surface === 'google' && (
-        <div className="fixed inset-0 z-30 flex h-[100dvh] w-full flex-col bg-[#09090b] text-zinc-100">
-          <header className="flex min-h-14 items-center gap-3 border-b border-zinc-800 bg-[#0d0d0f]/95 px-3 backdrop-blur-xl">
-            <button onClick={() => setSurface(null)} className="h-9 w-9 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100" title="Close"><X className="mx-auto h-4 w-4" /></button>
-            <div><div className="text-sm font-semibold">Google Workspace</div><div className="text-[10px] text-zinc-500">Master authentication and refresh controls</div></div>
-          </header>
-          <main className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5"><GoogleWorkspaceSettingsPanel /></main>
-        </div>
-      )}
+      {surface === 'background' && <div className="fixed inset-0 z-30 flex h-[100dvh] w-full flex-col bg-[#09090b] text-zinc-100"><header className="flex min-h-14 items-center gap-3 border-b border-zinc-800 bg-[#0d0d0f]/95 px-3 backdrop-blur-xl"><button onClick={() => setSurface(null)} className="h-9 w-9 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100">←</button><div><div className="text-sm font-semibold">Background runtime</div><div className="text-[10px] text-zinc-500">Continue supported work after the page closes</div></div></header><main className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5"><DurableBackgroundPanel /></main></div>}
+      {surface === 'google' && <div className="fixed inset-0 z-30 flex h-[100dvh] w-full flex-col bg-[#09090b] text-zinc-100"><header className="flex min-h-14 items-center gap-3 border-b border-zinc-800 bg-[#0d0d0f]/95 px-3 backdrop-blur-xl"><button onClick={() => setSurface(null)} className="h-9 w-9 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100" title="Close"><X className="mx-auto h-4 w-4" /></button><div><div className="text-sm font-semibold">Google Workspace</div><div className="text-[10px] text-zinc-500">Identity and least-privilege capability permissions</div></div></header><main className="min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5"><GoogleCapabilitySettingsPanel /></main></div>}
     </>
   );
 };
