@@ -18,6 +18,7 @@ import { runDirectGeminiStream, runDirectMemoryExtraction, runDirectTitleGenerat
 import { applyMemoryActions } from './lib/memoryProcessor';
 import { createBackgroundChatJob, isBackgroundRuntimeEnabled, loadPersistedBackgroundJobs, persistBackgroundJob, removePersistedBackgroundJob, waitForBackgroundChatJob } from './lib/backgroundChatClient';
 import { notifyBackgroundCompletion } from './lib/backgroundService';
+import { createStreamUiScheduler } from './lib/streamUiScheduler';
 
 import { 
   getDbConversations, setDbConversations,
@@ -184,15 +185,15 @@ export default function App() {
     userHasScrolledUpRef.current = distanceToBottom > 120;
   };
 
-  const scrollToBottom = (force = false) => {
+  const scrollToBottom = (force = false, behavior: ScrollBehavior = 'smooth') => {
     if ((force || !userHasScrolledUpRef.current) && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      messagesEndRef.current.scrollIntoView({ behavior });
     }
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [activeConversation?.messages]);
+    scrollToBottom(false, isStreaming ? 'auto' : 'smooth');
+  }, [activeConversation?.messages, isStreaming]);
 
   // Handle New Conversation
   const handleNewConversation = () => {
@@ -374,6 +375,18 @@ export default function App() {
     let isDone = false;
     let durableJobAccepted = false;
 
+    const streamUiScheduler = createStreamUiScheduler<Partial<Message>>((patch) => {
+      setConversations((prev) =>
+        prev.map((c) => {
+          if (c.id !== targetConvId) return c;
+          const msgs = c.messages.map((m) =>
+            m.id === assistantMsgId ? { ...m, ...patch } : m
+          );
+          return { ...c, messages: msgs };
+        })
+      );
+    });
+
     // Watchdog interval to catch stalled background processes on mobile
     const WATCHDOG_TIMEOUT_MS = 20000;
     const watchdogInterval = setInterval(() => {
@@ -442,74 +455,62 @@ export default function App() {
         });
       }
 
-      // Handle streaming thought chunks
-      if (chunk.thoughtText) {
-        streamedThoughts += chunk.thoughtText;
-        const activeSentence = getActiveThoughtSentence(streamedThoughts);
-        const thoughtSteps = parseThoughtSteps(streamedThoughts);
-
-        setConversations((prev) =>
-          prev.map((c) => {
-            if (c.id !== targetConvId) return c;
-            const msgs = c.messages.map((m) =>
-              m.id === assistantMsgId
-                ? {
-                    ...m,
-                    isThinking: true,
-                    rawThoughts: streamedThoughts,
-                    currentThoughtSentence: activeSentence,
-                    thoughts: thoughtSteps,
-                    thoughtDurationMs: Date.now() - assistantStartTime,
-                    artifactIds: Array.from(new Set([...(m.artifactIds || []), ...streamArtifactIds])),
-                  }
-                : m
-            );
-            return { ...c, messages: msgs };
-          })
-        );
-        scrollToBottom();
-      }
-
-      // Handle content text chunks
       if (chunk.text) {
         accumulatedText += chunk.text;
       }
 
+      let combinedThoughts = streamedThoughts;
+      let finalCleanContent = '';
+      let canvases: CanvasData[] = [];
+      let isThinking = false;
+
+      if (accumulatedText || chunk.finishReason === 'SAFETY' || chunk.toolCall || (chunk.artifactIds && chunk.artifactIds.length > 0) || chunk.thoughtText) {
+        const extracted = extractThoughtsAndContent(accumulatedText, streamedThoughts);
+        combinedThoughts = extracted.combinedThoughts;
+        const canvasResult = extractCanvases(extracted.cleanContent);
+        finalCleanContent = canvasResult.cleanContent;
+        canvases = canvasResult.canvases;
+        isThinking = extracted.isInsideThoughtTag || (finalCleanContent.length === 0 && Boolean(streamedThoughts));
+      }
+
+      if (chunk.thoughtText) {
+        streamedThoughts += chunk.thoughtText;
+        combinedThoughts = streamedThoughts;
+        const activeSentence = getActiveThoughtSentence(streamedThoughts);
+        const thoughtSteps = parseThoughtSteps(streamedThoughts);
+
+        streamUiScheduler.enqueue({
+          isThinking: true,
+          rawThoughts: streamedThoughts,
+          currentThoughtSentence: activeSentence,
+          thoughts: thoughtSteps,
+          thoughtDurationMs: Date.now() - assistantStartTime,
+          artifactIds: Array.from(new Set(streamArtifactIds)),
+        });
+      }
+
       if (chunk.text || chunk.finishReason === 'SAFETY' || chunk.toolCall || (chunk.artifactIds && chunk.artifactIds.length > 0)) {
-        let { cleanContent, combinedThoughts, isInsideThoughtTag } =
-          extractThoughtsAndContent(accumulatedText, streamedThoughts);
-        const { cleanContent: finalCleanContent, canvases } = extractCanvases(cleanContent);
-        
         const activeSentence = getActiveThoughtSentence(combinedThoughts);
         const thoughtSteps = parseThoughtSteps(combinedThoughts);
+        isThinking = extractedIsThinkingSafe(combinedThoughts, finalCleanContent, isThinking);
 
-        const isThinking =
-          isInsideThoughtTag || (finalCleanContent.length === 0 && Boolean(streamedThoughts));
-
-        setConversations((prev) =>
-          prev.map((c) => {
-            if (c.id !== targetConvId) return c;
-            const msgs = c.messages.map((m) =>
-              m.id === assistantMsgId
-                ? {
-                    ...m,
-                    content: finalCleanContent,
-                    canvases,
-                    artifactIds: Array.from(new Set([...(m.artifactIds || []), ...streamArtifactIds])),
-                    isThinking: isThinking,
-                    rawThoughts: combinedThoughts,
-                    currentThoughtSentence: activeSentence,
-                    thoughts: thoughtSteps,
-                    thoughtDurationMs: Date.now() - assistantStartTime,
-                  }
-                : m
-            );
-            return { ...c, messages: msgs };
-          })
-        );
-        scrollToBottom();
+        streamUiScheduler.enqueue({
+          content: finalCleanContent,
+          canvases,
+          artifactIds: Array.from(new Set(streamArtifactIds)),
+          isThinking,
+          rawThoughts: combinedThoughts,
+          currentThoughtSentence: activeSentence,
+          thoughts: thoughtSteps,
+          thoughtDurationMs: Date.now() - assistantStartTime,
+        });
       }
     };
+
+    function extractedIsThinkingSafe(combinedThoughts: string, cleanContent: string, fallback: boolean): boolean {
+      if (!combinedThoughts) return false;
+      return fallback || (cleanContent.length === 0 && Boolean(combinedThoughts));
+    }
 
     try {
       // Increment API rate limit
@@ -585,7 +586,6 @@ export default function App() {
           });
         } catch (fetchErr: any) {
           if (fetchErr.name === 'AbortError') throw fetchErr;
-          // If network fetch failed (static GitHub Pages hosting without backend)
           throw new Error(
             'Cannot reach backend server. If running on GitHub Pages, please enter your Gemini API Key in Settings (Model & API tab).'
           );
@@ -599,11 +599,9 @@ export default function App() {
           }
           let errText = await response.text().catch(() => '');
           try {
-            // Try to parse JSON to extract clean message if possible
             const jsonErr = JSON.parse(errText);
             errText = jsonErr.error?.message || jsonErr.error || jsonErr.message || 'API request failed';
           } catch {
-            // If it's HTML (gateway error), simplify it
             if (errText.trim().startsWith('<') || errText.includes('<html>')) {
                errText = `Service unavailable (HTTP ${response.status})`;
             }
@@ -666,6 +664,7 @@ export default function App() {
       isDone = true;
       clearInterval(watchdogInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      streamUiScheduler.flush();
 
       // Mark streaming and thinking completed & finalize structured steps
       let { cleanContent, combinedThoughts } = extractThoughtsAndContent(
@@ -771,6 +770,7 @@ export default function App() {
       if (durableJobAccepted) {
         console.error('Durable background execution failed after acceptance:', err);
       }
+      streamUiScheduler.flush();
       if (err.name === 'AbortError' && !err.message?.includes('Connection lost')) {
         console.log('Stream generation stopped by user');
       } else {
@@ -793,10 +793,8 @@ export default function App() {
           }
         } catch (_) {}
 
-        // Format clean display error if raw JSON slipped through
         const currentSelectedModel = settings.model || 'gemini-3.7-flash';
         if (userFacingError.startsWith('⚠️') || userFacingError.includes('HTTP 429') || userFacingError.includes('HTTP 503')) {
-          // Already properly formatted
         } else if (userFacingError.includes('Connection lost')) {
           userFacingError = `⚠️ ${userFacingError} Please check your connection and retry.`;
         } else if (userFacingError.includes('Quota exceeded') || userFacingError.includes('429') || userFacingError.includes('RESOURCE_EXHAUSTED')) {
@@ -827,6 +825,8 @@ export default function App() {
       isDone = true;
       clearInterval(watchdogInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      streamUiScheduler.flush();
+      streamUiScheduler.cancel();
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
@@ -924,7 +924,6 @@ export default function App() {
     const msgs = activeConversation.messages;
     if (msgs.length === 0) return;
 
-    // Find the last user message
     let lastUserIndex = -1;
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (msgs[i].role === 'user') {
@@ -940,7 +939,6 @@ export default function App() {
     const userMsgImage = lastUserMsg.image;
     const historyMsgs = msgs.slice(0, lastUserIndex);
 
-    // Truncate messages after last user message
     const trimmedMsgs = msgs.slice(0, lastUserIndex + 1);
 
     setConversations((prev) =>
@@ -956,7 +954,6 @@ export default function App() {
   const handleEditAndResend = (messageId: string, newContent: string) => {
     if (!activeConversation || isStreaming) return;
     const msgs = activeConversation.messages;
-
     const targetIndex = msgs.findIndex((m) => m.id === messageId);
     if (targetIndex === -1) return;
 
@@ -1056,7 +1053,6 @@ export default function App() {
 
   return (
     <div className="flex h-full w-full bg-[#0a0a0a] text-zinc-100 font-sans overflow-hidden select-none dark">
-      {/* Sidebar Navigation */}
       <Sidebar
         conversations={conversations}
         folders={folders}
@@ -1082,18 +1078,14 @@ export default function App() {
         onOpenWorkspace={() => setCurrentView('workspace')}
         isOpen={sidebarOpen}
         onCloseMobile={() => setSidebarOpen(false)}
-
         theme={theme}
         onToggleTheme={handleToggleTheme}
       />
 
-      {/* Main Workspace (Chat + Portrait Side Panel) */}
       <div className="flex-1 flex h-full min-w-0 bg-[#0a0a0a] relative overflow-hidden">
         {currentView === 'chat' ? (
           <>
-            {/* Main Chat Interface */}
             <main className="flex-1 flex flex-col h-full min-w-0 bg-[#0a0a0a] relative">
-          {/* Custom Chat Backdrop Background Overlay */}
           {settings.backdropImage && (
             <div
               className="absolute inset-0 pointer-events-none z-0 bg-cover bg-center bg-no-repeat transition-all duration-300"
@@ -1105,7 +1097,6 @@ export default function App() {
             />
           )}
 
-          {/* Header Bar */}
           <header className="h-16 border-b border-zinc-800 bg-[#0a0a0a]/80 backdrop-blur-md flex items-center justify-between px-4 md:px-6 z-10 shrink-0">
             <div className="flex items-center space-x-3.5 min-w-0">
               <button
@@ -1155,7 +1146,6 @@ export default function App() {
                 <span>World State</span>
               </button>
 
-
               <button
                 onClick={() => setSettingsOpen(true)}
                 className="p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-800 transition-colors"
@@ -1166,7 +1156,6 @@ export default function App() {
             </div>
           </header>
 
-          {/* Solo Free-Floating Lone Portrait in Top Left Corner */}
           {(() => {
             const portraitWidth = Math.min(
               Math.max(Math.round(52 * (settings.portraitScale ?? 1.0)), 38),
@@ -1176,8 +1165,8 @@ export default function App() {
               Math.max(Math.round(65 * (settings.portraitScale ?? 1.0)), 48),
               275
             );
-            const portraitLeft = 12; // 12px from left edge
-            const tinySpace = 8; // minimal gap between portrait and text card
+            const portraitLeft = 12;
+            const tinySpace = 8;
             const chatPaddingLeft = portraitLeft + portraitWidth + tinySpace;
 
             return (
@@ -1195,11 +1184,7 @@ export default function App() {
                     title="Elara Consort — Click to view / change portrait"
                     className="w-full h-full rounded-2xl overflow-hidden border border-sky-500/40 shadow-2xl bg-zinc-950/80 backdrop-blur-md hover:border-sky-400 hover:scale-105 active:scale-95 transition-all cursor-pointer group relative ring-1 ring-sky-500/20"
                   >
-                    <img
-                      src={activePortrait}
-                      alt="Elara Portrait"
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={activePortrait} alt="Elara Portrait" className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-1">
                       <span className="text-[9px] font-semibold text-sky-200 tracking-wide drop-shadow">Elara</span>
                     </div>
@@ -1207,17 +1192,13 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Message Feed Area */}
                 <div
                   ref={scrollContainerRef}
                   onScroll={handleScroll}
                   className="flex-1 overflow-y-auto touch-scroll space-y-3 pt-3 pb-6 pr-2.5 sm:pr-4 select-text custom-scrollbar relative z-10 transition-all"
-                  style={{
-                    paddingLeft: `${chatPaddingLeft}px`,
-                  }}
+                  style={{ paddingLeft: `${chatPaddingLeft}px` }}
                 >
                   {!activeConversation || activeConversation.messages.length === 0 ? (
-                    /* Empty State Greeting */
                     <div className="h-full flex flex-col items-center justify-center p-4 text-center max-w-xl mx-auto">
                       <div className="w-16 h-16 rounded-3xl bg-zinc-900/90 border border-zinc-800 flex items-center justify-center text-sky-400 shadow-xl mb-5 backdrop-blur-sm">
                         <Sparkles className="w-8 h-8" />
@@ -1249,7 +1230,6 @@ export default function App() {
                       </div>
                     </div>
                   ) : (
-                    /* Messages List */
                     (() => {
                       const lastUserMessage = [...activeConversation.messages]
                         .reverse()
@@ -1286,7 +1266,6 @@ export default function App() {
             );
           })()}
 
-          {/* Composer Input Bar */}
           <div className="relative z-10">
             <MessageComposer
               onSendMessage={handleSendMessage}
@@ -1310,7 +1289,6 @@ export default function App() {
           />
         )}
 
-        {/* Desktop Right Portrait Panel */}
         <aside
           style={{
             width: `${Math.min(Math.max(Math.round(320 * (settings.portraitScale ?? 1.0)), 260), 640)}px`,
@@ -1353,7 +1331,6 @@ export default function App() {
         )}
       </div>
 
-      {/* Modals */}
       <MemoryModal
         isOpen={memoryModalOpen}
         onClose={() => setMemoryModalOpen(false)}
@@ -1377,7 +1354,6 @@ export default function App() {
       />
 
       <WorldModal
-
         isOpen={worldModalOpen}
         onClose={() => setWorldModalOpen(false)}
         worldState={worldState}
@@ -1411,7 +1387,6 @@ export default function App() {
         onClearAllData={handleClearAllData}
       />
 
-      {/* Hidden file input for uploading portrait from viewer modal */}
       <input
         ref={portraitFileInputRef}
         type="file"
