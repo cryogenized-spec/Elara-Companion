@@ -119,7 +119,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <MessageSquare className={`w-3.5 h-3.5 mr-2.5 shrink-0 ${isActive ? 'text-sky-400' : 'text-zinc-500'}`} />
         <span className="truncate flex-1 min-w-0">{conv.title || 'New Conversation'}</span>
 
-        {/* Actions on hover/active */}
         <div className={`flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isActive ? 'opacity-100' : ''}`}>
           {onMoveToFolder && folders.length > 0 && (
             <div className="relative">
@@ -194,21 +193,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <>
-      {/* Mobile Backdrop */}
       {isOpen && (
         <div
           onClick={onCloseMobile}
-          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-30 md:hidden"
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[90] md:hidden"
         />
       )}
 
-      {/* Sidebar Container */}
       <aside
-        className={`fixed md:static inset-y-0 left-0 w-72 md:w-80 bg-[#121212] border-r border-zinc-800 flex flex-col z-40 transition-transform duration-300 ease-in-out ${
+        className={`fixed md:static inset-y-0 left-0 w-72 md:w-80 bg-[#121212] border-r border-zinc-800 flex flex-col z-[100] transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
       >
-        {/* Brand Header */}
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-sky-600 flex items-center justify-center text-white font-bold text-xs shadow-md shadow-sky-900/30">
@@ -228,7 +224,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        {/* Action Header: New Chat & New Folder */}
         <div className="p-4 pb-2 space-y-2">
           <div className="flex items-center gap-2">
             <button
@@ -253,7 +248,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </div>
 
-          {/* Inline Folder Creation */}
           {isCreatingFolder && (
             <form onSubmit={handleCreateFolderSubmit} className="p-2 rounded-xl bg-zinc-900 border border-zinc-700 space-y-2">
               <input
@@ -284,7 +278,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
 
-        {/* Search Bar */}
         <div className="px-4 pb-2">
           <div className="relative">
             <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-2.5" />
@@ -298,22 +291,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* Section Label */}
         <div className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider px-4 mt-2 mb-1 flex items-center justify-between">
           <span>Conversations</span>
           <span className="text-[10px] font-mono text-zinc-600">{conversations.length}</span>
         </div>
 
-        {/* Conversations List with Folders */}
         <div className="flex-1 overflow-y-auto px-3 space-y-1.5 custom-scrollbar">
-          {/* Render Folders */}
           {folders.map((folder) => {
             const folderConvs = filteredConversations.filter((c) => c.folderId === folder.id);
             const isExpanded = folder.isExpanded !== false;
 
             return (
               <div key={folder.id} className="space-y-1 rounded-xl bg-zinc-900/30 border border-zinc-800/40 p-1">
-                {/* Folder Header */}
                 <div
                   onClick={() => onToggleFolder && onToggleFolder(folder.id)}
                   className="group flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-zinc-800/60 cursor-pointer text-xs text-zinc-300 transition-colors"
@@ -350,7 +339,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <span className="text-[10px] text-zinc-500 font-mono">({folderConvs.length})</span>
                   </div>
 
-                  {/* Folder Actions */}
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={(e) => {
@@ -378,7 +366,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
                 </div>
 
-                {/* Folder Children */}
                 {isExpanded && (
                   <div className="pl-3 space-y-1 border-l border-zinc-800 ml-3">
                     {folderConvs.length === 0 ? (
@@ -392,7 +379,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             );
           })}
 
-          {/* Root / Unorganized Conversations */}
           {rootConversations.length > 0 && (
             <div className="space-y-1 pt-1">
               {folders.length > 0 && (
@@ -411,7 +397,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
 
-        {/* Footer Actions */}
         <div className="p-4 border-t border-zinc-800 space-y-2">
           {onOpenMemory && (
             <button
@@ -472,4 +457,3 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </>
   );
 };
-
