@@ -8,7 +8,20 @@ interface ThinkingTimelineProps {
   thoughtDurationMs?: number;
 }
 
-export const ThinkingTimeline: React.FC<ThinkingTimelineProps> = ({ thoughts, isStreaming = false, thoughtDurationMs }) => {
+const areThinkingTimelinePropsEqual = (previous: ThinkingTimelineProps, next: ThinkingTimelineProps) => {
+  if (previous.isStreaming !== next.isStreaming || previous.thoughtDurationMs !== next.thoughtDurationMs) return false;
+  if (previous.thoughts === next.thoughts) return true;
+  if (previous.thoughts.length !== next.thoughts.length) return false;
+  if (previous.thoughts.length === 0) return true;
+  const previousLast = previous.thoughts[previous.thoughts.length - 1];
+  const nextLast = next.thoughts[next.thoughts.length - 1];
+  return previousLast.id === nextLast.id
+    && previousLast.timestamp === nextLast.timestamp
+    && previousLast.step_title === nextLast.step_title
+    && previousLast.summary === nextLast.summary;
+};
+
+const ThinkingTimelineBase: React.FC<ThinkingTimelineProps> = ({ thoughts, isStreaming = false, thoughtDurationMs }) => {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   if (!thoughts.length) return null;
 
@@ -59,3 +72,5 @@ export const ThinkingTimeline: React.FC<ThinkingTimelineProps> = ({ thoughts, is
     </div>
   );
 };
+
+export const ThinkingTimeline = React.memo(ThinkingTimelineBase, areThinkingTimelinePropsEqual);
