@@ -10,6 +10,7 @@ const validClasses = new Set([
   'INFRA_CONFIG', 'JOB_INPUT', 'RUNTIME_METADATA', 'PRIVATE_BINDING', 'RUNTIME_CONFIG',
 ]);
 const validExposures = new Set(['browser', 'server', 'worker', 'ci']);
+const validRotationModes = new Set(['manual', 'automatable', 'runtime-managed', 'not-applicable']);
 const seen = new Set();
 const errors = [];
 
@@ -28,6 +29,32 @@ for (const entry of manifest.entries || []) {
   }
   if (entry.class?.includes('SECRET') && entry.exposure?.includes('browser')) {
     errors.push(`secret ${entry.name} cannot be browser-exposed`);
+  }
+
+  if (entry.lifecycle) {
+    if (typeof entry.lifecycle.owner !== 'string' || !entry.lifecycle.owner.trim()) {
+      errors.push(`lifecycle.owner missing for ${entry.name}`);
+    }
+    if (!validRotationModes.has(entry.lifecycle.rotationMode)) {
+      errors.push(`invalid lifecycle.rotationMode for ${entry.name}: ${entry.lifecycle.rotationMode}`);
+    }
+    if (entry.lifecycle.recommendedDays !== undefined &&
+        (!Number.isInteger(entry.lifecycle.recommendedDays) || entry.lifecycle.recommendedDays <= 0)) {
+      errors.push(`lifecycle.recommendedDays must be a positive integer for ${entry.name}`);
+    }
+    if (typeof entry.lifecycle.expiryRequired !== 'boolean') {
+      errors.push(`lifecycle.expiryRequired must be boolean for ${entry.name}`);
+    }
+  }
+
+  if (entry.class === 'CRITICAL_SECRET') {
+    if (!entry.lifecycle) errors.push(`critical secret ${entry.name} requires lifecycle metadata`);
+    if (entry.lifecycle?.rotationMode === 'not-applicable') {
+      errors.push(`critical secret ${entry.name} cannot use rotationMode not-applicable`);
+    }
+    if (entry.lifecycle?.expiryRequired === true && !entry.lifecycle?.recommendedDays) {
+      errors.push(`expiring critical secret ${entry.name} requires recommendedDays`);
+    }
   }
 }
 
