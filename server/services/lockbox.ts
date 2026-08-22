@@ -1,10 +1,12 @@
 import { assertLockboxEntry, LOCKBOX_MANIFEST } from '../../config/lockbox';
+import { evaluateLockboxStatus, summarizeLockboxStatus, type LockboxStatusEntry } from '../../config/lockbox-status';
 
 export type ServerLockbox = {
   requiredSecret: (key: string) => string;
   optionalSecret: (key: string) => string | undefined;
   config: (key: string, fallback?: string) => string | undefined;
-  diagnostics: () => Array<{ key: string; configured: boolean; classification: string; exposures: readonly string[] }>;
+  diagnostics: () => LockboxStatusEntry[];
+  statusSummary: () => ReturnType<typeof summarizeLockboxStatus>;
 };
 
 export function createServerLockbox(env: NodeJS.ProcessEnv = process.env): ServerLockbox {
@@ -24,15 +26,9 @@ export function createServerLockbox(env: NodeJS.ProcessEnv = process.env): Serve
     assertLockboxEntry(key);
     return env[key]?.trim() || fallback;
   };
-  const diagnostics = () => LOCKBOX_MANIFEST
-    .filter((entry) => entry.exposures.includes('server'))
-    .map((entry) => ({
-      key: entry.key,
-      configured: Boolean(env[entry.key]?.trim()),
-      classification: entry.classification,
-      exposures: entry.exposures,
-    }));
-  return { requiredSecret, optionalSecret, config, diagnostics };
+  const diagnostics = () => evaluateLockboxStatus(LOCKBOX_MANIFEST, env, ['server']);
+  const statusSummary = () => summarizeLockboxStatus(diagnostics());
+  return { requiredSecret, optionalSecret, config, diagnostics, statusSummary };
 }
 
 export const serverLockbox = createServerLockbox();
