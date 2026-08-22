@@ -14,6 +14,8 @@ const EMPTY_WORKSPACE: Workspace = {
   activeArtifactId: null,
 };
 
+let workspaceCache: Workspace | null = null;
+
 function safeGetStoredWorkspace(): string | null {
   try {
     return typeof localStorage !== 'undefined' ? localStorage.getItem(WORKSPACE_STORAGE_KEY) : null;
@@ -69,23 +71,31 @@ function normalizeWorkspace(value: unknown): Workspace {
 }
 
 export const getWorkspace = (): Workspace => {
+  if (workspaceCache) return workspaceCache;
+
   const stored = safeGetStoredWorkspace();
-  if (!stored) return { ...EMPTY_WORKSPACE, artifacts: [] };
+  if (!stored) {
+    workspaceCache = { ...EMPTY_WORKSPACE, artifacts: [] };
+    return workspaceCache;
+  }
 
   try {
     const workspace = normalizeWorkspace(JSON.parse(stored));
+    workspaceCache = workspace;
     if (typeof localStorage !== 'undefined') {
       try { localStorage.setItem(WORKSPACE_SCHEMA_KEY, String(WORKSPACE_SCHEMA_VERSION)); } catch { /* best effort */ }
     }
     return workspace;
   } catch (error) {
     console.warn('Failed to load workspace data; falling back to an empty workspace.', error);
-    return { ...EMPTY_WORKSPACE, artifacts: [] };
+    workspaceCache = { ...EMPTY_WORKSPACE, artifacts: [] };
+    return workspaceCache;
   }
 };
 
 export const saveWorkspace = (workspace: Workspace): void => {
   const normalized = normalizeWorkspace(workspace);
+  workspaceCache = normalized;
   try {
     localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(normalized));
     localStorage.setItem(WORKSPACE_SCHEMA_KEY, String(WORKSPACE_SCHEMA_VERSION));
@@ -95,6 +105,7 @@ export const saveWorkspace = (workspace: Workspace): void => {
 };
 
 export const clearWorkspace = (): void => {
+  workspaceCache = null;
   try {
     localStorage.removeItem(WORKSPACE_STORAGE_KEY);
     localStorage.removeItem(WORKSPACE_SCHEMA_KEY);

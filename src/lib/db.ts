@@ -17,6 +17,7 @@ const WORLD_STATE_KEY = 'elara_world_state_v2';
 const MEMORY_STATE_KEY = 'elara_memory_state_v2';
 const SNAPSHOTS_KEY = 'elara_persona_snapshots_v1';
 const MIGRATION_KEY = 'elara_idb_migrated';
+const CONVERSATION_PERSIST_DEBOUNCE_MS = 300;
 
 const LEGACY_KEYS = ['elara_conversations_v1','elara_settings_v1','elara_custom_portrait_v1','elara_folders_v1','elara_world_state','elara_memory_state'];
 function getLocalStorage(): Storage | null { return typeof localStorage !== 'undefined' ? localStorage : null; }
@@ -35,6 +36,33 @@ function readMemoryMirrorFallback(): MemoryScratchpadState | null {
 }
 async function migrateValue(idbKey: string, legacyKey: string, transform: (value: unknown) => unknown = (value) => value): Promise<boolean> { const raw = readLegacy(legacyKey); if (!raw) return false; try { await set(idbKey, transform(JSON.parse(raw))); return true; } catch (error) { console.error(`Failed to migrate ${legacyKey}:`, error); return false; } }
 
+let conversationsCache: Conversation[] | null = null;
+let conversationPersistTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function persistConversationsNow(): Promise<void> {
+  if (!conversationsCache) return;
+  const snapshot = conversationsCache;
+  try {
+    await set(CONVERSATIONS_KEY, snapshot);
+  } catch (error) {
+    console.warn('Conversation persistence deferred after IndexedDB write failure:', error);
+  }
+}
+
+export async function flushDbConversations(): Promise<void> {
+  if (conversationPersistTimer) {
+    clearTimeout(conversationPersistTimer);
+    conversationPersistTimer = null;
+  }
+  await persistConversationsNow();
+}
+
+if (typeof window !== 'undefined') {
+  const flushOnPageExit = () => { void flushDbConversations(); };
+  window.addEventListener('pagehide', flushOnPageExit);
+  window.addEventListener('beforeunload', flushOnPageExit);
+}
+
 export async function migrateFromLocalStorage(): Promise<{ migrated: boolean; failures: string[] }> {
   const isMigrated = await get(MIGRATION_KEY); if (isMigrated) return { migrated: false, failures: [] };
   console.log('Migrating data from localStorage to IndexedDB...');
@@ -52,8 +80,22 @@ export async function migrateFromLocalStorage(): Promise<{ migrated: boolean; fa
   return { migrated: failures.length === 0, failures };
 }
 
-export async function getDbConversations(): Promise<Conversation[]> { const data = await get(CONVERSATIONS_KEY); return Array.isArray(data) ? data : []; }
-export async function setDbConversations(data: Conversation[]) { await set(CONVERSATIONS_KEY, Array.isArray(data) ? data : []); }
+export async function getDbConversations(): Promise<Conversation[]> {
+  if (conversationsCache) return conversationsCache;
+  const data = await get(CONVERSATIONS_KEY);
+  conversationsCache = Array.isArray(data) ? data : [];
+  return conversationsCache;
+}
+
+export function setDbConversations(data: Conversation[]): void {
+  conversationsCache = Array.isArray(data) ? data : [];
+  if (conversationPersistTimer) clearTimeout(conversationPersistTimer);
+  conversationPersistTimer = setTimeout(() => {
+    conversationPersistTimer = null;
+    void persistConversationsNow();
+  }, CONVERSATION_PERSIST_DEBOUNCE_MS);
+}
+
 export async function getDbSettings(): Promise<ElaraSettings> { const data = await get(SETTINGS_KEY); const settings = normalizeSettings(data && typeof data === 'object' ? data as Partial<ElaraSettings> : DEFAULT_SETTINGS); const legacyPolicy = data && typeof data === 'object' && typeof (data as any).agentBehaviorPolicy === 'string' ? String((data as any).agentBehaviorPolicy).trim() : ''; if (legacyPolicy) saveAgentOperatingPolicy(legacyPolicy); else loadAgentOperatingPolicy(); applySettingsAppearance(settings); return settings; }
 export async function setDbSettings(data: ElaraSettings) { const normalized = normalizeSettings(data); await set(SETTINGS_KEY, normalized); applySettingsAppearance(normalized); }
 export async function getDbPortrait(): Promise<string | null> { return (await get(PORTRAIT_KEY)) || null; }
@@ -113,6 +155,11 @@ export async function setDbMemoryState(data: MemoryScratchpadState) {
 }
 
 export async function clearDbStorage() {
+  if (conversationPersistTimer) {
+    clearTimeout(conversationPersistTimer);
+    conversationPersistTimer = null;
+  }
+  conversationsCache = null;
   await Promise.all([del(CONVERSATIONS_KEY),del(SETTINGS_KEY),del(PORTRAIT_KEY),del(FOLDERS_KEY),del(WORLD_STATE_KEY),del(MEMORY_STATE_KEY),del(SNAPSHOTS_KEY),del(MIGRATION_KEY)]);
   clearWorkspace(); clearActiveScratchpad(); clearUserProfileNotes();
   try { const storage = getLocalStorage(); LEGACY_KEYS.forEach((key) => storage?.removeItem(key)); storage?.removeItem(AGENT_OPERATING_POLICY_KEY); storage?.removeItem(USER_PROFILE_NOTES_KEY); storage?.removeItem(ACTIVE_SCRATCHPAD_KEY); storage?.removeItem(MEMORY_CONTEXT_MIRROR_KEY); } catch (error) { console.error('Failed to clear browser persistence:', error); }
