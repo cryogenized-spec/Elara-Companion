@@ -1,7 +1,7 @@
 {
   "$schemaVersion": 1,
   "name": "elara-lockbox",
-  "pass": 4,
+  "pass": 5,
   "purpose": "Authoritative inventory of runtime configuration, secrets, and credential boundaries. Values are never stored here.",
   "entries": [
     { "name": "GEMINI_API_KEY", "class": "CRITICAL_SECRET", "scope": ["server", "background-worker", "automation-ci"], "exposure": ["server", "worker", "ci"] },
@@ -35,6 +35,9 @@
     "neverUseVitePrefixForSecrets": true,
     "automationCredentialsAreCritical": true,
     "aSecretMayHaveMultipleExplicitTrustExposures": true,
-    "automationScriptsUseLockboxAdapter": true
+    "automationScriptsUseLockboxAdapter": true,
+    "sourceMustNotBypassLockbox": true,
+    "knownCredentialPatternsMustNotAppearInTrackedText": true,
+    "diagnosticsMustNeverReturnSecretValues": true
   }
 }
