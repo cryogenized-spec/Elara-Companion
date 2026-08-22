@@ -9,7 +9,10 @@
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit && npm --prefix background-runtime install --no-audit --no-fund && npm --prefix background-runtime run typecheck",
+    "lockbox:validate": "node scripts/lockbox-validate.mjs",
+    "lockbox:audit": "node scripts/lockbox-audit.mjs",
+    "lockbox:secrets": "node scripts/lockbox-secret-scan.mjs",
+    "lint": "npm run lockbox:validate && npm run lockbox:audit && npm run lockbox:secrets && tsc --noEmit && npm --prefix background-runtime install --no-audit --no-fund && npm --prefix background-runtime run typecheck",
     "test": "node --import tsx --test",
     "benchmark:memory": "tsx scripts/benchmark-memory-consolidation.ts"
   },
