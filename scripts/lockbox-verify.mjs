@@ -26,29 +26,29 @@ for (const relative of files) {
 function evidenceFor(entry) {
   const matches = [];
   for (const [file, text] of contents) {
-    if (text.includes(entry.key ?? entry.name)) matches.push(file);
+    if (text.includes(entry.name)) matches.push(file);
   }
   return matches;
 }
 
 function providerState(entry, evidence) {
-  if (entry.exposures.includes('browser')) return evidence.length ? 'repository-verified' : 'unverified';
-  if (entry.exposures.includes('ci')) return evidence.some((file) => file.startsWith('.github/workflows/')) ? 'provider-managed' : 'unverified';
-  if (entry.exposures.includes('worker')) return evidence.some((file) => file.startsWith('background-runtime/')) ? 'provider-managed' : 'unverified';
-  if (entry.exposures.includes('server')) return evidence.some((file) => file.startsWith('server/')) || evidence.includes('.env.example') ? 'repository-verified' : 'unverified';
+  if (entry.exposure.includes('browser')) return evidence.length ? 'repository-verified' : 'unverified';
+  if (entry.exposure.includes('ci')) return evidence.some((file) => file.startsWith('.github/workflows/')) ? 'provider-managed' : 'unverified';
+  if (entry.exposure.includes('worker')) return evidence.some((file) => file.startsWith('background-runtime/')) ? 'provider-managed' : 'unverified';
+  if (entry.exposure.includes('server')) return evidence.some((file) => file.startsWith('server/')) || evidence.includes('.env.example') ? 'repository-verified' : 'unverified';
   return evidence.length ? 'repository-verified' : 'unverified';
 }
 
 const rows = manifest.entries.map((entry) => {
   const evidence = evidenceFor(entry);
   return {
-    name: entry.key,
-    classification: entry.classification,
-    exposures: entry.exposures,
+    name: entry.name,
+    classification: entry.class,
+    exposures: entry.exposure,
     lifecycle: entry.lifecycle ?? null,
     state: providerState(entry, evidence),
     evidence,
-    note: entry.classification.includes('SECRET') || entry.classification.includes('PRIVATE')
+    note: entry.class.includes('SECRET') || entry.class.includes('PRIVATE')
       ? 'Value is never inspected; live provider state requires privileged access.'
       : undefined,
   };
