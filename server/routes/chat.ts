@@ -1,6 +1,7 @@
 import express from "express";
 import { createHash } from "node:crypto";
 import { getGeminiClient, formatApiErrorDetails, normalizeModelName } from "../services/gemini";
+import { serverLockbox } from "../services/lockbox";
 import {
   buildConversationContents,
   buildRuntimeConfig,
@@ -68,7 +69,7 @@ export function setupChatRoutes(app: express.Express) {
     res.setHeader('Connection', 'keep-alive');
 
     const { message, image, history = [], systemPrompt, model, temperature, maxOutputTokens, topP, topK, thinkingBudget, thinkingLevel, workspace, googleToken } = req.body;
-    const preferredModel = (typeof model === 'string' && model.trim()) ? model.trim() : (process.env.GEMINI_MODEL || 'gemini-3.7-flash');
+    const preferredModel = (typeof model === 'string' && model.trim()) ? model.trim() : serverLockbox.config('GEMINI_MODEL', 'gemini-3.7-flash')!;
     const requestKey = makeChatRequestKey(req.body || {});
 
     pruneAcceptedChatRequests();

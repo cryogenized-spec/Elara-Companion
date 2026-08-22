@@ -1,12 +1,13 @@
 import express from "express";
 import { normalizeModelName, getGeminiClient } from "../services/gemini";
+import { serverLockbox } from "../services/lockbox";
 
 export function setupConfigRoutes(app: express.Express) {
 
   app.get('/api/config', (req, res) => {
     res.json({
-      defaultModel: normalizeModelName(process.env.GEMINI_MODEL || 'gemini-3.7-flash'),
-      hasApiKey: !!process.env.GEMINI_API_KEY,
+      defaultModel: normalizeModelName(serverLockbox.config('GEMINI_MODEL', 'gemini-3.7-flash')),
+      hasApiKey: Boolean(serverLockbox.optionalSecret('GEMINI_API_KEY')),
     });
   });
 
@@ -75,10 +76,8 @@ export function setupConfigRoutes(app: express.Express) {
         const rawName = (m.name || '').replace(/^models\//, '');
         const lower = rawName.toLowerCase();
 
-        // STRICT FILTER 1: Exclude all 2.5 series models
         if (lower.includes('2.5')) continue;
 
-        // STRICT FILTER 2: Exclude media/image/TTS/video models
         const bannedKeywords = [
           'image', 'veo', 'live', 'tts', 'audio', 'imagen', 'embed',
           'lyria', 'banana', 'aqa', 'robotics', 'antigravity',
@@ -86,7 +85,6 @@ export function setupConfigRoutes(app: express.Express) {
         ];
         if (bannedKeywords.some((keyword) => lower.includes(keyword))) continue;
 
-        // Check supported generation methods if present
         const supported = (m as any).supportedActions || (m as any).supportedGenerationMethods;
         if (Array.isArray(supported) && supported.length > 0) {
           if (!supported.includes('generateContent') && !supported.includes('streamGenerateContent')) {
@@ -102,14 +100,8 @@ export function setupConfigRoutes(app: express.Express) {
       }
 
       const mergedMap = new Map<string, any>();
-      for (const seed of seedModels) {
-        mergedMap.set(seed.id, seed);
-      }
-      for (const dyn of dynamicModels) {
-        if (!mergedMap.has(dyn.id)) {
-          mergedMap.set(dyn.id, dyn);
-        }
-      }
+      for (const seed of seedModels) mergedMap.set(seed.id, seed);
+      for (const dyn of dynamicModels) if (!mergedMap.has(dyn.id)) mergedMap.set(dyn.id, dyn);
 
       res.json({ models: Array.from(mergedMap.values()) });
     } catch (err) {

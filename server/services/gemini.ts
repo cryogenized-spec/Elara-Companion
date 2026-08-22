@@ -1,5 +1,6 @@
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { classifyApiError } from "../../src/lib/apiError";
+import { serverLockbox } from "./lockbox";
 
 export { HarmCategory, HarmBlockThreshold };
 
@@ -11,8 +12,7 @@ export function parseDataUrl(dataUrl: string): { mimeType: string; data: string 
 }
 
 export function getGeminiClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY environment variable is not configured.');
+  const apiKey = serverLockbox.requiredSecret('GEMINI_API_KEY');
   return new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
 }
 
@@ -38,7 +38,8 @@ export function formatApiErrorDetails(err: any, modelId: string): {
 }
 
 export function normalizeModelName(rawModel?: string): string {
-  if (!rawModel || typeof rawModel !== 'string') return 'gemini-3.6-flash';
+  const configuredModel = serverLockbox.config('GEMINI_MODEL', 'gemini-3.6-flash');
+  if (!rawModel || typeof rawModel !== 'string') rawModel = configuredModel;
   let clean = rawModel.trim().replace(/^["'`]|["'`]$/g, '').trim();
   clean = clean.replace(/^(\/?models\/)+/gi, '').trim();
 
