@@ -26,4 +26,6 @@ export interface ChatMessageProps {
   onOpenArtifact?: (artifactId: string) => void;
 }
 
-export const ChatMessage: React.FC<ChatMessageProps> = (props) => <UnifiedChatMessage {...props} />;
+export const ChatMessage = React.memo(
+  (props: ChatMessageProps) => <UnifiedChatMessage {...props} />,
+);
