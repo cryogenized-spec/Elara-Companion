@@ -26,6 +26,66 @@ export interface ResilientStreamTurnOptions {
   stateStore?: ModelResilienceStateStore;
 }
 
+type StreamChunk = {
+  text?: string;
+  thoughtText?: string;
+  thoughtType?: 'summary';
+  finishReason?: string;
+  safetyRatings?: any;
+};
+
+const STREAM_UI_BATCH_WINDOW_MS = 16;
+
+function createChunkBatcher(onChunk: (chunk: StreamChunk) => void) {
+  let pending: StreamChunk | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearTimer = () => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+
+  const flush = () => {
+    clearTimer();
+    if (!pending) return;
+    const next = pending;
+    pending = null;
+    onChunk(next);
+  };
+
+  const enqueue = (chunk: StreamChunk) => {
+    const kind = chunk.thoughtText !== undefined ? 'thought' : chunk.text !== undefined ? 'text' : 'other';
+    const pendingKind = pending
+      ? pending.thoughtText !== undefined
+        ? 'thought'
+        : pending.text !== undefined
+          ? 'text'
+          : 'other'
+      : null;
+
+    if (!pending || pendingKind !== kind || kind === 'other') {
+      flush();
+      pending = { ...chunk };
+    } else if (kind === 'thought') {
+      pending.thoughtText = `${pending.thoughtText || ''}${chunk.thoughtText || ''}`;
+      pending.thoughtType = chunk.thoughtType || pending.thoughtType;
+      pending.finishReason = chunk.finishReason || pending.finishReason;
+      pending.safetyRatings = chunk.safetyRatings || pending.safetyRatings;
+    } else {
+      pending.text = `${pending.text || ''}${chunk.text || ''}`;
+      pending.finishReason = chunk.finishReason || pending.finishReason;
+      pending.safetyRatings = chunk.safetyRatings || pending.safetyRatings;
+    }
+
+    if (kind === 'other') flush();
+    else if (timer === null) timer = setTimeout(flush, STREAM_UI_BATCH_WINDOW_MS);
+  };
+
+  return { enqueue, flush };
+}
+
 export async function runResilientGeminiStreamTurn(
   options: ResilientStreamTurnOptions,
 ): Promise<ResilientStreamTurnResult> {
@@ -41,6 +101,7 @@ export async function runResilientGeminiStreamTurn(
         contents: options.contents,
         config: options.buildConfig(model),
       });
+      const batcher = createChunkBatcher(options.onChunk);
 
       try {
         for await (const chunk of responseStream) {
@@ -55,27 +116,30 @@ export async function runResilientGeminiStreamTurn(
             for (const part of parts) {
               if ((part as any).thought && part.text) {
                 emittedOutput = true;
-                options.onChunk({ thoughtText: part.text, thoughtType: 'summary' });
+                batcher.enqueue({ thoughtText: part.text, thoughtType: 'summary' });
                 modelParts.push(part);
               } else if ((part as any).functionCall) {
                 emittedOutput = true;
+                batcher.flush();
                 const fc = (part as any).functionCall;
                 functionCalls.push(fc);
                 modelParts.push(part);
               } else if (part.text) {
                 emittedOutput = true;
-                options.onChunk({ text: part.text, finishReason, safetyRatings });
+                batcher.enqueue({ text: part.text, finishReason, safetyRatings });
                 modelParts.push(part);
               }
             }
           } else if (chunk.text) {
             emittedOutput = true;
-            options.onChunk({ text: chunk.text, finishReason, safetyRatings });
+            batcher.enqueue({ text: chunk.text, finishReason, safetyRatings });
           } else if (finishReason) {
+            batcher.flush();
             options.onChunk({ finishReason, safetyRatings });
           }
         }
       } catch (error) {
+        batcher.flush();
         if (emittedOutput) {
           const classified = classifyApiError(error, model);
           throw Object.assign(new Error(classified.message), {
@@ -83,6 +147,8 @@ export async function runResilientGeminiStreamTurn(
           });
         }
         throw error;
+      } finally {
+        batcher.flush();
       }
 
       return {
