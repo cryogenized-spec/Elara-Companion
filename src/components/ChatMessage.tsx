@@ -26,6 +26,32 @@ export interface ChatMessageProps {
   onOpenArtifact?: (artifactId: string) => void;
 }
 
+function areHistoricalPropsEqual(previous: ChatMessageProps, next: ChatMessageProps): boolean {
+  if (previous.isLast !== next.isLast || previous.isStreaming !== next.isStreaming) return false;
+  if (previous.message !== next.message) return false;
+  if (previous.portraitImage !== next.portraitImage) return false;
+  if (previous.fontSize !== next.fontSize) return false;
+  if (previous.textBackground !== next.textBackground) return false;
+  if (previous.isLastUserMessage !== next.isLastUserMessage) return false;
+
+  // Callback identities are recreated by App on each render. Historical messages
+  // do not need to rerender solely because those function references changed.
+  // The live/last message remains fully reactive to its latest callbacks.
+  if (next.isLast) {
+    return (
+      previous.onRegenerate === next.onRegenerate &&
+      previous.onEditAndResend === next.onEditAndResend &&
+      previous.onRetry === next.onRetry &&
+      previous.onCompleteResponse === next.onCompleteResponse &&
+      previous.onOpenSettings === next.onOpenSettings &&
+      previous.onOpenCanvas === next.onOpenCanvas &&
+      previous.onOpenArtifact === next.onOpenArtifact
+    );
+  }
+  return true;
+}
+
 export const ChatMessage = React.memo(
   (props: ChatMessageProps) => <UnifiedChatMessage {...props} />,
+  areHistoricalPropsEqual,
 );
