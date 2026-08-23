@@ -25,10 +25,8 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
-
           path = Path('src/components/SettingsModal.tsx')
           text = path.read_text()
-
           additions = """import { VoiceSettingsPanel } from './VoiceSettingsPanel';
           import { ReliabilitySettingsPanel } from './ReliabilitySettingsPanel';
           import { ChatEditorSettingsPanel } from './ChatEditorSettingsPanel';
@@ -36,48 +34,30 @@ jobs:
           import { DEFAULT_RELIABILITY_SETTINGS, normalizeReliabilitySettings } from '../lib/reliabilitySettings';
           """
           marker = "import { loadRateLimits } from '../lib/storage';\n"
-          if marker not in text:
-              raise SystemExit('Pass 3 failed: import anchor missing')
-          if "from './VoiceSettingsPanel'" not in text:
-              text = text.replace(marker, marker + additions, 1)
-
+          if marker not in text: raise SystemExit('Pass 3 failed: import anchor missing')
+          if "from './VoiceSettingsPanel'" not in text: text = text.replace(marker, marker + additions, 1)
           state_anchor = "  const [importStatus, setImportStatus] = useState<string | null>(null);\n"
-          if state_anchor not in text:
-              raise SystemExit('Pass 3 failed: state anchor missing')
-          if 'voiceSection' not in text:
-              text = text.replace(state_anchor, state_anchor + "  const [voiceSection, setVoiceSection] = useState<'voice' | 'chat' | 'reliability'>('voice');\n", 1)
-
+          if state_anchor not in text: raise SystemExit('Pass 3 failed: state anchor missing')
+          if 'voiceSection' not in text: text = text.replace(state_anchor, state_anchor + "  const [voiceSection, setVoiceSection] = useState<'voice' | 'chat' | 'reliability'>('voice');\n", 1)
           save_old = "  const handleSave = () => {\n    onSaveSettings(formData);\n    onClose();\n  };"
           save_new = "  const handleSave = () => {\n    onSaveSettings({\n      ...formData,\n      voiceSettings: normalizeVoiceSettings(formData.voiceSettings),\n      reliabilitySettings: normalizeReliabilitySettings(formData.reliabilitySettings),\n    });\n    onClose();\n  };"
-          if save_old not in text:
-              raise SystemExit('Pass 3 failed: save handler missing')
+          if save_old not in text: raise SystemExit('Pass 3 failed: save handler missing')
           text = text.replace(save_old, save_new, 1)
-
           text = text.replace('<span>Voice & Speech</span>', '<span>Voice & Chat</span>', 1)
-
           start_marker = "          {/* TAB: VOICE & SPEECH-TO-TEXT */}"
-          if start_marker not in text:
-              raise SystemExit('Pass 3 failed: legacy voice tab marker missing')
+          if start_marker not in text: raise SystemExit('Pass 3 failed: legacy voice tab marker missing')
           start = text.index(start_marker)
           end_marker = "          {/* TAB: GOOGLE WORKSPACE & SYNC */}"
-          if end_marker not in text[start:]:
-              raise SystemExit('Pass 3 failed: workspace marker missing')
+          if end_marker not in text[start:]: raise SystemExit('Pass 3 failed: workspace marker missing')
           end = start + text[start:].index(end_marker)
-
-          replacement = '''          {/* TAB: VOICE & CHAT */}\n          {activeTab === 'voice' && (\n            <div className="space-y-5">\n              <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">\n                <div className="grid grid-cols-3 gap-1 rounded-xl border border-zinc-800 bg-zinc-950/60 p-1">\n                  {([\n                    ['voice', 'Voice Input'],\n                    ['chat', 'Chat & Editor'],\n                    ['reliability', 'Reliability'],\n                  ] as const).map(([id, label]) => (\n                    <button\n                      key={id}\n                      type="button"\n                      onClick={() => setVoiceSection(id)}\n                      className={`rounded-lg px-2 py-2 text-[11px] font-medium transition-colors ${voiceSection === id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300'}`}\n                    >\n                      {label}\n                    </button>\n                  ))}\n                </div>\n              </section>\n\n              {voiceSection === 'voice' && (\n                <VoiceSettingsPanel\n                  value={normalizeVoiceSettings(formData.voiceSettings || DEFAULT_VOICE_SETTINGS)}\n                  onChange={(voiceSettings) => setFormData((current) => ({ ...current, voiceSettings }))}\n                />\n              )}\n\n              {voiceSection === 'chat' && <ChatEditorSettingsPanel />}\n\n              {voiceSection === 'reliability' && (\n                <ReliabilitySettingsPanel\n                  settings={normalizeReliabilitySettings(formData.reliabilitySettings || DEFAULT_RELIABILITY_SETTINGS)}\n                  preferredModel={formData.model}\n                  onApply={(reliabilitySettings) => setFormData((current) => ({ ...current, reliabilitySettings }))}\n                  embedded\n                />\n              )}\n            </div>\n          )}\n\n'''
+          replacement = '''          {/* TAB: VOICE & CHAT */}\n          {activeTab === 'voice' && (\n            <div className="space-y-5">\n              <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">\n                <div className="grid grid-cols-3 gap-1 rounded-xl border border-zinc-800 bg-zinc-950/60 p-1">\n                  {([\n                    ['voice', 'Voice Input'],\n                    ['chat', 'Chat & Editor'],\n                    ['reliability', 'Reliability'],\n                  ] as const).map(([id, label]) => (\n                    <button key={id} type="button" onClick={() => setVoiceSection(id)} className={`rounded-lg px-2 py-2 text-[11px] font-medium transition-colors ${voiceSection === id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300'}`}>{label}</button>\n                  ))}\n                </div>\n              </section>\n              {voiceSection === 'voice' && <VoiceSettingsPanel value={normalizeVoiceSettings(formData.voiceSettings || DEFAULT_VOICE_SETTINGS)} onChange={(voiceSettings) => setFormData((current) => ({ ...current, voiceSettings }))} />}\n              {voiceSection === 'chat' && <ChatEditorSettingsPanel />}\n              {voiceSection === 'reliability' && <ReliabilitySettingsPanel settings={normalizeReliabilitySettings(formData.reliabilitySettings || DEFAULT_RELIABILITY_SETTINGS)} preferredModel={formData.model} onApply={(reliabilitySettings) => setFormData((current) => ({ ...current, reliabilitySettings }))} embedded />}\n            </div>\n          )}\n\n'''
           text = text[:start] + replacement + text[end:]
-
           legacy = ['speechLanguage', 'speechAutoSend', 'speechAutoCapitalize', 'speechPauseTimeout']
           residues = [needle for needle in legacy if needle in text]
-          if residues:
-              raise SystemExit(f'Pass 3 failed: legacy voice fields remain in SettingsModal: {residues}')
-
-          if 'Live Speech-to-Text & Voice Dictation' in text or 'Browser Native Web Speech API' in text:
-              raise SystemExit('Pass 3 failed: legacy voice surface remains')
-
+          if residues: raise SystemExit(f'Pass 3 failed: legacy voice fields remain in SettingsModal: {residues}')
+          if 'Live Speech-to-Text & Voice Dictation' in text or 'Browser Native Web Speech API' in text: raise SystemExit('Pass 3 failed: legacy voice surface remains')
           path.write_text(text)
           PY
-
       - name: Remove migration workflow and commit
         shell: bash
         run: |
