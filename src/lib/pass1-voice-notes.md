@@ -1,1 +1,0 @@
-Pass 1 notes: VoiceSettings is the canonical runtime configuration. Legacy flat speech fields are read only at migration boundaries and must not be consumed by runtime components.
