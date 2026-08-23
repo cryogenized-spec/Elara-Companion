@@ -30,6 +30,9 @@ jobs:
         with:
           node-version: 24
 
+      - name: Install Node dependencies
+        run: npm install --no-audit --no-fund
+
       - name: Run automation dispatcher
         env:
           ELARA_STATE_REPO: ${{ vars.ELARA_STATE_REPO }}
