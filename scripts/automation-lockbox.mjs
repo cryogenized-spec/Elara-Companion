@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,7 +54,7 @@ export function createAutomationLockbox(env = process.env) {
     },
     requireConfig(name) {
       const value = this.config(name);
-      if (!value) throw new Error(`Required Lockbox configuration ${name} is not configured.`);
+      if (!value) throw new Error(`Required Lockbox configuration ${name} is not configured. Set it in the GitHub Actions repository variable/environment for CI, or in a local .env file for direct development runs.`);
       return value;
     },
   };
