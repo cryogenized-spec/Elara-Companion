@@ -1,0 +1,141 @@
+name: Pass 2 voice settings cleanup
+
+on:
+  push:
+    branches: [fix/pass2-settings-cleanup]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Replace legacy settings bridge
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          
+          root = Path('.')
+          legacy_path = root / 'src/components/SettingsModalLegacy.tsx'
+          wrapper_path = root / 'src/components/SettingsModal.tsx'
+          text = legacy_path.read_text()
+          
+          # Promote the real settings implementation to the canonical filename.
+          
+          imports = """import { loadRateLimits } from '../lib/storage';
+          import { VoiceSettingsPanel } from './VoiceSettingsPanel';
+          import { ReliabilitySettingsPanel } from './ReliabilitySettingsPanel';
+          import { ChatEditorSettingsPanel } from './ChatEditorSettingsPanel';
+          import { DEFAULT_VOICE_SETTINGS, normalizeVoiceSettings } from '../lib/voiceSettings';
+          import { DEFAULT_RELIABILITY_SETTINGS, normalizeReliabilitySettings } from '../lib/reliabilitySettings';
+          """
+          text = re.sub(r"import \{ loadRateLimits \} from '../lib/storage';\n", imports, text, count=1)
+          
+          # Canonical Voice & Chat local state. Reliability remains available as a focused sub-section.
+          state_anchor = "  const [importStatus, setImportStatus] = useState<string | null>(null);\n"
+          state_insert = state_anchor + "  const [voiceSection, setVoiceSection] = useState<'voice' | 'chat' | 'reliability'>('voice');\n"
+          if state_anchor not in text:
+              raise SystemExit('Pass 2 failed: settings state anchor not found')
+          text = text.replace(state_anchor, state_insert, 1)
+          
+          # Save canonical structured settings. Legacy flat fields are maintained only by the migration boundary.
+          old_save = "  const handleSave = () => {\n    onSaveSettings(formData);\n    onClose();\n  };"
+          new_save = "  const handleSave = () => {\n    onSaveSettings({\n      ...formData,\n      voiceSettings: normalizeVoiceSettings(formData.voiceSettings),\n      reliabilitySettings: normalizeReliabilitySettings(formData.reliabilitySettings),\n    });\n    onClose();\n  };"
+          if old_save not in text:
+              raise SystemExit('Pass 2 failed: save handler not found')
+          text = text.replace(old_save, new_save, 1)
+          
+          # Rename the legacy settings tab label.
+          text = text.replace('Voice & Speech', 'Voice & Chat', 1)
+          
+          start_marker = "        {/* TAB: VOICE & SPEECH-TO-TEXT */}"
+          if start_marker not in text:
+              raise SystemExit('Pass 2 failed: legacy voice tab marker not found')
+          start = text.index(start_marker)
+          workspace_match = re.search(r"        \{\/\* TAB: GOOGLE WORKSPACE[^\n]*\*\/\}", text[start:])
+          if not workspace_match:
+              raise SystemExit('Pass 2 failed: Google Workspace tab marker not found')
+          end = start + workspace_match.start()
+          
+          replacement = r'''        {/* TAB: VOICE & CHAT */}
+        {activeTab === 'voice' && (
+          <div className="space-y-5">
+            <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+              <div className="grid grid-cols-3 gap-1 rounded-xl border border-zinc-800 bg-zinc-950/60 p-1">
+                {([
+                  ['voice', 'Voice Input'],
+                  ['chat', 'Chat & Editor'],
+                  ['reliability', 'Reliability'],
+                ] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setVoiceSection(id)}
+                    className={`rounded-lg px-2 py-2 text-[11px] font-medium transition-colors ${voiceSection === id ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {voiceSection === 'voice' && (
+              <VoiceSettingsPanel
+                value={normalizeVoiceSettings(formData.voiceSettings || DEFAULT_VOICE_SETTINGS)}
+                onChange={(voiceSettings) => setFormData((current) => ({ ...current, voiceSettings }))}
+              />
+            )}
+
+            {voiceSection === 'chat' && <ChatEditorSettingsPanel />}
+
+            {voiceSection === 'reliability' && (
+              <ReliabilitySettingsPanel
+                settings={normalizeReliabilitySettings(formData.reliabilitySettings || DEFAULT_RELIABILITY_SETTINGS)}
+                preferredModel={formData.model}
+                onApply={(reliabilitySettings) => setFormData((current) => ({ ...current, reliabilitySettings }))}
+                embedded
+              />
+            )}
+          </div>
+        )}
+
+'''
+          text = text[:start] + replacement + text[end:]
+          
+          # No active runtime or UI code in the canonical SettingsModal may retain the removed legacy voice surface.
+          forbidden = [
+              'SettingsModalLegacy',
+              'VoicePanelBridge',
+              'createPortal',
+              'MutationObserver',
+              'Live Speech-to-Text & Voice Dictation',
+              'speechLanguage',
+              'speechAutoSend',
+              'speechAutoCapitalize',
+              'speechPauseTimeout',
+          ]
+          leftovers = [needle for needle in forbidden if needle in text]
+          if leftovers:
+              raise SystemExit(f'Pass 2 failed: legacy voice residue remains: {leftovers}')
+          
+          wrapper_path.write_text(text)
+          legacy_path.unlink()
+          print('Pass 2 transformation completed.')
+          PY
+
+      - name: Remove one-shot workflow and commit cleanup
+        shell: bash
+        run: |
+          rm -f .github/workflows/pass2-voice-settings-cleanup.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/SettingsModal.tsx src/components/SettingsModalLegacy.tsx .github/workflows/pass2-voice-settings-cleanup.yml
+          git diff --cached --check
+          git commit -m "refactor: replace legacy voice settings bridge"
+          git push origin HEAD:${GITHUB_REF_NAME}
