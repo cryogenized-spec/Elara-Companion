@@ -3,29 +3,15 @@ import { Menu, Download, BookOpen, Globe, Settings, Sparkles } from "lucide-reac
 
 import React, { useState, useEffect, useRef } from 'react';
 import { CanvasPanel } from './components/CanvasPanel';
-import { CanvasData, Conversation, Message, ElaraSettings, WorldState, MemoryScratchpadState, Folder } from './types';
+import { CanvasData } from './types';
 import { DEFAULT_PERSONA_PROTOCOL, DEFAULT_INTIMACY_MODULE, DEFAULT_RUNTIME_RULES } from './constants/defaultPrompt';
-import { DEFAULT_WORLD_STATE } from './constants/defaultWorldState';
 
-import { exportAllDataJSON, exportConversationMarkdown, importDataJSON, incrementRateLimit, DEFAULT_SETTINGS, generateUniqueId } from './lib/storage';
+import { exportConversationMarkdown, incrementRateLimit } from './lib/storage';
 import { resetWorldState, exportWorldStateJSON, importWorldStateJSON } from './lib/worldStorage';
-import { resetMemoryState, exportMemoryJSON, importMemoryJSON, DEFAULT_MEMORY_STATE } from './lib/memoryStorage';
-import { loadUserProfileNotes, loadActiveScratchpad, buildSystemPayload } from './lib/contextManager';
-import { getAccessToken } from './lib/googleApi';
-import { getActiveThoughtSentence, parseThoughtSteps, extractThoughtsAndContent } from './utils/thoughtUtils';
-import { extractCanvases } from './utils/canvasUtils';
-import { runDirectGeminiStream, runDirectMemoryExtraction, runDirectTitleGeneration } from './lib/geminiDirectClient';
-import { applyMemoryActions } from './lib/memoryProcessor';
-import { createStreamUiScheduler } from './lib/streamUiScheduler';
+import { resetMemoryState, exportMemoryJSON, importMemoryJSON } from './lib/memoryStorage';
 
 import { 
-  getDbConversations, setDbConversations,
-  getDbSettings, setDbSettings,
-  getDbFolders, setDbFolders,
-  getDbPortrait, setDbPortrait,
-  getDbWorldState, setDbWorldState,
-  getDbMemoryState, setDbMemoryState,
-  clearDbStorage, migrateFromLocalStorage
+  setDbPortrait
 } from './lib/db';
 
 import { Sidebar } from './components/Sidebar';
@@ -47,50 +33,31 @@ import { useConversationController } from './features/conversations/useConversat
 import { useChatStreamController } from './features/chat/useChatStreamController';
 import { useWorkspaceController } from './features/workspace/useWorkspaceController';
 import { useSettingsController } from './features/settings/useSettingsController';
+import { useApplicationStateController } from './app/useApplicationStateController';
+import { useChatCommandController } from './features/chat/useChatCommandController';
 import { useBackgroundRuntimeController } from './runtime/useBackgroundRuntimeController';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'chat' | 'workspace'>('chat');
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [folders, setFolders] = useState<Folder[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [settings, setSettings] = useState<ElaraSettings>(DEFAULT_SETTINGS);
-  const [worldState, setWorldState] = useState<WorldState>(DEFAULT_WORLD_STATE);
-  const [memoryState, setMemoryState] = useState<MemoryScratchpadState>(DEFAULT_MEMORY_STATE);
-  const [customPortrait, setCustomPortrait] = useState<string | null>(null);
-
-  useBackgroundRuntimeController({
+  const {
     isLoaded,
+    conversations,
+    folders,
+    activeId,
+    settings,
+    worldState,
+    memoryState,
+    customPortrait,
     setConversations,
-  });
+    setFolders,
+    setActiveId,
+    setSettings,
+    setWorldState,
+    setMemoryState,
+    setCustomPortrait,
+  } = useApplicationStateController();
 
-  useEffect(() => {
-    migrateFromLocalStorage().then(async () => {
-      setFolders(await getDbFolders());
-      setSettings(await getDbSettings());
-      setWorldState(await getDbWorldState());
-      setMemoryState(await getDbMemoryState());
-      setCustomPortrait(await getDbPortrait());
-      
-      const loadedConvs = await getDbConversations();
-      if (loadedConvs.length > 0) {
-        setConversations(loadedConvs);
-        setActiveId(loadedConvs[0].id);
-      } else {
-        const initialConv: Conversation = {
-          id: generateUniqueId('conv'),
-          title: 'New Conversation',
-          messages: [],
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        };
-        setConversations([initialConv]);
-        setActiveId(initialConv.id);
-      }
-      setIsLoaded(true);
-    });
-  }, []);
+  useBackgroundRuntimeController({ isLoaded, setConversations });
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -131,14 +98,6 @@ export default function App() {
     setDbPortrait(null);
   };
 
-  // Save data whenever it changes
-  useEffect(() => { if (isLoaded) setDbConversations(conversations); }, [conversations, isLoaded]);
-  useEffect(() => { if (isLoaded) setDbFolders(folders); }, [folders, isLoaded]);
-  useEffect(() => { if (isLoaded) setDbSettings(settings); }, [settings, isLoaded]);
-  useEffect(() => { if (isLoaded) setDbWorldState(worldState); }, [worldState, isLoaded]);
-  useEffect(() => { if (isLoaded) setDbMemoryState(memoryState); }, [memoryState, isLoaded]);
-  useEffect(() => { if (isLoaded) setDbPortrait(customPortrait); }, [customPortrait, isLoaded]);
-
   const activeConversation = conversations.find((c) => c.id === activeId) || null;
 
   // Handle Scroll behavior
@@ -160,27 +119,6 @@ export default function App() {
     scrollToBottom(false, isStreaming ? 'auto' : 'smooth');
   }, [activeConversation?.messages, isStreaming]);
 
-  // Stop Streaming
-  const handleStopStreaming = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    setIsStreaming(false);
-
-    if (activeId) {
-      setConversations((prev) =>
-        prev.map((c) => {
-          if (c.id !== activeId) return c;
-          const updatedMsgs = c.messages.map((m) =>
-            m.isStreaming ? { ...m, isStreaming: false } : m
-          );
-          return { ...c, messages: updatedMsgs };
-        })
-      );
-    }
-  };
-
   const {
     streamAssistantResponse,
     generateConversationTitle,
@@ -195,120 +133,26 @@ export default function App() {
     userHasScrolledUpRef,
   });
 
-  // Send Message
-  const handleSendMessage = (text: string, image?: string) => {
-    let currentConvId = activeId;
-
-    if (!currentConvId) {
-      const newConv: Conversation = {
-        id: generateUniqueId('conv'),
-        title: text.slice(0, 30) || (image ? 'Image Attachment' : 'New Conversation'),
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        messages: [],
-      };
-      setConversations([newConv]);
-      setActiveId(newConv.id);
-      currentConvId = newConv.id;
-    }
-
-    const conv = conversations.find((c) => c.id === currentConvId);
-    const existingMessages = conv ? conv.messages : [];
-
-    const userMsg: Message = {
-      id: generateUniqueId('msg_usr'),
-      role: 'user',
-      content: text,
-      image: image,
-      timestamp: Date.now(),
-    };
-
-    // Update conversation with user message
-    setConversations((prev) =>
-      prev.map((c) => {
-        if (c.id !== currentConvId) return c;
-        return {
-          ...c,
-          updatedAt: Date.now(),
-          messages: [...c.messages, userMsg],
-        };
-      })
-    );
-
-    // Trigger Stream with image
-    streamAssistantResponse(currentConvId, text, existingMessages, image);
-  };
-
-  // Regenerate Response
-  const handleRegenerate = () => {
-    if (!activeConversation || isStreaming) return;
-    const msgs = activeConversation.messages;
-    if (msgs.length === 0) return;
-
-    let lastUserIndex = -1;
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      if (msgs[i].role === 'user') {
-        lastUserIndex = i;
-        break;
-      }
-    }
-
-    if (lastUserIndex === -1) return;
-
-    const lastUserMsg = msgs[lastUserIndex];
-    const userMsgText = lastUserMsg.content;
-    const userMsgImage = lastUserMsg.image;
-    const historyMsgs = msgs.slice(0, lastUserIndex);
-
-    const trimmedMsgs = msgs.slice(0, lastUserIndex + 1);
-
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === activeConversation.id ? { ...c, messages: trimmedMsgs } : c
-      )
-    );
-
-    streamAssistantResponse(activeConversation.id, userMsgText, historyMsgs, userMsgImage);
-  };
-
-  // Edit and Resend User Message
-  const handleEditAndResend = (messageId: string, newContent: string) => {
-    if (!activeConversation || isStreaming) return;
-    const msgs = activeConversation.messages;
-    const targetIndex = msgs.findIndex((m) => m.id === messageId);
-    if (targetIndex === -1) return;
-
-    const historyMsgs = msgs.slice(0, targetIndex);
-    const targetMsg = msgs[targetIndex];
-    const updatedUserMsg: Message = {
-      ...targetMsg,
-      content: newContent,
-      timestamp: Date.now(),
-    };
-
-    const trimmedMsgs = [...historyMsgs, updatedUserMsg];
-
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === activeConversation.id ? { ...c, messages: trimmedMsgs } : c
-      )
-    );
-
-    streamAssistantResponse(activeConversation.id, newContent, historyMsgs, targetMsg.image);
-  };
-
-  // Complete / Continue Last Response
-  const handleCompleteResponse = () => {
-    if (!activeConversation || isStreaming) return;
-    handleSendMessage(
-      "Please continue and complete your last response right from where you left off, without repeating what you've already written."
-    );
-  };
-
-  // Retry Failed Response
-  const handleRetry = () => {
-    handleRegenerate();
-  };
+  const {
+    handleStopStreaming,
+    handleSendMessage,
+    handleRegenerate,
+    handleEditAndResend,
+    handleCompleteResponse,
+    handleRetry,
+  } = useChatCommandController({
+    conversations,
+    activeConversation,
+    activeId,
+    settings,
+    memoryState,
+    isStreaming,
+    setConversations,
+    setActiveId,
+    setIsStreaming,
+    streamAssistantResponse,
+    abortControllerRef,
+  });
 
   const {
     handleNewConversation,
@@ -331,10 +175,9 @@ export default function App() {
     setConversations,
     setFolders,
     setActiveId,
-    setSettings,
-    setTheme,
     setRenameTargetId,
     setDeleteTargetId,
+    applyImportedSettings: handleSaveSettings,
     stopStreaming: handleStopStreaming,
     userHasScrolledUpRef,
   });
