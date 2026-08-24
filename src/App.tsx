@@ -168,14 +168,20 @@ export default function App() {
     }
     setIsStreaming(false);
 
-    // Mark active streaming message as complete
     if (activeId) {
       setConversations((prev) =>
         prev.map((c) => {
           if (c.id !== activeId) return c;
           const updatedMsgs = c.messages.map((m) =>
             m.isStreaming ? { ...m, isStreaming: false } : m
-          );  const {
+          );
+          return { ...c, messages: updatedMsgs };
+        })
+      );
+    }
+  };
+
+  const {
     streamAssistantResponse,
     generateConversationTitle,
   } = useChatStreamController({
@@ -188,11 +194,6 @@ export default function App() {
     abortControllerRef,
     userHasScrolledUpRef,
   });
-
-h (e) {
-      console.warn('Title generation skipped or offline:', e);
-    }
-  };
 
   // Send Message
   const handleSendMessage = (text: string, image?: string) => {
