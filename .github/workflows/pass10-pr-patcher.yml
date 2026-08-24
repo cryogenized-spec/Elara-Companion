@@ -26,25 +26,33 @@ jobs:
           set -euo pipefail
           python3 <<'PY'
           from pathlib import Path
+          import re
+
           p = Path('src/components/SettingsModal.tsx')
           text = p.read_text()
 
-          import_anchor = "import { loadRateLimits } from '../lib/storage';\n"
           import_line = "import { VoiceChatSettingsPanel } from './VoiceChatSettingsPanel';\n"
           if import_line not in text:
-              if import_anchor not in text:
+              anchor = "import { loadRateLimits } from '../lib/storage';"
+              idx = text.find(anchor)
+              if idx < 0:
                   raise SystemExit('SettingsModal import anchor not found')
-              text = text.replace(import_anchor, import_anchor + import_line, 1)
+              line_end = text.find('\n', idx)
+              if line_end < 0:
+                  line_end = len(text)
+              text = text[:line_end + 1] + import_line + text[line_end + 1:]
 
-          start_marker = '          {/* TAB: VOICE & SPEECH-TO-TEXT */}\n'
-          end_marker = '          {/* TAB: GOOGLE WORKSPACE & SYNC */}\n'
-          start = text.find(start_marker)
-          end = text.find(end_marker, start)
+          start_token = '{/* TAB: VOICE & SPEECH-TO-TEXT */}'
+          end_token = '{/* TAB: GOOGLE WORKSPACE & SYNC */}'
+          start = text.find(start_token)
+          end = text.find(end_token, start + len(start_token) if start >= 0 else 0)
           if start < 0 or end < 0 or end <= start:
               raise SystemExit('Voice tab boundaries not found')
 
-          replacement = '''          {/* TAB: VOICE & SPEECH-TO-TEXT */}\n          {activeTab === 'voice' && (\n            <VoiceChatSettingsPanel\n              settings={formData}\n              onChange={setFormData}\n            />\n          )}\n\n'''
-          text = text[:start] + replacement + text[end:]
+          line_start = text.rfind('\n', 0, start) + 1
+          end_line_start = text.rfind('\n', 0, end) + 1
+          replacement = """          {/* TAB: VOICE & SPEECH-TO-TEXT */}\n          {activeTab === 'voice' && (\n            <VoiceChatSettingsPanel\n              settings={formData}\n              onChange={setFormData}\n            />\n          )}\n\n"""
+          text = text[:line_start] + replacement + text[end_line_start:]
           p.write_text(text)
           PY
 
@@ -62,5 +70,9 @@ jobs:
           git config user.name 'Elara Architecture Bot'
           git config user.email 'elara-architecture@users.noreply.github.com'
           git add src/components/SettingsModal.tsx
-          git commit -m 'refactor: route settings voice tab through canonical panel'
-          git push https://x-access-token:${TOKEN}@github.com/cryogenized-spec/Elara-Companion.git HEAD:refactor/pass10-settings
+          if git diff --cached --quiet; then
+            echo 'No changes required; canonical Voice route already present.'
+          else
+            git commit -m 'refactor: route settings voice tab through canonical panel'
+            git push https://x-access-token:${TOKEN}@github.com/cryogenized-spec/Elara-Companion.git HEAD:refactor/pass10-settings
+          fi
