@@ -13,8 +13,7 @@ export type ConversationControllerArgs = {
   setConversations: Dispatch<SetStateAction<Conversation[]>>;
   setFolders: Dispatch<SetStateAction<Folder[]>>;
   setActiveId: Dispatch<SetStateAction<string | null>>;
-  setSettings: Dispatch<SetStateAction<ElaraSettings>>;
-  setTheme: Dispatch<SetStateAction<'dark' | 'light'>>;
+  applyImportedSettings: (nextSettings: ElaraSettings) => void;
   setRenameTargetId: Dispatch<SetStateAction<string | null>>;
   setDeleteTargetId: Dispatch<SetStateAction<string | null>>;
   stopStreaming: () => void;
@@ -23,7 +22,7 @@ export type ConversationControllerArgs = {
 
 export function useConversationController({
   conversations, folders, settings, activeId, isStreaming,
-  setConversations, setFolders, setActiveId, setSettings, setTheme,
+  setConversations, setFolders, setActiveId, applyImportedSettings,
   setRenameTargetId, setDeleteTargetId, stopStreaming, userHasScrolledUpRef,
 }: ConversationControllerArgs) {
   const handleNewConversation = useCallback(() => {
@@ -90,9 +89,9 @@ export function useConversationController({
     }
     if (importedSettings) {
       const mergedSettings = { ...settings, ...importedSettings };
-      setSettings(mergedSettings); setTheme(mergedSettings.theme); setDbSettings(mergedSettings);
+      applyImportedSettings(mergedSettings);
     }
-  }, [setActiveId, setConversations, setSettings, setTheme, settings]);
+  }, [applyImportedSettings, setActiveId, setConversations, settings]);
 
   return { handleNewConversation, handleCreateFolder, handleRenameFolder, handleDeleteFolder, handleToggleFolder, handleMoveToFolder, renameConversation, deleteConversation, clearAllData, exportAll, importData };
 }
