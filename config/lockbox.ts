@@ -6,13 +6,12 @@ export type LockboxEntry = {
   key: string;
   namespace: LockboxNamespace;
   classification: LockboxClassification;
-  requiredBy: string[];
+  requiredBy: readonly string[];
   exposures: readonly LockboxExposure[];
 };
 
 export const LOCKBOX_MANIFEST = [
   { key: 'APP_URL', namespace: 'app', classification: 'config', requiredBy: ['server', 'oauth callbacks'], exposures: ['server'] },
-  { key: 'NODE_ENV', namespace: 'app', classification: 'config', requiredBy: ['server runtime mode'], exposures: ['server'] },
   { key: 'GEMINI_API_KEY', namespace: 'gemini', classification: 'secret', requiredBy: ['server Gemini', 'background Worker Gemini', 'automation executor'], exposures: ['server', 'worker', 'ci'] },
   { key: 'GEMINI_MODEL', namespace: 'gemini', classification: 'config', requiredBy: ['server Gemini', 'background Worker Gemini', 'automation executor'], exposures: ['server', 'worker', 'ci'] },
   { key: 'VITE_GOOGLE_CLIENT_ID', namespace: 'google', classification: 'public', requiredBy: ['browser Google OAuth'], exposures: ['browser'] },
