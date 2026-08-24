@@ -1,1 +1,0 @@
-Pass 4 auto-trigger sentinel. This file exists only to trigger the Pass 4 branch workflow; the workflow removes its own temporary scaffolding after the extraction is committed.
