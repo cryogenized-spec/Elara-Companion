@@ -1,9 +1,8 @@
 name: Pass 10 PR patcher
 
 on:
-  workflow_dispatch:
   pull_request_target:
-    types: [opened, synchronize]
+    types: [opened, reopened, synchronize]
     branches: [main]
 
 permissions:
@@ -12,7 +11,7 @@ permissions:
 
 jobs:
   patch:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'refactor/pass10-settings'
+    if: github.event.pull_request.head.ref == 'refactor/pass10-settings'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,57 +20,53 @@ jobs:
           token: ${{ secrets.ELARA_MIRROR_TOKEN }}
           fetch-depth: 0
 
-      - name: Patch legacy Voice settings
+      - name: Insert canonical Voice settings route
         run: |
           set -euo pipefail
           python3 <<'PY'
           from pathlib import Path
-          import re
-
           p = Path('src/components/SettingsModal.tsx')
           text = p.read_text()
 
           import_line = "import { VoiceChatSettingsPanel } from './VoiceChatSettingsPanel';\n"
           if import_line not in text:
-              anchor = "import { loadRateLimits } from '../lib/storage';"
-              idx = text.find(anchor)
-              if idx < 0:
+              anchor = "import { loadRateLimits } from '../lib/storage';\n"
+              if anchor not in text:
                   raise SystemExit('SettingsModal import anchor not found')
-              line_end = text.find('\n', idx)
-              if line_end < 0:
-                  line_end = len(text)
-              text = text[:line_end + 1] + import_line + text[line_end + 1:]
+              text = text.replace(anchor, anchor + import_line, 1)
 
-          start_token = '{/* TAB: VOICE & SPEECH-TO-TEXT */}'
-          end_token = '{/* TAB: GOOGLE WORKSPACE & SYNC */}'
-          start = text.find(start_token)
-          end = text.find(end_token, start + len(start_token) if start >= 0 else 0)
-          if start < 0 or end < 0 or end <= start:
-              raise SystemExit('Voice tab boundaries not found')
+          workspace_marker = '          {/* TAB: GOOGLE WORKSPACE & SYNC */}\n'
+          if workspace_marker not in text:
+              raise SystemExit('Google Workspace tab marker not found')
 
-          line_start = text.rfind('\n', 0, start) + 1
-          end_line_start = text.rfind('\n', 0, end) + 1
-          replacement = """          {/* TAB: VOICE & SPEECH-TO-TEXT */}\n          {activeTab === 'voice' && (\n            <VoiceChatSettingsPanel\n              settings={formData}\n              onChange={setFormData}\n            />\n          )}\n\n"""
-          text = text[:line_start] + replacement + text[end_line_start:]
+          canonical_block = '''          {/* TAB: VOICE & SPEECH-TO-TEXT */}\n          {activeTab === 'voice' && (\n            <VoiceChatSettingsPanel\n              settings={formData}\n              onChange={setFormData}\n            />\n          )}\n\n'''
+
+          body_start = text.find('<div className="p-6 overflow-y-auto')
+          body = text[body_start:] if body_start >= 0 else text
+          if 'activeTab === \'voice\'' not in body:
+              text = text.replace(workspace_marker, canonical_block + workspace_marker, 1)
+
           p.write_text(text)
           PY
 
-      - name: Verify canonical Voice route
+      - name: Verify
         run: |
           set -euo pipefail
           grep -q "VoiceChatSettingsPanel" src/components/SettingsModal.tsx
-          test "$(grep -c "TAB: VOICE & SPEECH-TO-TEXT" src/components/SettingsModal.tsx)" -eq 1
+          grep -q "activeTab === 'voice'" src/components/SettingsModal.tsx
+          grep -q "TAB: GOOGLE WORKSPACE & SYNC" src/components/SettingsModal.tsx
 
-      - name: Commit extraction
+      - name: Commit and clean temporary tooling
         env:
           TOKEN: ${{ secrets.ELARA_MIRROR_TOKEN }}
         run: |
           set -euo pipefail
           git config user.name 'Elara Architecture Bot'
           git config user.email 'elara-architecture@users.noreply.github.com'
-          git add src/components/SettingsModal.tsx
+          rm -f .github/workflows/pass10-voice-extract.yml .pass10-trigger
+          git add -A
           if git diff --cached --quiet; then
-            echo 'No changes required; canonical Voice route already present.'
+            echo 'No Pass 10 changes required.'
           else
             git commit -m 'refactor: route settings voice tab through canonical panel'
             git push https://x-access-token:${TOKEN}@github.com/cryogenized-spec/Elara-Companion.git HEAD:refactor/pass10-settings
