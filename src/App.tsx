@@ -47,6 +47,7 @@ import { WorkspaceView } from './components/WorkspaceView';
 import { saveAgentArtifact, setActiveArtifact, getWorkspace, saveWorkspace } from './lib/workspaceStorage';
 import { useConversationController } from './features/conversations/useConversationController';
 import { useChatStreamController } from './features/chat/useChatStreamController';
+import { useWorkspaceController } from './features/workspace/useWorkspaceController';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'chat' | 'workspace'>('chat');
@@ -128,7 +129,6 @@ export default function App() {
   const [memoryModalOpen, setMemoryModalOpen] = useState(false);
   const [viewerModalOpen, setViewerModalOpen] = useState(false);
   const [activeCanvas, setActiveCanvas] = useState<CanvasData | null>(null);
-  const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null);
   const portraitFileInputRef = useRef<HTMLInputElement>(null);
 
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
@@ -136,11 +136,9 @@ export default function App() {
 
   const [theme, setTheme] = useState<'dark' | 'light'>(settings.theme || 'dark');
 
-  const handleOpenArtifact = (artifactId: string) => {
-    setActiveArtifact(artifactId);
-    setActiveArtifactId(artifactId);
-    setCurrentView('workspace');
-  };
+  const { activeArtifactId, handleOpenArtifact, handleSelectArtifact, handleBackToChat } = useWorkspaceController({
+    setCurrentView,
+  });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -677,8 +675,8 @@ h (e) {
         ) : (
           <WorkspaceView
             activeArtifactId={activeArtifactId}
-            onSelectArtifact={(id) => setActiveArtifactId(id)}
-            onBackToChat={() => setCurrentView('chat')}
+            onSelectArtifact={handleSelectArtifact}
+            onBackToChat={handleBackToChat}
             onOpenSidebar={() => setSidebarOpen(true)}
           />
         )}
