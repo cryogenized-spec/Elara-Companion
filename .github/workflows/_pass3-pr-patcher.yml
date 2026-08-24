@@ -3,19 +3,22 @@ name: Temporary Pass 3 patcher
 on:
   pull_request:
     types: [opened, synchronize]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.event.pull_request.head.ref == 'refactor/pass3-conversation-controller' && github.event.pull_request.head.repo.full_name == 'cryogenized-spec/Elara-Companion'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.head.ref == 'refactor/pass3-conversation-controller' && github.event.pull_request.head.repo.full_name == 'cryogenized-spec/Elara-Companion')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Pass 3 branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: refactor/pass3-conversation-controller
           token: ${{ secrets.ELARA_MIRROR_TOKEN }}
           fetch-depth: 0
 
