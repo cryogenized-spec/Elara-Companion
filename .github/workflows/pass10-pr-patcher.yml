@@ -20,41 +20,31 @@ jobs:
           ref: refactor/pass10-settings
           token: ${{ secrets.ELARA_MIRROR_TOKEN }}
           fetch-depth: 0
-
       - name: Route canonical Voice settings panel
         run: |
           set -euo pipefail
           python3 <<'PY'
           from pathlib import Path
-
           p = Path('src/components/SettingsModal.tsx')
           text = p.read_text()
-
           import_line = "import { VoiceChatSettingsPanel } from './VoiceChatSettingsPanel';\n"
           if import_line not in text:
               anchor = "import { loadRateLimits } from '../lib/storage';\n"
-              if anchor not in text:
-                  raise SystemExit('SettingsModal import anchor not found')
+              if anchor not in text: raise SystemExit('SettingsModal import anchor not found')
               text = text.replace(anchor, anchor + import_line, 1)
-
           if '<VoiceChatSettingsPanel' not in text:
-              workspace_marker = '          {/* TAB: GOOGLE WORKSPACE & SYNC */}\n'
-              if workspace_marker not in text:
-                  raise SystemExit('Google Workspace tab marker not found')
+              marker = '          {/* TAB: GOOGLE WORKSPACE & SYNC */}\n'
+              if marker not in text: raise SystemExit('Google Workspace tab marker not found')
               replacement = """          {/* TAB: VOICE & SPEECH-TO-TEXT */}\n          {activeTab === 'voice' && (\n            <VoiceChatSettingsPanel\n              settings={formData}\n              onChange={setFormData}\n            />\n          )}\n\n"""
-              text = text.replace(workspace_marker, replacement + workspace_marker, 1)
-
+              text = text.replace(marker, replacement + marker, 1)
           p.write_text(text)
           PY
-
       - name: Verify canonical Voice route
         run: |
           set -euo pipefail
-          grep -q "import { VoiceChatSettingsPanel } from './VoiceChatSettingsPanel';" src/components/SettingsModal.tsx
-          grep -q "<VoiceChatSettingsPanel" src/components/SettingsModal.tsx
+          grep -q "VoiceChatSettingsPanel" src/components/SettingsModal.tsx
           grep -q "activeTab === 'voice'" src/components/SettingsModal.tsx
-          test "$(grep -c "<VoiceChatSettingsPanel" src/components/SettingsModal.tsx)" -eq 1
-
+          test "$(grep -c '<VoiceChatSettingsPanel' src/components/SettingsModal.tsx)" -eq 1
       - name: Commit extraction
         env:
           TOKEN: ${{ secrets.ELARA_MIRROR_TOKEN }}
@@ -64,9 +54,4 @@ jobs:
           git config user.email 'elara-architecture@users.noreply.github.com'
           rm -f .github/workflows/pass10-voice-extract.yml .pass10-trigger
           git add -A
-          if git diff --cached --quiet; then
-            echo 'No Pass 10 changes required.'
-          else
-            git commit -m 'refactor: route settings voice tab through canonical panel'
-            git push https://x-access-token:${TOKEN}@github.com/cryogenized-spec/Elara-Companion.git HEAD:refactor/pass10-settings
-          fi
+          if git diff --cached --quiet; then echo 'No Pass 10 changes required.'; else git commit -m 'refactor: route settings voice tab through canonical panel'; git push https://x-access-token:${TOKEN}@github.com/cryogenized-spec/Elara-Companion.git HEAD:refactor/pass10-settings; fi
