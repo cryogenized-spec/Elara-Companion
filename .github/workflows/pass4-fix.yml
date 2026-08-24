@@ -1,8 +1,8 @@
 name: Pass 4 fix extractor
 
 on:
-  pull_request:
-    types: [opened]
+  pull_request_target:
+    types: [opened, reopened]
     branches: [main]
 
 permissions:
@@ -15,7 +15,8 @@ jobs:
       - name: Checkout fix branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
           token: ${{ secrets.ELARA_MIRROR_TOKEN }}
           fetch-depth: 0
 
@@ -42,7 +43,8 @@ jobs:
               raise SystemExit('generateConversationTitle missing')
           hook_import = "import { useChatStreamController } from './features/chat/useChatStreamController';\n"
           hook_anchor = "import { useConversationController } from './features/conversations/useConversationController';\n"
-          text = text.replace(hook_anchor, hook_anchor + hook_import, 1) if hook_import not in text else text
+          if hook_import not in text:
+              text = text.replace(hook_anchor, hook_anchor + hook_import, 1)
           controller_call = '''  const {\n    streamAssistantResponse,\n    generateConversationTitle,\n  } = useChatStreamController({\n    conversations,\n    settings,\n    memoryState,\n    setConversations,\n    setMemoryState,\n    setIsStreaming,\n    abortControllerRef,\n    userHasScrolledUpRef,\n  });\n\n'''
           text = text[:start] + controller_call + text[end:]
           hook_body = block.replace(start_marker, '', 1).lstrip('\n')
