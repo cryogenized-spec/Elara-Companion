@@ -1,0 +1,78 @@
+name: Pass 7 branch extraction
+
+on:
+  push:
+    branches: [refactor/pass7-background-runtime]
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: refactor/pass7-background-runtime
+          token: ${{ secrets.ELARA_MIRROR_TOKEN }}
+          fetch-depth: 0
+
+      - name: Extract background runtime lifecycle
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          app = Path('src/App.tsx')
+          text = app.read_text()
+          import_line = "import { useBackgroundRuntimeController } from './runtime/useBackgroundRuntimeController';\n"
+          import_anchor = "import { useSettingsController } from './features/settings/useSettingsController';\n"
+          if import_line not in text:
+              text = text.replace(import_anchor, import_anchor + import_line, 1)
+          for line in [
+              "import { createBackgroundChatJob, isBackgroundRuntimeEnabled, loadPersistedBackgroundJobs, persistBackgroundJob, removePersistedBackgroundJob, waitForBackgroundChatJob } from './lib/backgroundChatClient';\n",
+              "import { notifyBackgroundCompletion } from './lib/backgroundService';\n",
+          ]:
+              text = text.replace(line, '', 1)
+          start_marker = "  // Resume durable background jobs after page reload\n"
+          start = text.find(start_marker)
+          end = text.find("  const [isStreaming, setIsStreaming]", start)
+          if start < 0 or end < 0:
+              raise SystemExit('Pass 7 background lifecycle markers not found')
+          block = text[start:end]
+          for required in ('loadPersistedBackgroundJobs', 'waitForBackgroundChatJob', 'notifyBackgroundCompletion', 'removePersistedBackgroundJob'):
+              if required not in block:
+                  raise SystemExit(f'Missing background symbol: {required}')
+          text = text[:start] + text[end:]
+          state_anchor = "  const [customPortrait, setCustomPortrait] = useState<string | null>(null);\n"
+          text = text.replace(state_anchor, state_anchor + "\n  useBackgroundRuntimeController({ isLoaded, setConversations });\n", 1)
+          controller = Path('src/runtime/useBackgroundRuntimeController.ts')
+          controller.parent.mkdir(parents=True, exist_ok=True)
+          controller.write_text("""import { useEffect, type Dispatch, type SetStateAction } from 'react';\nimport type { Conversation } from '../types';\nimport { loadPersistedBackgroundJobs, removePersistedBackgroundJob, waitForBackgroundChatJob } from '../lib/backgroundChatClient';\nimport { notifyBackgroundCompletion } from '../lib/backgroundService';\n\nexport type BackgroundRuntimeControllerArgs = {\n  isLoaded: boolean;\n  setConversations: Dispatch<SetStateAction<Conversation[]>>;\n};\n\nexport function useBackgroundRuntimeController({ isLoaded, setConversations }: BackgroundRuntimeControllerArgs) {\n  useEffect(() => {\n    if (!isLoaded) return;\n    let cancelled = false;\n    const resumeJobs = async () => {\n      const jobs = loadPersistedBackgroundJobs();\n      for (const job of jobs) {\n        try {\n          const status = await waitForBackgroundChatJob(job.jobId);\n          if (cancelled) return;\n          if (['complete', 'completed'].includes(status.status)) {\n            const text = status.output?.result?.text || '';\n            setConversations((prev) => prev.map((c) => c.id !== job.conversationId ? c : ({ ...c, updatedAt: Date.now(), messages: c.messages.map((m) => m.id === job.assistantMessageId ? { ...m, content: text, isStreaming: false, isThinking: false, backgroundJobId: undefined } : m) })));
+            removePersistedBackgroundJob(job.conversationId);\n            void notifyBackgroundCompletion('Elara finished', text.slice(0, 160) || 'Your background response is ready.');\n          } else if (['errored', 'failed', 'terminated'].includes(status.status)) {\n            setConversations((prev) => prev.map((c) => c.id !== job.conversationId ? c : ({ ...c, messages: c.messages.map((m) => m.id === job.assistantMessageId ? { ...m, isStreaming: false, isThinking: false, isError: true, errorMessage: 'Background execution failed. Please retry.', backgroundJobId: undefined } : m) })));\n            removePersistedBackgroundJob(job.conversationId);\n          }\n        } catch (error) {\n          console.warn('Durable background job resume deferred:', error);\n        }\n      }\n    };\n    void resumeJobs();\n    return () => { cancelled = true; };\n  }, [isLoaded, setConversations]);\n}\n""")
+          app.write_text(text)
+          PY
+
+      - name: Verify
+        run: |
+          set -euo pipefail
+          test -f src/runtime/useBackgroundRuntimeController.ts
+          grep -q "useBackgroundRuntimeController" src/App.tsx
+          ! grep -q "loadPersistedBackgroundJobs" src/App.tsx
+          ! grep -q "Resume durable background jobs" src/App.tsx
+
+      - name: Typecheck baseline only
+        continue-on-error: true
+        run: npm exec tsc -- --noEmit
+
+      - name: Commit extraction
+        env:
+          TOKEN: ${{ secrets.ELARA_MIRROR_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name 'Elara Architecture Bot'
+          git config user.email 'elara-architecture@users.noreply.github.com'
+          git add src/App.tsx src/runtime/useBackgroundRuntimeController.ts .github/workflows/pass7-branch-extract.yml .pass7-trigger
+          git diff --cached --quiet && exit 0
+          git commit -m 'refactor: Pass 7 extract background runtime controller'
+          git push https://x-access-token:${TOKEN}@github.com/cryogenized-spec/Elara-Companion.git HEAD:refactor/pass7-background-runtime
