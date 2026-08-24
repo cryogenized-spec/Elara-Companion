@@ -1,6 +1,9 @@
 name: Pass 4 manual chat extraction
 
 on:
+  push:
+    branches:
+      - refactor/pass4-chat-runtime
   workflow_dispatch:
 
 permissions:
@@ -8,6 +11,7 @@ permissions:
 
 jobs:
   extract:
+    if: github.event.head_commit.message != 'refactor: Pass 4 extract chat stream controller'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Pass 4 branch
@@ -50,10 +54,9 @@ jobs:
           controller_call = '''  const {\n    streamAssistantResponse,\n    generateConversationTitle,\n  } = useChatStreamController({\n    conversations,\n    settings,\n    memoryState,\n    setConversations,\n    setMemoryState,\n    setIsStreaming,\n    abortControllerRef,\n    userHasScrolledUpRef,\n  });\n\n'''
           text = text[:start] + controller_call + text[end:]
 
-          hook_body = block.replace(start_marker, '', 1)
-          hook_body = hook_body.lstrip('\n')
+          hook_body = block.replace(start_marker, '', 1).lstrip('\n')
 
-          imports = '''import type { Dispatch, MutableRefObject, SetStateAction } from 'react';\nimport type { Conversation, CanvasData, ElaraSettings, MemoryScratchpadState } from '../../types';\nimport { DEFAULT_PERSONA_PROTOCOL, DEFAULT_INTIMACY_MODULE, DEFAULT_RUNTIME_RULES } from '../../constants/defaultPrompt';\nimport { exportAllDataJSON, incrementRateLimit, generateUniqueId } from '../../lib/storage';\nimport { loadUserProfileNotes, loadActiveScratchpad, buildSystemPayload } from '../../lib/contextManager';\nimport { getAccessToken } from '../../lib/googleApi';\nimport { getActiveThoughtSentence, parseThoughtSteps, extractThoughtsAndContent } from '../../utils/thoughtUtils';\nimport { extractCanvases } from '../../utils/canvasUtils';\nimport { runDirectGeminiStream, runDirectMemoryExtraction, runDirectTitleGeneration } from '../../lib/geminiDirectClient';\nimport { applyMemoryActions } from '../../lib/memoryProcessor';\nimport { createBackgroundChatJob, isBackgroundRuntimeEnabled, persistBackgroundJob, removePersistedBackgroundJob, waitForBackgroundChatJob } from '../../lib/backgroundChatClient';\nimport { notifyBackgroundCompletion } from '../../lib/backgroundService';\nimport { createStreamUiScheduler } from '../../lib/streamUiScheduler';\nimport { saveAgentArtifact, getWorkspace, saveWorkspace } from '../../lib/workspaceStorage';\nimport { setDbMemoryState } from '../../lib/db';\n\n'''
+          imports = '''import type { Dispatch, MutableRefObject, SetStateAction } from 'react';\nimport type { Conversation, CanvasData, ElaraSettings, MemoryScratchpadState, Message } from '../../types';\nimport { DEFAULT_PERSONA_PROTOCOL, DEFAULT_INTIMACY_MODULE, DEFAULT_RUNTIME_RULES } from '../../constants/defaultPrompt';\nimport { incrementRateLimit, generateUniqueId } from '../../lib/storage';\nimport { loadUserProfileNotes, loadActiveScratchpad, buildSystemPayload } from '../../lib/contextManager';\nimport { getAccessToken } from '../../lib/googleApi';\nimport { getActiveThoughtSentence, parseThoughtSteps, extractThoughtsAndContent } from '../../utils/thoughtUtils';\nimport { extractCanvases } from '../../utils/canvasUtils';\nimport { runDirectGeminiStream, runDirectMemoryExtraction, runDirectTitleGeneration } from '../../lib/geminiDirectClient';\nimport { applyMemoryActions } from '../../lib/memoryProcessor';\nimport { createBackgroundChatJob, isBackgroundRuntimeEnabled, persistBackgroundJob, removePersistedBackgroundJob, waitForBackgroundChatJob } from '../../lib/backgroundChatClient';\nimport { notifyBackgroundCompletion } from '../../lib/backgroundService';\nimport { createStreamUiScheduler } from '../../lib/streamUiScheduler';\nimport { saveAgentArtifact, getWorkspace, saveWorkspace } from '../../lib/workspaceStorage';\nimport { setDbMemoryState } from '../../lib/db';\n\n'''
 
           args = '''export type ChatStreamControllerArgs = {\n  conversations: Conversation[];\n  settings: ElaraSettings;\n  memoryState: MemoryScratchpadState;\n  setConversations: Dispatch<SetStateAction<Conversation[]>>;\n  setMemoryState: Dispatch<SetStateAction<MemoryScratchpadState>>;\n  setIsStreaming: Dispatch<SetStateAction<boolean>>;\n  abortControllerRef: MutableRefObject<AbortController | null>;\n  userHasScrolledUpRef: MutableRefObject<boolean>;\n};\n\nexport function useChatStreamController({\n  conversations,\n  settings,\n  memoryState,\n  setConversations,\n  setMemoryState,\n  setIsStreaming,\n  abortControllerRef,\n  userHasScrolledUpRef,\n}: ChatStreamControllerArgs) {\n\n'''
 
