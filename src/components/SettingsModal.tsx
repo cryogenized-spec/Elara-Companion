@@ -113,6 +113,7 @@ interface SettingsModalProps {
 }
 
 import { loadRateLimits } from '../lib/storage';
+import { VoiceChatSettingsPanel } from './VoiceChatSettingsPanel';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
