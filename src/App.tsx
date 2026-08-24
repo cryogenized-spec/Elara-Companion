@@ -16,8 +16,6 @@ import { getActiveThoughtSentence, parseThoughtSteps, extractThoughtsAndContent 
 import { extractCanvases } from './utils/canvasUtils';
 import { runDirectGeminiStream, runDirectMemoryExtraction, runDirectTitleGeneration } from './lib/geminiDirectClient';
 import { applyMemoryActions } from './lib/memoryProcessor';
-import { createBackgroundChatJob, isBackgroundRuntimeEnabled, loadPersistedBackgroundJobs, persistBackgroundJob, removePersistedBackgroundJob, waitForBackgroundChatJob } from './lib/backgroundChatClient';
-import { notifyBackgroundCompletion } from './lib/backgroundService';
 import { createStreamUiScheduler } from './lib/streamUiScheduler';
 
 import { 
@@ -49,6 +47,7 @@ import { useConversationController } from './features/conversations/useConversat
 import { useChatStreamController } from './features/chat/useChatStreamController';
 import { useWorkspaceController } from './features/workspace/useWorkspaceController';
 import { useSettingsController } from './features/settings/useSettingsController';
+import { useBackgroundRuntimeController } from './runtime/useBackgroundRuntimeController';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'chat' | 'workspace'>('chat');
@@ -60,6 +59,11 @@ export default function App() {
   const [worldState, setWorldState] = useState<WorldState>(DEFAULT_WORLD_STATE);
   const [memoryState, setMemoryState] = useState<MemoryScratchpadState>(DEFAULT_MEMORY_STATE);
   const [customPortrait, setCustomPortrait] = useState<string | null>(null);
+
+  useBackgroundRuntimeController({
+    isLoaded,
+    setConversations,
+  });
 
   useEffect(() => {
     migrateFromLocalStorage().then(async () => {
@@ -87,41 +91,6 @@ export default function App() {
       setIsLoaded(true);
     });
   }, []);
-
-  // Resume durable background jobs after page reload
-  useEffect(() => {
-    if (!isLoaded) return;
-    let cancelled = false;
-    const resumeJobs = async () => {
-      const jobs = loadPersistedBackgroundJobs();
-      for (const job of jobs) {
-        try {
-          const status = await waitForBackgroundChatJob(job.jobId);
-          if (cancelled) return;
-          if (['complete', 'completed'].includes(status.status)) {
-            const text = status.output?.result?.text || '';
-            setConversations((prev) => prev.map((c) => c.id !== job.conversationId ? c : ({
-              ...c,
-              updatedAt: Date.now(),
-              messages: c.messages.map((m) => m.id === job.assistantMessageId ? { ...m, content: text, isStreaming: false, isThinking: false, backgroundJobId: undefined } : m),
-            })));
-            removePersistedBackgroundJob(job.conversationId);
-            void notifyBackgroundCompletion('Elara finished', text.slice(0, 160) || 'Your background response is ready.');
-          } else if (['errored', 'failed', 'terminated'].includes(status.status)) {
-            setConversations((prev) => prev.map((c) => c.id !== job.conversationId ? c : ({
-              ...c,
-              messages: c.messages.map((m) => m.id === job.assistantMessageId ? { ...m, isStreaming: false, isThinking: false, isError: true, errorMessage: 'Background execution failed. Please retry.' , backgroundJobId: undefined } : m),
-            })));
-            removePersistedBackgroundJob(job.conversationId);
-          }
-        } catch (error) {
-          console.warn('Durable background job resume deferred:', error);
-        }
-      }
-    };
-    void resumeJobs();
-    return () => { cancelled = true; };
-  }, [isLoaded]);
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
