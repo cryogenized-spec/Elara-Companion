@@ -1,9 +1,6 @@
 name: Pass 3 conversation extraction
 
 on:
-  push:
-    branches:
-      - refactor/pass3-conversation-controller
   workflow_dispatch:
 
 permissions:
@@ -11,18 +8,19 @@ permissions:
 
 jobs:
   extract:
-    if: github.event.head_commit.message != 'refactor: Pass 3 conversation extraction'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
         uses: actions/checkout@v4
         with:
+          ref: refactor/pass3-conversation-controller
           token: ${{ secrets.ELARA_MIRROR_TOKEN }}
           fetch-depth: 0
 
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
       - name: Extract conversation lifecycle
-        env:
-          GH_PUSH_TOKEN: ${{ secrets.ELARA_MIRROR_TOKEN }}
         run: |
           set -euo pipefail
           python3 <<'PY'
@@ -50,14 +48,14 @@ jobs:
           end = text.find(end_marker)
           if start < 0 or end < 0 or end <= start:
               raise SystemExit('Pass 3 block markers not found for rename/delete/import extraction')
+
           controller = '''  const {\n    handleNewConversation,\n    handleCreateFolder,\n    handleRenameFolder,\n    handleDeleteFolder,\n    handleToggleFolder,\n    handleMoveToFolder,\n    renameConversation,\n    deleteConversation,\n    clearAllData: handleClearAllData,\n    exportAll: handleExportAll,\n    importData: handleImportData,\n  } = useConversationController({\n    conversations,\n    folders,\n    settings,\n    activeId,\n    isStreaming,\n    setConversations,\n    setFolders,\n    setActiveId,\n    setSettings,\n    setTheme,\n    setRenameTargetId,\n    setDeleteTargetId,\n    stopStreaming: handleStopStreaming,\n    userHasScrolledUpRef,\n  });\n\n  const handleRenameSave = (newTitle: string) => {\n    renameConversation(renameTargetId, newTitle);\n  };\n\n  const handleDeleteConfirm = () => {\n    deleteConversation(deleteTargetId);\n  };\n\n'''
           text = text[:start] + controller + text[end:]
-
           path.write_text(text)
           PY
 
       - name: Verify TypeScript wiring
-        run: npm exec tsc -- --noEmit
+        run: npx tsc --noEmit
 
       - name: Commit extraction
         env:
@@ -66,6 +64,7 @@ jobs:
           set -euo pipefail
           git config user.name 'Elara Architecture Bot'
           git config user.email 'elara-architecture@users.noreply.github.com'
-          git add src/App.tsx src/features/conversations/useConversationController.ts
+          git add src/App.tsx
+          git diff --cached --quiet && exit 0
           git commit -m 'refactor: Pass 3 conversation extraction'
           git push https://x-access-token:${GH_PUSH_TOKEN}@github.com/cryogenized-spec/Elara-Companion.git HEAD:refactor/pass3-conversation-controller
