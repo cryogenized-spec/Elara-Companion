@@ -1687,6 +1687,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
+          {/* TAB: VOICE & SPEECH-TO-TEXT */}
+          {activeTab === 'voice' && (
+            <VoiceChatSettingsPanel
+              settings={formData}
+              onChange={setFormData}
+            />
+          )}
+
           {/* TAB: GOOGLE WORKSPACE & SYNC */}
           {activeTab === 'workspace' && (
             <div className="space-y-6">
