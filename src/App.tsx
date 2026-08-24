@@ -45,6 +45,7 @@ import { ThoughtLogModal } from './components/ThoughtLogModal';
 import { ElaraPortrait } from './components/ElaraPortrait';
 import { WorkspaceView } from './components/WorkspaceView';
 import { saveAgentArtifact, setActiveArtifact, getWorkspace, saveWorkspace } from './lib/workspaceStorage';
+import { useConversationController } from './features/conversations/useConversationController';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'chat' | 'workspace'>('chat');
@@ -194,57 +195,6 @@ export default function App() {
   useEffect(() => {
     scrollToBottom(false, isStreaming ? 'auto' : 'smooth');
   }, [activeConversation?.messages, isStreaming]);
-
-  // Handle New Conversation
-  const handleNewConversation = () => {
-    if (isStreaming) {
-      handleStopStreaming();
-    }
-    const newConv: Conversation = {
-      id: generateUniqueId('conv'),
-      title: 'New Conversation',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      messages: [],
-    };
-    setConversations((prev) => [newConv, ...prev]);
-    setActiveId(newConv.id);
-    userHasScrolledUpRef.current = false;
-  };
-
-  const handleCreateFolder = (name: string) => {
-    const newFolder: Folder = { id: generateUniqueId('folder'), name, isExpanded: true };
-    const newFolders = [...folders, newFolder];
-    setFolders(newFolders);
-    setDbFolders(newFolders);
-  };
-
-  const handleRenameFolder = (id: string, name: string) => {
-    const newFolders = folders.map(f => f.id === id ? { ...f, name } : f);
-    setFolders(newFolders);
-    setDbFolders(newFolders);
-  };
-
-  const handleDeleteFolder = (id: string) => {
-    const newFolders = folders.filter(f => f.id !== id);
-    setFolders(newFolders);
-    setDbFolders(newFolders);
-    const updatedConvs = conversations.map(c => c.folderId === id ? { ...c, folderId: undefined } : c);
-    setConversations(updatedConvs);
-    setDbConversations(updatedConvs);
-  };
-
-  const handleToggleFolder = (id: string) => {
-    const newFolders = folders.map(f => f.id === id ? { ...f, isExpanded: !f.isExpanded } : f);
-    setFolders(newFolders);
-    setDbFolders(newFolders);
-  };
-
-  const handleMoveToFolder = (conversationId: string, folderId: string | null) => {
-    const updated = conversations.map(c => c.id === conversationId ? { ...c, folderId: folderId || undefined } : c);
-    setConversations(updated);
-    setDbConversations(updated);
-  };
 
   // Save Settings
   const handleSaveSettings = (newSettings: ElaraSettings) => {
@@ -989,61 +939,41 @@ export default function App() {
     handleRegenerate();
   };
 
-  // Rename Conversation
+  const {
+    handleNewConversation,
+    handleCreateFolder,
+    handleRenameFolder,
+    handleDeleteFolder,
+    handleToggleFolder,
+    handleMoveToFolder,
+    renameConversation,
+    deleteConversation,
+    clearAllData: handleClearAllData,
+    exportAll: handleExportAll,
+    importData: handleImportData,
+  } = useConversationController({
+    conversations,
+    folders,
+    settings,
+    activeId,
+    isStreaming,
+    setConversations,
+    setFolders,
+    setActiveId,
+    setSettings,
+    setTheme,
+    setRenameTargetId,
+    setDeleteTargetId,
+    stopStreaming: handleStopStreaming,
+    userHasScrolledUpRef,
+  });
+
   const handleRenameSave = (newTitle: string) => {
-    if (renameTargetId) {
-      setConversations((prev) =>
-        prev.map((c) => (c.id === renameTargetId ? { ...c, title: newTitle } : c))
-      );
-      setRenameTargetId(null);
-    }
+    renameConversation(renameTargetId, newTitle);
   };
 
-  // Delete Conversation
   const handleDeleteConfirm = () => {
-    if (deleteTargetId) {
-      const remaining = conversations.filter((c) => c.id !== deleteTargetId);
-      setConversations(remaining);
-      if (activeId === deleteTargetId) {
-        setActiveId(remaining.length > 0 ? remaining[0].id : null);
-      }
-      setDbConversations(remaining);
-      setDeleteTargetId(null);
-    }
-  };
-
-  // Clear All Data
-  const handleClearAllData = () => {
-    clearDbStorage();
-    const newConv: Conversation = {
-      id: generateUniqueId('conv'),
-      title: 'New Conversation',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      messages: [],
-    };
-    setConversations([newConv]);
-    setActiveId(newConv.id);
-  };
-
-  // Export Data
-  const handleExportAll = () => {
-    exportAllDataJSON(conversations, settings);
-  };
-
-  // Import Data
-  const handleImportData = (jsonStr: string) => {
-    const { conversations: importedConvs, settings: importedSet } = importDataJSON(jsonStr);
-    if (importedConvs.length > 0) {
-      setConversations(importedConvs);
-      setActiveId(importedConvs[0].id);
-      setDbConversations(importedConvs);
-    }
-    if (importedSet) {
-      const mergedSet = { ...settings, ...importedSet };
-      setSettings(mergedSet);
-      setDbSettings(mergedSet);
-    }
+    deleteConversation(deleteTargetId);
   };
 
   if (!isLoaded) return <div className="flex h-screen w-screen items-center justify-center bg-zinc-950 text-zinc-500 font-sans tracking-wide">Initializing memory core...</div>;
