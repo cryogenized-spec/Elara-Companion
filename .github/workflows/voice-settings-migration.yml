@@ -1,0 +1,62 @@
+name: Temporary voice settings migration
+
+on:
+  push:
+    branches: [fix/pass4-wire-voice-chat]
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Replace legacy Voice & Speech surface
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/components/SettingsModal.tsx')
+          text = path.read_text()
+
+          marker = "import { loadRateLimits } from '../lib/storage';\n"
+          addition = "import { VoiceChatSettingsPanel } from './VoiceChatSettingsPanel';\n"
+          if addition not in text:
+              if marker not in text:
+                  raise SystemExit('Import anchor not found')
+              text = text.replace(marker, marker + addition, 1)
+
+          text = text.replace('<span>Voice & Speech</span>', '<span>Voice & Chat</span>', 1)
+
+          start_marker = '          {/* TAB: VOICE & SPEECH-TO-TEXT */}'
+          end_marker = '          {/* TAB 3: SYSTEM PROMPT & MODULES */}'
+          start = text.find(start_marker)
+          if start < 0:
+              raise SystemExit('Legacy Voice tab marker not found')
+          end = text.find(end_marker, start)
+          if end < 0:
+              raise SystemExit('System tab marker not found')
+
+          replacement = '''          {/* TAB: VOICE & CHAT */}\n          {activeTab === 'voice' && (\n            <VoiceChatSettingsPanel\n              settings={formData}\n              onChange={setFormData}\n            />\n          )}\n\n'''
+
+          text = text[:start] + replacement + text[end:]
+          path.write_text(text)
+          PY
+
+      - name: Restore workflow and commit migration
+        shell: bash
+        run: |
+          git checkout HEAD^ -- .github/workflows/ci.yml || true
+          rm -f .github/workflows/voice-settings-migration.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/SettingsModal.tsx .github/workflows/ci.yml .github/workflows/voice-settings-migration.yml
+          git diff --cached --check
+          git commit -m 'refactor: wire canonical Voice & Chat settings'
+          git push origin HEAD:fix/pass4-wire-voice-chat
