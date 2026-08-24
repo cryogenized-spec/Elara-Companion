@@ -48,6 +48,7 @@ import { saveAgentArtifact, setActiveArtifact, getWorkspace, saveWorkspace } fro
 import { useConversationController } from './features/conversations/useConversationController';
 import { useChatStreamController } from './features/chat/useChatStreamController';
 import { useWorkspaceController } from './features/workspace/useWorkspaceController';
+import { useSettingsController } from './features/settings/useSettingsController';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'chat' | 'workspace'>('chat');
@@ -134,11 +135,15 @@ export default function App() {
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
-  const [theme, setTheme] = useState<'dark' | 'light'>(settings.theme || 'dark');
-
   const { activeArtifactId, handleOpenArtifact, handleSelectArtifact, handleBackToChat } = useWorkspaceController({
     setCurrentView,
   });
+
+  const { theme, handleSaveSettings, handleToggleTheme } = useSettingsController({
+    settings,
+    setSettings,
+  });
+
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -156,15 +161,6 @@ export default function App() {
     setCustomPortrait(null);
     setDbPortrait(null);
   };
-
-  // Initialize theme class
-  useEffect(() => {
-    if (theme === 'light') {
-      document.documentElement.classList.remove('dark');
-    } else {
-      document.documentElement.classList.add('dark');
-    }
-  }, [theme]);
 
   // Save data whenever it changes
   useEffect(() => { if (isLoaded) setDbConversations(conversations); }, [conversations, isLoaded]);
@@ -194,22 +190,6 @@ export default function App() {
   useEffect(() => {
     scrollToBottom(false, isStreaming ? 'auto' : 'smooth');
   }, [activeConversation?.messages, isStreaming]);
-
-  // Save Settings
-  const handleSaveSettings = (newSettings: ElaraSettings) => {
-    setSettings(newSettings);
-    setTheme(newSettings.theme);
-    setDbSettings(newSettings);
-  };
-
-  // Toggle Theme
-  const handleToggleTheme = () => {
-    const nextTheme: 'dark' | 'light' = theme === 'dark' ? 'light' : 'dark';
-    setTheme(nextTheme);
-    const updatedSettings: ElaraSettings = { ...settings, theme: nextTheme };
-    setSettings(updatedSettings);
-    setDbSettings(updatedSettings);
-  };
 
   // Stop Streaming
   const handleStopStreaming = () => {
