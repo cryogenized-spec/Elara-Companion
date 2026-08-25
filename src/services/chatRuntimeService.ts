@@ -5,6 +5,7 @@ import type {
   GeminiStreamChunk,
 } from '../contracts';
 import { googleContract } from '../contracts/implementations';
+import { executeBackgroundChatJob } from './chatBackgroundService';
 
 export interface ChatRuntimeExecutionRequest {
   conversationId: string;
@@ -114,9 +115,8 @@ async function streamBackendChat(
 }
 
 /**
- * Owns the model/background execution decision for Chat.
- * The Chat feature supplies a request and receives normalized runtime chunks;
- * provider-specific Gemini, backend SSE, credential lookup, and durable-job mechanics stay behind this boundary.
+ * Owns the model/background execution choice for Chat.
+ * Durable job choreography lives in chatBackgroundService; provider transport remains here.
  */
 export async function executeChatRuntime(
   request: ChatRuntimeExecutionRequest,
@@ -124,47 +124,29 @@ export async function executeChatRuntime(
   const googleToken = googleContract.getAccessToken();
 
   if (request.background.isEnabled()) {
-    const durableJob = await request.background.createChatJob({
-      message: request.message,
-      image: request.image,
-      history: request.history.map((item) => ({
-        role: item.role === 'model' ? 'assistant' : 'user',
-        content: item.content,
-        image: item.image,
-      })),
-      systemPrompt: request.systemPrompt,
-      model: request.model,
-      temperature: request.temperature,
-      maxOutputTokens: request.maxOutputTokens,
-      topP: request.topP,
-      topK: request.topK,
-      workspace: request.workspace,
-    });
-
-    request.background.persistJob({
+    const result = await executeBackgroundChatJob({
       conversationId: request.conversationId,
       assistantMessageId: request.assistantMessageId,
-      jobId: durableJob.id,
-      createdAt: Date.now(),
+      request: {
+        message: request.message,
+        image: request.image,
+        history: request.history.map((item) => ({
+          role: item.role === 'model' ? 'assistant' : 'user',
+          content: item.content,
+          image: item.image,
+        })),
+        systemPrompt: request.systemPrompt,
+        model: request.model,
+        temperature: request.temperature,
+        maxOutputTokens: request.maxOutputTokens,
+        topP: request.topP,
+        topK: request.topK,
+        workspace: request.workspace,
+      },
+      background: request.background,
+      onChunk: request.onChunk,
     });
-
-    const status = await request.background.waitForJob(durableJob.id);
-    if (!['complete', 'completed'].includes(status.status)) {
-      throw new Error(status.error ? String(status.error) : `Background execution ended with status ${status.status}.`);
-    }
-
-    const result = status.output?.result;
-    request.onChunk({
-      text: result?.text || '',
-      finishReason: result?.finishReason || undefined,
-      workspace: result?.workspace,
-      artifactIds: [
-        ...(result?.createdArtifactIds || []),
-        ...(result?.modifiedArtifactIds || []),
-      ],
-    });
-    request.background.removeJob(durableJob.id);
-    return { durable: true };
+    return result;
   }
 
   if (request.apiKey?.trim()) {
