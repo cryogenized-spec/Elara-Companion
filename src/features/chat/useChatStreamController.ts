@@ -7,10 +7,10 @@ import { getActiveThoughtSentence, parseThoughtSteps, extractThoughtsAndContent 
 import { extractCanvases } from '../../utils/canvasUtils';
 import { runDirectTitleGeneration } from '../../lib/geminiDirectClient';
 import { createStreamUiScheduler } from '../../lib/streamUiScheduler';
-import { saveAgentArtifact, getWorkspace, saveWorkspace } from '../../lib/workspaceStorage';
-import { geminiRuntimeContract, backgroundRuntimeContract, memoryContract } from '../../contracts/implementations';
+import { geminiRuntimeContract, backgroundRuntimeContract, memoryContract, workspaceContract } from '../../contracts/implementations';
 import { executeChatRuntime } from '../../services/chatRuntimeService';
 import { extractAndPersistConversationMemory } from '../../services/chatMemoryService';
+import { applyChatRuntimeWorkspaceUpdate, persistChatCanvases } from '../../services/chatWorkspaceService';
 
 export type ChatStreamControllerArgs = {
   conversations: Conversation[];
@@ -173,21 +173,7 @@ export function useChatStreamController({
     }) => {
       lastChunkTime = Date.now();
 
-      if (chunk.toolCall?.workspace) {
-        saveWorkspace(chunk.toolCall.workspace);
-      }
-      if (chunk.toolCall?.createdArtifactId) {
-        streamArtifactIds.push(chunk.toolCall.createdArtifactId);
-      }
-      if (chunk.toolCall?.modifiedArtifactId) {
-        streamArtifactIds.push(chunk.toolCall.modifiedArtifactId);
-      }
-      if (chunk.workspace) {
-        saveWorkspace(chunk.workspace);
-      }
-      if (chunk.artifactIds && Array.isArray(chunk.artifactIds)) {
-        streamArtifactIds.push(...chunk.artifactIds);
-      }
+      streamArtifactIds.push(...applyChatRuntimeWorkspaceUpdate(chunk));
 
       if (chunk.finishReason === 'SAFETY') {
         console.warn('[Gemini Safety Cutoff Triggered]', {
@@ -280,7 +266,7 @@ export function useChatStreamController({
         topK: settings.topK,
         thinkingBudget: settings.thinkingBudget,
         apiKey: settings.apiKey?.trim(),
-        workspace: getWorkspace(),
+        workspace: workspaceContract.getWorkspace(),
         signal: controller.signal,
         runtime: geminiRuntimeContract,
         background: backgroundRuntimeContract,
@@ -294,22 +280,16 @@ export function useChatStreamController({
       streamUiScheduler.flush();
 
       // Mark streaming and thinking completed & finalize structured steps
-      let { cleanContent, combinedThoughts } = extractThoughtsAndContent(
+      const { cleanContent, combinedThoughts } = extractThoughtsAndContent(
         accumulatedText,
         streamedThoughts
       );
       const { cleanContent: finalCleanContent, canvases } = extractCanvases(cleanContent);
       const finalSteps = parseThoughtSteps(combinedThoughts);
 
-      // TRANSITIONAL BRIDGE: Persist agent-generated canvases to WorkspaceArtifact
+      // Persist generated canvases through the canonical Workspace boundary.
       const persistedCanvases = canvases && canvases.length > 0
-        ? canvases.map((c) => {
-            const artifact = saveAgentArtifact(c.title || 'Canvas Document', c.content, 'markdown', c.artifactId);
-            return {
-              ...c,
-              artifactId: artifact.id,
-            };
-          })
+        ? persistChatCanvases(canvases)
         : [];
 
       const combinedFinalArtifactIds = Array.from(
