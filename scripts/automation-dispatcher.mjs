@@ -1,4 +1,10 @@
 import { createAutomationLockbox } from './automation-lockbox.mjs';
+import {
+  createDispatchClaim,
+  executionKeyFor,
+  markDispatchAccepted,
+  shouldDispatch,
+} from './automation-runtime.mjs';
 
 const GH_API = 'https://api.github.com';
 const lockbox = createAutomationLockbox();
@@ -41,6 +47,7 @@ async function putStateFile(path, value, sha, message) {
     headers: { ...headers(), 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  if (response.status === 409) return { conflict: true };
   if (!response.ok) throw new Error(`Failed to write ${path}: HTTP ${response.status}`);
   return response.json();
 }
@@ -96,82 +103,104 @@ async function dispatchWithRetry(automation, executionKey) {
   throw lastError;
 }
 
-async function main() {
-  const now = new Date();
-
-  const automationsFile = await getStateFile('automations.json');
-  const runtimeFile = await getStateFile('runtime.json');
-
-  const automations = Array.isArray(automationsFile.value) ? automationsFile.value : [];
-  const runtime = runtimeFile.value && typeof runtimeFile.value === 'object'
-    ? runtimeFile.value
+function normalizeRuntime(value) {
+  const runtime = value && typeof value === 'object'
+    ? value
     : { version: 1, jobs: {}, schedules: {} };
   runtime.version = 1;
   runtime.jobs ||= {};
   runtime.schedules ||= {};
+  return runtime;
+}
 
+async function main() {
+  const now = new Date();
+
+  const automationsFile = await getStateFile('automations.json');
+  const automations = Array.isArray(automationsFile.value) ? automationsFile.value : [];
   const candidates = automations.filter((automation) => {
     if (!automation || automation.enabled !== true) return false;
     if (automationIdFilter && automation.id !== automationIdFilter) return false;
     return true;
   });
 
-  let changed = false;
-
   for (const automation of candidates) {
+    const runtimeFile = await getStateFile('runtime.json');
+    const runtime = normalizeRuntime(runtimeFile.value);
     const configuredNextRunAt = runtime.schedules[automation.id]?.nextRunAt ?? automation.nextRunAt;
     if (!configuredNextRunAt) continue;
 
     const scheduled = new Date(configuredNextRunAt);
     if (Number.isNaN(scheduled.getTime())) continue;
 
-    const executionKey = `${automation.id}:${scheduled.toISOString()}`;
+    const executionKey = executionKeyFor(automation.id, scheduled.toISOString());
     const existing = runtime.jobs[executionKey];
-
     const manual = Boolean(automationIdFilter);
     const due = scheduled.getTime() <= now.getTime();
-    const alreadyAccepted = existing?.status === 'dispatched' || existing?.status === 'awaiting_agent_runtime' || existing?.status === 'succeeded';
 
-    if (!manual && (!due || alreadyAccepted)) continue;
-    if (manual && alreadyAccepted) continue;
+    if (!shouldDispatch(existing, now.getTime(), { manual, due })) continue;
 
-    const attemptStartedAt = now.toISOString();
-    runtime.jobs[executionKey] = {
+    runtime.jobs[executionKey] = createDispatchClaim({
       automationId: automation.id,
       scheduledFor: scheduled.toISOString(),
-      status: 'dispatching',
-      attempts: 0,
-      lastAttemptAt: attemptStartedAt,
-    };
-    changed = true;
+      executionKey,
+      nowIso: now.toISOString(),
+      dispatcherRunId: lockbox.config('GITHUB_RUN_ID'),
+    });
+
+    const claimWrite = await putStateFile(
+      'runtime.json',
+      runtime,
+      runtimeFile.sha,
+      `automation: claim ${executionKey}`,
+    );
+
+    if (claimWrite?.conflict) {
+      console.log(`Skipped ${executionKey}: runtime changed before claim.`);
+      continue;
+    }
 
     try {
       const attempts = await dispatchWithRetry(automation, executionKey);
-      runtime.jobs[executionKey] = {
-        ...runtime.jobs[executionKey],
-        status: 'dispatched',
+      const latest = await getStateFile('runtime.json');
+      const latestRuntime = normalizeRuntime(latest.value);
+      latestRuntime.jobs[executionKey] = markDispatchAccepted(
+        latestRuntime.jobs[executionKey],
         attempts,
-        dispatchedAt: new Date().toISOString(),
-      };
-      runtime.schedules[automation.id] = {
+        new Date().toISOString(),
+      );
+      latestRuntime.schedules[automation.id] = {
         nextRunAt: advanceNextRun(automation, scheduled.toISOString()),
       };
-      changed = true;
+      const saved = await putStateFile(
+        'runtime.json',
+        latestRuntime,
+        latest.sha,
+        `automation: dispatched ${executionKey}`,
+      );
+      if (saved?.conflict) {
+        console.warn(`Runtime changed while recording dispatch ${executionKey}; executor idempotency protects the work.`);
+      }
       console.log(`Dispatched automation ${automation.id} (${executionKey}) after ${attempts} attempt(s).`);
     } catch (error) {
-      runtime.jobs[executionKey] = {
-        ...runtime.jobs[executionKey],
+      const latest = await getStateFile('runtime.json');
+      const latestRuntime = normalizeRuntime(latest.value);
+      latestRuntime.jobs[executionKey] = {
+        ...latestRuntime.jobs[executionKey],
         status: 'dispatch_failed',
         error: String(error?.message || error),
         failedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
-      changed = true;
+      const saved = await putStateFile(
+        'runtime.json',
+        latestRuntime,
+        latest.sha,
+        `automation: dispatch failed ${executionKey}`,
+      );
+      if (saved?.conflict) console.error(`Could not persist dispatch failure for ${executionKey}; runtime changed concurrently.`);
       console.error(`Failed to dispatch automation ${automation.id}:`, error);
     }
-  }
-
-  if (changed) {
-    await putStateFile('runtime.json', runtime, runtimeFile.sha, `automation: dispatcher state ${now.toISOString()}`);
   }
 }
 

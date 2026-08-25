@@ -24,7 +24,43 @@
       }
     },
     "runtime": {
-      "type": "object"
+      "type": "object",
+      "required": ["version", "jobs", "schedules"],
+      "properties": {
+        "version": {"const": 1},
+        "jobs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["automationId", "scheduledFor", "status"],
+            "properties": {
+              "automationId": {"type": "string"},
+              "scheduledFor": {"type": "string"},
+              "executionKey": {"type": "string"},
+              "status": {"enum": ["dispatching", "dispatched", "awaiting_agent_runtime", "running", "success", "succeeded", "failed", "dispatch_failed"]},
+              "attempts": {"type": "integer", "minimum": 0},
+              "lastAttemptAt": {"type": "string"},
+              "updatedAt": {"type": "string"},
+              "claimRunId": {"type": ["string", "null"]},
+              "workerRunId": {"type": ["string", "null"]},
+              "workerUrl": {"type": ["string", "null"]},
+              "startedAt": {"type": "string"},
+              "completedAt": {"type": "string"},
+              "error": {"type": "string"}
+            }
+          }
+        },
+        "schedules": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["nextRunAt"],
+            "properties": {
+              "nextRunAt": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
     }
   }
 }
