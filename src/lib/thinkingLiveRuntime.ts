@@ -4,6 +4,7 @@ import { createThinkingStreamBuffer, pushThought, pushToolActivity, snapshotThin
 import { flushLiveThinkingEvents, persistLiveThinkingEvents } from './thinkingEventPersistence';
 
 let activeStream: ThinkingStreamBuffer | null = null;
+const thoughtStepEvents = new Map<string, ThinkingEvent>();
 
 function snapshotAndPersist(): ThinkingEvent[] {
   const events = activeStream ? snapshotThinkingStream(activeStream) : [];
@@ -13,25 +14,42 @@ function snapshotAndPersist(): ThinkingEvent[] {
 
 export function beginLiveThinkingStream(): void {
   activeStream = createThinkingStreamBuffer();
+  thoughtStepEvents.clear();
   persistLiveThinkingEvents([]);
 }
 
 export function syncLiveThoughtSteps(steps: ThoughtStep[]): ThinkingEvent[] {
   if (!activeStream) beginLiveThinkingStream();
-  const incoming = steps.at(-1);
-  if (incoming) pushThought(activeStream!, incoming.step_title, incoming.summary, incoming.timestamp);
+
+  for (const step of steps) {
+    const key = step.id;
+    const existing = thoughtStepEvents.get(key);
+    if (existing) {
+      existing.title = step.step_title.trim() || existing.title;
+      existing.summary = step.summary.trim() || existing.summary;
+      existing.timestamp = Math.min(existing.timestamp, step.timestamp);
+      continue;
+    }
+
+    const latest = activeStream!.events.at(-1);
+    if (latest?.type === 'thought' && latest.status === 'active') {
+      latest.status = 'completed';
+    }
+
+    const event = pushThought(activeStream!, step.step_title, step.summary, step.timestamp);
+    thoughtStepEvents.set(key, event);
+  }
+
   return snapshotAndPersist();
 }
 
 export function recordLiveToolActivity(chunk: ThinkingToolChunk): ThinkingEvent[] {
-  if (typeof window === 'undefined') return getLiveThinkingEvents();
   if (!activeStream) beginLiveThinkingStream();
   pushToolActivity(activeStream!, chunk);
   return snapshotAndPersist();
 }
 
 export function recordLiveMemoryActivity(action: Pick<MemoryAction, 'type' | 'targetId' | 'reason'>, summary?: string): ThinkingEvent[] {
-  if (typeof window === 'undefined') return getLiveThinkingEvents();
   if (!activeStream) beginLiveThinkingStream();
 
   const label = action.type === 'CREATE' || action.type === 'ADD'
@@ -82,4 +100,5 @@ export function getLiveThinkingEvents(): ThinkingEvent[] {
 
 export function clearLiveThinkingStream(): void {
   activeStream = null;
+  thoughtStepEvents.clear();
 }
