@@ -3,15 +3,14 @@ import type { Conversation, CanvasData, ElaraSettings, MemoryScratchpadState, Me
 import { DEFAULT_PERSONA_PROTOCOL, DEFAULT_INTIMACY_MODULE, DEFAULT_RUNTIME_RULES } from '../../constants/defaultPrompt';
 import { incrementRateLimit } from '../../lib/storage';
 import { loadUserProfileNotes, loadActiveScratchpad, buildSystemPayload } from '../../lib/contextManager';
-import { getAccessToken } from '../../lib/googleApi';
 import { getActiveThoughtSentence, parseThoughtSteps, extractThoughtsAndContent } from '../../utils/thoughtUtils';
 import { extractCanvases } from '../../utils/canvasUtils';
-import { runDirectGeminiStream, runDirectMemoryExtraction, runDirectTitleGeneration } from '../../lib/geminiDirectClient';
+import { runDirectMemoryExtraction, runDirectTitleGeneration } from '../../lib/geminiDirectClient';
 import { applyMemoryActions } from '../../lib/memoryProcessor';
-import { createBackgroundChatJob, isBackgroundRuntimeEnabled, persistBackgroundJob, removePersistedBackgroundJob, waitForBackgroundChatJob } from '../../lib/backgroundChatClient';
-import { notifyBackgroundCompletion } from '../../lib/backgroundService';
 import { createStreamUiScheduler } from '../../lib/streamUiScheduler';
 import { saveAgentArtifact, getWorkspace, saveWorkspace } from '../../lib/workspaceStorage';
+import { geminiRuntimeContract, backgroundRuntimeContract } from '../../contracts/implementations';
+import { executeChatRuntime } from '../../services/chatRuntimeService';
 import { setDbMemoryState } from '../../lib/db';
 
 export type ChatStreamControllerArgs = {
@@ -267,150 +266,28 @@ export function useChatStreamController({
       // Increment API rate limit
       incrementRateLimit(settings.model || 'gemini-3.7-flash');
 
-      // Optional durable server-side execution. Once accepted, never fall back to another Gemini call.
-      if (isBackgroundRuntimeEnabled()) {
-        const durableJob = await createBackgroundChatJob({
-          message: messageText,
-          image: attachedImage,
-          history: historyPayload.map((item) => ({ role: item.role === 'model' ? 'assistant' : 'user', content: item.content, image: item.image })),
-          systemPrompt: formattedSystemPrompt,
-          model: settings.model || 'gemini-3.7-flash',
-          temperature: settings.temperature,
-          maxOutputTokens: settings.maxOutputTokens,
-          topP: settings.topP,
-          topK: settings.topK,
-        });
-        durableJobAccepted = true;
-        persistBackgroundJob({ conversationId: targetConvId, assistantMessageId: assistantMsgId, jobId: durableJob.id, createdAt: Date.now() });
-        setConversations((prev) => prev.map((c) => c.id !== targetConvId ? c : ({
-          ...c,
-          messages: c.messages.map((m) => m.id === assistantMsgId ? { ...m, backgroundJobId: durableJob.id, currentThoughtSentence: 'Elara is working in the background…' } : m),
-        })));
-        const durableStatus = await waitForBackgroundChatJob(durableJob.id);
-        if (!['complete', 'completed'].includes(durableStatus.status)) {
-          throw new Error(durableStatus.error ? String(durableStatus.error) : `Background execution ended with status ${durableStatus.status}.`);
-        }
-        const durableText = durableStatus.output?.result?.text || '';
-        accumulatedText = durableText;
-        handleChunkArrival({ text: durableText, finishReason: durableStatus.output?.result?.finishReason || undefined });
-        removePersistedBackgroundJob(targetConvId);
-      } else if (settings.apiKey && settings.apiKey.trim()) {
-        await runDirectGeminiStream({
-          apiKey: settings.apiKey.trim(),
-          model: settings.model || 'gemini-3.7-flash',
-          systemPrompt: formattedSystemPrompt,
-          history: historyPayload,
-          message: messageText,
-          image: attachedImage,
-          temperature: settings.temperature,
-          maxOutputTokens: settings.maxOutputTokens,
-          topP: settings.topP,
-          topK: settings.topK,
-          thinkingBudget: settings.thinkingBudget,
-          workspace: getWorkspace(),
-          googleToken: getAccessToken(),
-          onChunk: handleChunkArrival,
-          signal: controller.signal,
-        });
-      } else {
-        // Attempt backend endpoint /api/chat/stream
-        let response: Response;
-        try {
-          response = await fetch('/api/chat/stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-              message: messageText,
-              image: attachedImage,
-              history: historyPayload,
-              systemPrompt: formattedSystemPrompt,
-              model: settings.model,
-              temperature: settings.temperature,
-              maxOutputTokens: settings.maxOutputTokens,
-              topP: settings.topP,
-              topK: settings.topK,
-              thinkingBudget: settings.thinkingBudget,
-              workspace: getWorkspace(),
-              googleToken: getAccessToken(),
-            }),
-          });
-        } catch (fetchErr: any) {
-          if (fetchErr.name === 'AbortError') throw fetchErr;
-          throw new Error(
-            'Cannot reach backend server. If running on GitHub Pages, please enter your Gemini API Key in Settings (Model & API tab).'
-          );
-        }
-
-        if (!response.ok) {
-          if (response.status === 404) {
-            throw new Error(
-              'Backend route not found. If hosting as a static GitHub Page, please enter your Gemini API Key in Settings.'
-            );
-          }
-          let errText = await response.text().catch(() => '');
-          try {
-            const jsonErr = JSON.parse(errText);
-            errText = jsonErr.error?.message || jsonErr.error || jsonErr.message || 'API request failed';
-          } catch {
-            if (errText.trim().startsWith('<') || errText.includes('<html>')) {
-               errText = `Service unavailable (HTTP ${response.status})`;
-            }
-          }
-          throw new Error(errText || `Server returned HTTP ${response.status}`);
-        }
-
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error('Response stream not readable');
-
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n\n');
-            buffer = lines.pop() || '';
-
-            for (const line of lines) {
-              const trimmed = line.trim();
-              if (trimmed.startsWith('data: ')) {
-                const jsonStr = trimmed.replace('data: ', '');
-                try {
-                  const data = JSON.parse(jsonStr);
-
-                  if (data.error) {
-                    throw new Error(data.error);
-                  }
-
-                  handleChunkArrival({
-                    text: data.text,
-                    thoughtText: data.thoughtText,
-                    finishReason: data.finishReason,
-                    safetyRatings: data.safetyRatings,
-                    toolCall: data.toolCall,
-                    workspace: data.workspace,
-                    artifactIds: data.artifactIds,
-                  });
-
-                  if (data.done) {
-                    break;
-                  }
-                } catch (e: any) {
-                  if (e.message && !e.message.includes('JSON')) {
-                    throw e;
-                  }
-                }
-              }
-            }
-          }
-        } finally {
-          reader.releaseLock();
-        }
-      }
+      // Runtime execution is owned by the application runtime boundary.
+      const runtimeResult = await executeChatRuntime({
+        conversationId: targetConvId,
+        assistantMessageId: assistantMsgId,
+        message: messageText,
+        image: attachedImage,
+        history: historyPayload,
+        systemPrompt: formattedSystemPrompt,
+        model: settings.model || 'gemini-3.7-flash',
+        temperature: settings.temperature,
+        maxOutputTokens: settings.maxOutputTokens,
+        topP: settings.topP,
+        topK: settings.topK,
+        thinkingBudget: settings.thinkingBudget,
+        apiKey: settings.apiKey?.trim(),
+        workspace: getWorkspace(),
+        signal: controller.signal,
+        runtime: geminiRuntimeContract,
+        background: backgroundRuntimeContract,
+        onChunk: handleChunkArrival,
+      });
+      durableJobAccepted = runtimeResult.durable;
 
       isDone = true;
       clearInterval(watchdogInterval);
