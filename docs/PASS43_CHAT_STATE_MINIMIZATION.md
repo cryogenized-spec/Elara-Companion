@@ -36,7 +36,7 @@ The following remain in Chat and are explicitly deferred rather than silently mi
 - rate-limit mutation
 - final Chat message projection
 
-The title/rate-limit paths remain good candidates for the next bounded extraction once the current branch is verified. Full physical removal of the optional compatibility memory props belongs with the application-shell collapse so we do not edit App.tsx opportunistically in this pass.
+The title/rate-limit paths remain good candidates for the next bounded extraction. Full physical removal of the optional compatibility memory props belongs with the application-shell collapse so we do not edit App.tsx opportunistically in this pass.
 
 ## Architectural invariant
 
@@ -44,13 +44,32 @@ The title/rate-limit paths remain good candidates for the next bounded extractio
 
 A future memory backend or persistence implementation should be replaceable without changing `useChatStreamController`.
 
-## Verification target
+## Verification
 
-Run the normal repository checks before merge:
+Pass 43 verification completed successfully on the PR head:
 
 ```text
-npm run lint
-npm test
-npm run build
-npm run benchmark:memory
+npm install               PASS
+npm run lint              PASS
+npm test                  PASS
+npm run build             PASS
+npm run benchmark:memory  PASS
 ```
+
+The repository's normal CI verification also passed on the same PR head.
+
+The temporary Pass 43 verification workflow was then removed before merge.
+
+## Handoff to Pass 44
+
+Pass 44 should continue reducing Chat-specific orchestration while preserving the boundaries completed in Passes 41–43. Priorities are:
+
+1. Extract provider-specific title generation from Chat into an application service/contract.
+2. Remove direct rate-limit mutation from Chat and establish the correct runtime/service owner.
+3. Reduce local stream bookkeeping where it represents runtime state rather than UI projection state.
+4. Preserve Chat's responsibility for translating normalized runtime effects into message projections.
+5. Do not reintroduce direct Workspace, Background, Memory, Google, or provider plumbing into Chat.
+
+The optional `memoryState` / `setMemoryState` compatibility props should be physically deleted only when the current shell no longer passes them; do not reopen App.tsx opportunistically inside Pass 44.
+
+Legacy production/reference repository remains untouched.
