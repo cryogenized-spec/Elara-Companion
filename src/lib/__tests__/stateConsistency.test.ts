@@ -12,7 +12,6 @@ import {
   removePersistedBackgroundJob,
 } from '../backgroundChatClient';
 import {
-  MEMORY_CONTEXT_MIRROR_KEY,
   clearNextMemoryRetrievalQuery,
   setNextMemoryRetrievalQuery,
   buildSystemPayload,
@@ -114,7 +113,7 @@ describe('state consistency boundaries', () => {
   });
 
   it('does not recreate the deprecated memory mirror during normal prompt construction', () => {
-    installStorage();
+    const store = installStorage();
     setNextMemoryRetrievalQuery('coffee');
 
     const payload = buildSystemPayload({
@@ -130,6 +129,6 @@ describe('state consistency boundaries', () => {
     });
 
     assert.match(payload, /No contextually relevant memories retrieved/);
-    assert.equal((globalThis as any).localStorage.getItem(MEMORY_CONTEXT_MIRROR_KEY), null);
+    assert.equal(store.size, 0);
   });
 });
