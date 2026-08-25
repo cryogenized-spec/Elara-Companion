@@ -1,12 +1,10 @@
 import type { MemoryContract } from '../contracts';
-import type { MemoryScratchpadState } from '../types';
 import { runDirectMemoryExtraction } from '../lib/geminiDirectClient';
 
 type ChatMemoryExtractionRequest = {
   apiKey?: string;
   userMessage: string;
   assistantResponse: string;
-  memoryState: MemoryScratchpadState;
   userName: string;
   conversationId: string;
   memory: MemoryContract;
@@ -14,13 +12,12 @@ type ChatMemoryExtractionRequest = {
 
 /**
  * Owns Chat's post-response memory extraction path.
- * Provider selection stays here; authoritative persistence stays behind MemoryContract.
+ * Provider selection stays here; authoritative state and persistence stay behind MemoryContract.
  */
 export async function extractAndPersistConversationMemory({
   apiKey,
   userMessage,
   assistantResponse,
-  memoryState,
   userName,
   conversationId,
   memory,
@@ -29,6 +26,7 @@ export async function extractAndPersistConversationMemory({
 
   try {
     const trimmedApiKey = apiKey?.trim();
+    const currentState = await memory.load();
     let actions: any[] = [];
 
     if (trimmedApiKey) {
@@ -36,7 +34,7 @@ export async function extractAndPersistConversationMemory({
         trimmedApiKey,
         userMessage,
         assistantResponse,
-        memoryState.memories,
+        currentState.memories,
         userName || 'User',
       );
     } else {
@@ -46,7 +44,7 @@ export async function extractAndPersistConversationMemory({
         body: JSON.stringify({
           userMessage,
           assistantResponse,
-          currentMemories: memoryState.memories,
+          currentMemories: currentState.memories,
           userName: userName || 'User',
         }),
       });
@@ -57,7 +55,6 @@ export async function extractAndPersistConversationMemory({
 
     if (actions.length === 0) return;
 
-    const currentState = memory.getLoaded() ?? memoryState;
     const updatedState = memory.reduce(currentState, actions, conversationId);
     await memory.save(updatedState, conversationId);
   } catch (error) {
