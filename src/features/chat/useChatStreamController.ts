@@ -5,13 +5,12 @@ import { incrementRateLimit } from '../../lib/storage';
 import { loadUserProfileNotes, loadActiveScratchpad, buildSystemPayload } from '../../lib/contextManager';
 import { getActiveThoughtSentence, parseThoughtSteps, extractThoughtsAndContent } from '../../utils/thoughtUtils';
 import { extractCanvases } from '../../utils/canvasUtils';
-import { runDirectMemoryExtraction, runDirectTitleGeneration } from '../../lib/geminiDirectClient';
-import { applyMemoryActions } from '../../lib/memoryProcessor';
+import { runDirectTitleGeneration } from '../../lib/geminiDirectClient';
 import { createStreamUiScheduler } from '../../lib/streamUiScheduler';
 import { saveAgentArtifact, getWorkspace, saveWorkspace } from '../../lib/workspaceStorage';
-import { geminiRuntimeContract, backgroundRuntimeContract } from '../../contracts/implementations';
+import { geminiRuntimeContract, backgroundRuntimeContract, memoryContract } from '../../contracts/implementations';
 import { executeChatRuntime } from '../../services/chatRuntimeService';
-import { setDbMemoryState } from '../../lib/db';
+import { extractAndPersistConversationMemory } from '../../services/chatMemoryService';
 
 export type ChatStreamControllerArgs = {
   conversations: Conversation[];
@@ -351,48 +350,16 @@ export function useChatStreamController({
         generateConversationTitle(targetConvId, messageText, accumulatedText);
       }
 
-      // Autonomous Background Long-Term Memory Extraction
-      if (accumulatedText && accumulatedText.trim()) {
-        if (settings.apiKey && settings.apiKey.trim()) {
-          runDirectMemoryExtraction(
-            settings.apiKey.trim(),
-            messageText,
-            accumulatedText,
-            memoryState.memories,
-            settings.userName || 'User'
-          ).then((actions) => {
-            if (actions && Array.isArray(actions) && actions.length > 0) {
-              setMemoryState((prev) => {
-                const updated = applyMemoryActions(prev, actions, targetConvId);
-                setDbMemoryState(updated);
-                return updated;
-              });
-            }
-          });
-        } else {
-          fetch('/api/memory/analyze', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userMessage: messageText,
-              assistantResponse: accumulatedText,
-              currentMemories: memoryState.memories,
-              userName: settings.userName || 'User',
-            }),
-          })
-            .then((res) => res.json())
-            .then((data) => {
-              if (data.actions && Array.isArray(data.actions) && data.actions.length > 0) {
-                setMemoryState((prev) => {
-                  const updated = applyMemoryActions(prev, data.actions, targetConvId);
-                  setDbMemoryState(updated);
-                  return updated;
-                });
-              }
-            })
-            .catch((err) => console.warn('Background memory extraction notice:', err));
-        }
-      }
+      // Memory extraction is owned by the canonical memory boundary.
+      void extractAndPersistConversationMemory({
+        apiKey: settings.apiKey?.trim(),
+        userMessage: messageText,
+        assistantResponse: accumulatedText,
+        memoryState,
+        userName: settings.userName || 'User',
+        conversationId: targetConvId,
+        memory: memoryContract,
+      });
 
     } catch (err: any) {
       if (durableJobAccepted) {

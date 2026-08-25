@@ -8,12 +8,12 @@ import { runResilientGeminiStreamTurn } from './resilientGeminiStream';
 import {
   buildConversationContents,
   buildRuntimeConfig,
-  executeAgentToolCall,
   mergeTouchedArtifactIds,
   MAX_AGENT_ITERATIONS,
   normalizeModel,
   ELARA_SAFETY_SETTINGS,
 } from './chatRuntime';
+import { executeAgentToolCall } from '../services/agentToolExecutionService';
 
 export interface DirectStreamParams {
   apiKey: string;

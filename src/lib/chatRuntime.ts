@@ -1,11 +1,9 @@
 import { HarmCategory, HarmBlockThreshold } from '@google/genai';
 import { Workspace } from '../types';
-import { publishApplicationEvent } from '../events/applicationEventBus';
 import { getModelProfile } from './modelRegistry';
-import { agentToolDeclarations, executeAgentTool, AgentToolExecution, getAgentToolDeclarations } from './agentToolRegistry';
+import { agentToolDeclarations, getAgentToolDeclarations } from './agentToolRegistry';
 import { buildWorkspaceContextPrompt } from './workspaceTools';
 import { TEXT_PROCESSING_POLICY } from '../constants/textProcessingPolicy';
-import { recordLiveToolActivity } from './thinkingLiveRuntime';
 import type { ToolExposurePolicy } from '../security/toolExposurePolicy';
 
 export const MAX_AGENT_ITERATIONS = 5;
@@ -123,39 +121,3 @@ export function buildRuntimeConfig(options: RuntimeConfigOptions): any {
   return config;
 }
 
-export async function executeAgentToolCall(
-  workspace: Workspace,
-  toolName: string,
-  args: any,
-  googleToken?: string,
-  source: 'model' | 'user' | 'background' | 'automation' | 'system' = 'model',
-): Promise<AgentToolExecution> {
-  const execution = await executeAgentTool(workspace, toolName, args, googleToken, source);
-
-  if (typeof window !== 'undefined') {
-    recordLiveToolActivity({
-      name: toolName,
-      args,
-      result: execution.result,
-    });
-  }
-
-  if (execution.createdArtifactId) {
-    const artifact = execution.updatedWorkspace.artifacts.find((item) => item.id === execution.createdArtifactId);
-    if (artifact) {
-      publishApplicationEvent({
-        type: 'artifact.changed',
-        payload: { artifact, action: 'created' },
-      });
-    }
-  }
-  return execution;
-}
-
-export function mergeTouchedArtifactIds(current: string[], execution: AgentToolExecution): string[] {
-  return Array.from(new Set([
-    ...current,
-    ...(execution.createdArtifactId ? [execution.createdArtifactId] : []),
-    ...(execution.modifiedArtifactId ? [execution.modifiedArtifactId] : []),
-  ]));
-}
