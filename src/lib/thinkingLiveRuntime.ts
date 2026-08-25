@@ -23,13 +23,7 @@ export function syncLiveThoughtSteps(steps: ThoughtStep[]): ThinkingEvent[] {
 
   for (const step of steps) {
     const key = step.id;
-    const existing = thoughtStepEvents.get(key);
-    if (existing) {
-      existing.title = step.step_title.trim() || existing.title;
-      existing.summary = step.summary.trim() || existing.summary;
-      existing.timestamp = Math.min(existing.timestamp, step.timestamp);
-      continue;
-    }
+    if (thoughtStepEvents.has(key)) continue;
 
     const latest = activeStream!.events.at(-1);
     if (latest?.type === 'thought' && latest.status === 'active') {
