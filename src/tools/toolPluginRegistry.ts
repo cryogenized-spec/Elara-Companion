@@ -10,7 +10,6 @@ function validateDeclaration(pluginId: string, declaration: AgentToolDeclaration
   if (!name) throw new Error(`Tool plugin '${pluginId}' contains a declaration without a name.`);
   if (seen.has(name)) throw new Error(`Tool plugin '${pluginId}' declares tool '${name}' more than once.`);
   seen.add(name);
-
   if (declaration.parameters !== undefined && (typeof declaration.parameters !== 'object' || declaration.parameters === null)) {
     throw new Error(`Tool '${name}' in plugin '${pluginId}' has invalid parameters metadata.`);
   }
@@ -73,22 +72,18 @@ export class ToolPluginRegistry {
     return Array.from(this.plugins.keys());
   }
 
-  async execute(context: Omit<ToolExecutionContext, 'invocationId' | 'pluginId' | 'capabilities' | 'effects'> & ToolExecutionOptions): Promise<ToolExecutionResult> {
+  async execute(
+    context: Omit<ToolExecutionContext, 'invocationId' | 'pluginId' | 'capabilities' | 'effects' | 'source'> & ToolExecutionOptions,
+  ): Promise<ToolExecutionResult> {
     const toolName = normalizeToolName(context.toolName);
     const plugin = this.getPluginForTool(toolName);
     if (!plugin) {
-      return {
-        result: { success: false, error: `Unknown agent tool: ${toolName}`, errorCode: 'UNKNOWN_TOOL' },
-        updatedWorkspace: context.workspace,
-      };
+      return { result: { success: false, error: `Unknown agent tool: ${toolName}`, errorCode: 'UNKNOWN_TOOL' }, updatedWorkspace: context.workspace };
     }
 
     const declaration = plugin.declarations.find((candidate) => candidate.name === toolName);
     if (!declaration) {
-      return {
-        result: { success: false, error: `Tool '${toolName}' is not declared by its registered owner.`, errorCode: 'TOOL_DECLARATION_MISMATCH' },
-        updatedWorkspace: context.workspace,
-      };
+      return { result: { success: false, error: `Tool '${toolName}' is not declared by its registered owner.`, errorCode: 'TOOL_DECLARATION_MISMATCH' }, updatedWorkspace: context.workspace };
     }
 
     const executionContext: ToolExecutionContext = {
@@ -104,7 +99,9 @@ export class ToolPluginRegistry {
 
     if (plugin.authorize) {
       const authorization = await plugin.authorize(executionContext);
-      if (!authorization.allowed) return { result: authorization.result, updatedWorkspace: executionContext.workspace };
+      if (!authorization.allowed) {
+        return { result: authorization.result, updatedWorkspace: executionContext.workspace };
+      }
     }
 
     return plugin.execute(executionContext);
