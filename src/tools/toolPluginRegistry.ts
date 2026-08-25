@@ -100,7 +100,10 @@ export class ToolPluginRegistry {
     if (plugin.authorize) {
       const authorization = await plugin.authorize(executionContext);
       if (!authorization.allowed) {
-        return { result: authorization.result, updatedWorkspace: executionContext.workspace };
+        const deniedResult = 'result' in authorization
+          ? authorization.result
+          : { success: false, error: 'Tool authorization denied.', errorCode: 'TOOL_UNAUTHORIZED' };
+        return { result: deniedResult, updatedWorkspace: executionContext.workspace };
       }
     }
 
