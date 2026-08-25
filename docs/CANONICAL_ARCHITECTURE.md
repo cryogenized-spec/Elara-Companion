@@ -1,6 +1,6 @@
 # Elara Canonical Architecture
 
-Status: locked and current through Pass 21 of the Architectural Rehabilitation Programme.
+Status: locked and current through Pass 22 of the Architectural Rehabilitation Programme.
 
 This document is the current architectural source of truth for the successor repository. It records the boundaries that have actually been established, rather than describing a future scaffold. Future work must extend these canonical paths instead of introducing parallel implementations.
 
@@ -75,6 +75,10 @@ The canonical memory application facade is `src/services/memoryService.ts`. Memo
 
 The canonical background runtime facade is `src/services/backgroundRuntimeService.ts`. Background runtime configuration, job persistence, job creation, status retrieval and waiting are exposed through this boundary while `src/lib/backgroundChatClient.ts` remains the transport and persistence implementation during incremental runtime extraction.
 
+The canonical Scratchpad projection facade is `src/services/scratchpadService.ts`. Scratchpad UI uses this service for projection load/save and structured memory refresh; the projection remains derived and the structured memory state remains authoritative.
+
+The canonical model-tuning facade is `src/services/modelTuningService.ts`. Model-tuning UI uses this service for settings persistence, model discovery/profile lookup, theme application and thinking-display persistence rather than importing those infrastructure/registry modules directly.
+
 ### Infrastructure
 
 Infrastructure owns platform and external details: IndexedDB and other persistence adapters, browser APIs, local storage projections, network clients, OAuth transport, Google API transport, HTTP adapters, and environment-specific mechanisms.
@@ -104,6 +108,10 @@ Pass 19 establishes `src/services/workspaceService.ts` as the application-facing
 Pass 20 establishes `src/services/memoryService.ts` as the application-facing memory boundary. Structured IndexedDB memory remains authoritative; `memoryProcessor.ts` remains the mutation/consolidation engine; the older localStorage-oriented `memoryStorage.ts` remains compatibility/domain-support code until a later pass proves it can be safely removed.
 
 Pass 21 establishes `src/services/backgroundRuntimeService.ts` as the application-facing background execution boundary. The React runtime controller now coordinates job recovery through that service rather than importing the transport/persistence client directly. The underlying `backgroundChatClient.ts` remains the implementation, and its Workspace reconciliation behaviour remains transitional until a later runtime/service extraction explicitly relocates it.
+
+Pass 22 establishes two UI-facing service seams. `ScratchpadPanel` now uses `src/services/scratchpadService.ts` rather than reaching directly into scratchpad persistence or DB memory state. `ModelTuningQuickPanel` now uses `src/services/modelTuningService.ts` rather than reaching directly into settings persistence, model discovery, model registry, theme management or thinking-display persistence.
+
+`SettingsModal` remains a deliberate later UI-purity target because it still contains a large concentration of Google operations and direct snapshot persistence. It was intentionally not gutted during Pass 22; those responsibilities need to be extracted with their canonical service boundaries rather than duplicated into another facade.
 
 The architectural rule is therefore:
 
@@ -158,6 +166,10 @@ Google capability declarations and authenticated operations are centralized thro
 
 Background configuration, job lifecycle and persisted-job recovery are exposed through `src/services/backgroundRuntimeService.ts`; feature/UI code must not import `src/lib/backgroundChatClient.ts` directly.
 
+Scratchpad projection operations are exposed through `src/services/scratchpadService.ts`; UI must not import its persistence implementation directly.
+
+Model tuning operations are exposed through `src/services/modelTuningService.ts`; UI must not import its persistence, model-discovery, registry, theme, or thinking-display implementations directly.
+
 ## What is prohibited
 
 Do not add a parallel Settings implementation.
@@ -179,6 +191,8 @@ Do not copy legacy repository implementations into the successor repository mere
 Do not reintroduce the superseded `GoogleWorkspaceSettingsPanel`; the canonical Google UI is `GoogleCapabilitySettingsPanel` through the Google service boundary.
 
 Do not introduce another background job client, polling implementation, or persisted-job store alongside `backgroundRuntimeService`.
+
+Do not bypass `scratchpadService` or `modelTuningService` from UI code to reach their underlying persistence/provider helpers directly.
 
 ## Change rule for future passes
 
