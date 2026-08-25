@@ -4,6 +4,7 @@ import {
   createDispatchClaim,
   executionKeyFor,
   isFreshLease,
+  markDispatchAccepted,
   shouldDispatch,
   shouldStartExecutor,
 } from './automation-runtime.mjs';
@@ -44,6 +45,14 @@ test('successful executions are never re-dispatched', () => {
   const now = Date.now();
   assert.equal(shouldDispatch({ status: 'success' }, now, { due: true, manual: false }), false);
   assert.equal(shouldDispatch({ status: 'succeeded' }, now, { due: true, manual: true }), false);
+});
+
+test('dispatcher never regresses a job already advanced by the executor', () => {
+  const running = markDispatchAccepted({ status: 'running', updatedAt: '2026-08-25T12:01:00.000Z' }, 1, '2026-08-25T12:02:00.000Z');
+  const success = markDispatchAccepted({ status: 'success', updatedAt: '2026-08-25T12:01:00.000Z' }, 1, '2026-08-25T12:02:00.000Z');
+
+  assert.equal(running.status, 'running');
+  assert.equal(success.status, 'success');
 });
 
 test('executor refuses a fresh running execution but can recover a stale one', () => {
