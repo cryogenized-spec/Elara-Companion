@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { BookOpen, Check, Edit3, RefreshCw, X } from 'lucide-react';
-import { loadActiveScratchpad, saveActiveScratchpad } from '../lib/contextManager';
-import { getDbMemoryState } from '../lib/db';
+import { loadScratchpadProjection, saveScratchpadProjection, loadScratchpadMemoryState } from '../services/scratchpadService';
 import { MemoryHealthSummary } from './MemoryHealthSummary';
 import type { MemoryScratchpadState } from '../types';
 
@@ -19,29 +18,29 @@ const EMPTY_MEMORY_STATE: MemoryScratchpadState = {
 };
 
 export const ScratchpadPanel: React.FC<ScratchpadPanelProps> = ({ onBack }) => {
-  const [value, setValue] = useState(() => loadActiveScratchpad());
+  const [value, setValue] = useState(() => loadScratchpadProjection());
   const [memoryState, setMemoryState] = useState<MemoryScratchpadState>(EMPTY_MEMORY_STATE);
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const refresh = () => {
-    setValue(loadActiveScratchpad());
-    void getDbMemoryState().then(setMemoryState).catch(() => setMemoryState(EMPTY_MEMORY_STATE));
+    setValue(loadScratchpadProjection());
+    void loadScratchpadMemoryState().then(setMemoryState).catch(() => setMemoryState(EMPTY_MEMORY_STATE));
   };
 
   useEffect(() => {
     refresh();
     const sync = (event: Event) => {
       const detail = (event as CustomEvent<{ scratchpad?: string }>).detail;
-      setValue(detail?.scratchpad ?? loadActiveScratchpad());
-      void getDbMemoryState().then(setMemoryState).catch(() => undefined);
+      setValue(detail?.scratchpad ?? loadScratchpadProjection());
+      void loadScratchpadMemoryState().then(setMemoryState).catch(() => undefined);
     };
     window.addEventListener(SCRATCHPAD_EVENT, sync);
     return () => window.removeEventListener(SCRATCHPAD_EVENT, sync);
   }, []);
 
   const save = () => {
-    saveActiveScratchpad(value);
+    saveScratchpadProjection(value);
     setSaved(true);
     window.setTimeout(() => setSaved(false), 1600);
     window.dispatchEvent(new CustomEvent(SCRATCHPAD_EVENT, { detail: { scratchpad: value } }));
