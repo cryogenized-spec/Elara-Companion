@@ -1,6 +1,6 @@
 # Elara Canonical Architecture
 
-Status: locked and current through Pass 20 of the Architectural Rehabilitation Programme.
+Status: locked and current through Pass 21 of the Architectural Rehabilitation Programme.
 
 This document is the current architectural source of truth for the successor repository. It records the boundaries that have actually been established, rather than describing a future scaffold. Future work must extend these canonical paths instead of introducing parallel implementations.
 
@@ -73,6 +73,8 @@ The canonical Workspace application facade is `src/services/workspaceService.ts`
 
 The canonical memory application facade is `src/services/memoryService.ts`. Memory load/save operations use the IndexedDB application store through this boundary, while `src/lib/memoryProcessor.ts` remains the mutation/consolidation engine and `src/lib/db.ts` remains the persistence adapter.
 
+The canonical background runtime facade is `src/services/backgroundRuntimeService.ts`. Background runtime configuration, job persistence, job creation, status retrieval and waiting are exposed through this boundary while `src/lib/backgroundChatClient.ts` remains the transport and persistence implementation during incremental runtime extraction.
+
 ### Infrastructure
 
 Infrastructure owns platform and external details: IndexedDB and other persistence adapters, browser APIs, local storage projections, network clients, OAuth transport, Google API transport, HTTP adapters, and environment-specific mechanisms.
@@ -87,7 +89,7 @@ Runtime owns execution lifecycle rather than product policy: Gemini/model invoca
 
 The runtime may depend on infrastructure adapters and domain/service contracts. UI and feature code should request execution through stable runtime/service interfaces rather than parse provider streams or manage retry machinery themselves.
 
-`src/lib/chatRuntime.ts`, the browser-direct Gemini client, and the dedicated background runtime are transitional physical locations for runtime ownership until later extraction passes move them behind the intended boundary.
+`src/lib/chatRuntime.ts`, the browser-direct Gemini client, and `src/runtime/useBackgroundRuntimeController.ts` remain transitional physical locations for runtime ownership until later extraction passes move their implementation details behind the intended service/runtime boundaries.
 
 ## Transitional reality
 
@@ -100,6 +102,8 @@ Pass 18 establishes `src/runtime/geminiRuntimeService.ts` as the application-fac
 Pass 19 establishes `src/services/workspaceService.ts` as the application-facing Workspace boundary and removes the obsolete Workspace patcher script. The underlying storage implementation remains transitional infrastructure.
 
 Pass 20 establishes `src/services/memoryService.ts` as the application-facing memory boundary. Structured IndexedDB memory remains authoritative; `memoryProcessor.ts` remains the mutation/consolidation engine; the older localStorage-oriented `memoryStorage.ts` remains compatibility/domain-support code until a later pass proves it can be safely removed.
+
+Pass 21 establishes `src/services/backgroundRuntimeService.ts` as the application-facing background execution boundary. The React runtime controller now coordinates job recovery through that service rather than importing the transport/persistence client directly. The underlying `backgroundChatClient.ts` remains the implementation, and its Workspace reconciliation behaviour remains transitional until a later runtime/service extraction explicitly relocates it.
 
 The architectural rule is therefore:
 
@@ -138,7 +142,7 @@ Workspace navigation/orchestration is owned by `src/features/workspace/useWorksp
 
 Settings coordination is owned by `src/features/settings/useSettingsController.ts`. Settings UI is composed through the canonical settings surfaces, including `VoiceChatSettingsPanel` and its Voice Input, Chat & Editor, and Reliability children.
 
-Background lifecycle is owned by `src/runtime/useBackgroundRuntimeController.ts` and the dedicated background runtime.
+Background lifecycle is owned by `src/runtime/useBackgroundRuntimeController.ts` through `src/services/backgroundRuntimeService.ts` and the dedicated background runtime implementation.
 
 IndexedDB application persistence is canonicalized through `src/lib/db.ts` and the application state controller.
 
@@ -151,6 +155,8 @@ Structured IndexedDB memory is authoritative; Scratchpad and similar views are d
 Memory application operations are exposed through `src/services/memoryService.ts`; direct feature-level ownership of the persistence adapter or memory-processing implementation should not be introduced.
 
 Google capability declarations and authenticated operations are centralized through `src/services/googleWorkspaceService.ts`, which is the application-facing boundary over the underlying Google authorization, capability-policy, and API infrastructure.
+
+Background configuration, job lifecycle and persisted-job recovery are exposed through `src/services/backgroundRuntimeService.ts`; feature/UI code must not import `src/lib/backgroundChatClient.ts` directly.
 
 ## What is prohibited
 
@@ -171,6 +177,8 @@ Do not resurrect deleted migration workflows, pass trigger files, or one-shot so
 Do not copy legacy repository implementations into the successor repository merely because they already exist there.
 
 Do not reintroduce the superseded `GoogleWorkspaceSettingsPanel`; the canonical Google UI is `GoogleCapabilitySettingsPanel` through the Google service boundary.
+
+Do not introduce another background job client, polling implementation, or persisted-job store alongside `backgroundRuntimeService`.
 
 ## Change rule for future passes
 
