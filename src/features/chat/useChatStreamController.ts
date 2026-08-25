@@ -11,6 +11,7 @@ import { createStreamUiScheduler } from '../../lib/streamUiScheduler';
 import { saveAgentArtifact, getWorkspace, saveWorkspace } from '../../lib/workspaceStorage';
 import { geminiRuntimeContract, backgroundRuntimeContract, googleContract } from '../../contracts/implementations';
 import { executeChatRuntime } from '../../services/chatRuntimeService';
+import { setDbMemoryState } from '../../lib/db';
 
 export type ChatStreamControllerArgs = {
   conversations: Conversation[];
@@ -282,7 +283,6 @@ export function useChatStreamController({
         apiKey: settings.apiKey?.trim(),
         workspace: getWorkspace(),
         signal: controller.signal,
-        google: googleContract,
         runtime: geminiRuntimeContract,
         background: backgroundRuntimeContract,
         onChunk: handleChunkArrival,
