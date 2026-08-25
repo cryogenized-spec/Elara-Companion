@@ -5,11 +5,11 @@ import { serverLockbox } from "../services/lockbox";
 import {
   buildConversationContents,
   buildRuntimeConfig,
-  mergeTouchedArtifactIds,
   MAX_AGENT_ITERATIONS,
   ELARA_SAFETY_SETTINGS,
 } from "../../src/lib/chatRuntime";
 import { executeAgentToolCall } from "../../src/services/agentToolExecutionService";
+import { mergeTouchedArtifactIds } from "../../src/services/agentToolExecutionService";
 import { runResilientGeminiStreamTurn } from "../../src/lib/resilientGeminiStream";
 
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;

@@ -27,7 +27,7 @@ function createMemoryContract(initial: MemoryScratchpadState) {
         memories: [
           ...state.memories,
           ...actions.map((action) => ({
-            id: action.memory?.id || `memory-${state.memories.length + 1}`,
+            id: `memory-${state.memories.length + 1}`,
             ...action.memory,
             conversationId,
           } as any)),
