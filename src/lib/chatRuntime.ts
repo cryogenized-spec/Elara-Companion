@@ -1,5 +1,6 @@
 import { HarmCategory, HarmBlockThreshold } from '@google/genai';
 import { Workspace } from '../types';
+import { publishApplicationEvent } from '../events/applicationEventBus';
 import { getModelProfile } from './modelRegistry';
 import { agentToolDeclarations, executeAgentTool, AgentToolExecution } from './agentToolRegistry';
 import { buildWorkspaceContextPrompt } from './workspaceTools';
@@ -136,14 +137,13 @@ export async function executeAgentToolCall(
     });
   }
 
-  if (typeof window !== 'undefined' && execution.createdArtifactId) {
+  if (execution.createdArtifactId) {
     const artifact = execution.updatedWorkspace.artifacts.find((item) => item.id === execution.createdArtifactId);
     if (artifact) {
-      try {
-        window.dispatchEvent(new CustomEvent('elara:artifact-created', { detail: { artifact, action: 'created' } }));
-      } catch {
-        // Best effort UI notification only.
-      }
+      publishApplicationEvent({
+        type: 'artifact.changed',
+        payload: { artifact, action: 'created' },
+      });
     }
   }
   return execution;

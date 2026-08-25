@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Cloud, CloudCog, Grid2X2, X, BookOpen, Layers3 } from 'lucide-react';
+import { subscribeApplicationEvent } from '../events/applicationEventBus';
 import { ArtifactsPanel } from './ArtifactsPanel';
 import { GoogleCapabilitySettingsPanel } from './GoogleCapabilitySettingsPanel';
 import { DurableBackgroundPanel } from './DurableBackgroundPanel';
@@ -12,16 +13,14 @@ export const ElaraSurfaces: React.FC = () => {
 
   useEffect(() => {
     let timer: number | undefined;
-    const handleArtifact = (event: Event) => {
-      const detail = (event as CustomEvent<{ artifact?: WorkspaceArtifact; action?: 'created' | 'updated' }>).detail;
-      if (!detail?.artifact || detail.action !== 'created') return;
-      setArtifactNotice(detail.artifact);
+    const unsubscribe = subscribeApplicationEvent('artifact.changed', (event) => {
+      if (event.payload.action !== 'created') return;
+      setArtifactNotice(event.payload.artifact);
       if (timer) window.clearTimeout(timer);
       timer = window.setTimeout(() => setArtifactNotice(null), 7500);
-    };
-    window.addEventListener('elara:artifact-created', handleArtifact);
+    });
     return () => {
-      window.removeEventListener('elara:artifact-created', handleArtifact);
+      unsubscribe();
       if (timer) window.clearTimeout(timer);
     };
   }, []);
