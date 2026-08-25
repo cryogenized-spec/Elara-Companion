@@ -11,9 +11,9 @@ test('server Lockbox diagnostics report state without exposing values', () => {
   const apiKey = diagnostics.find((entry) => entry.key === 'GEMINI_API_KEY');
   const model = diagnostics.find((entry) => entry.key === 'GEMINI_MODEL');
 
-  assert.equal(apiKey?.configured, true);
+  assert.equal(apiKey?.status, 'configured');
   assert.equal(apiKey?.classification, 'secret');
-  assert.deepEqual(apiKey?.exposures, ['server', 'worker', 'ci']);
-  assert.equal(model?.configured, true);
+  assert.deepEqual(apiKey?.exposures, ['server']);
+  assert.equal(model?.status, 'configured');
   assert.equal(JSON.stringify(diagnostics).includes('super-secret-value'), false);
 });
