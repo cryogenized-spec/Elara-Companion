@@ -1,6 +1,6 @@
 # Elara Canonical Architecture
 
-Status: locked at Pass 17 of the Architectural Rehabilitation Programme.
+Status: locked and current through Pass 20 of the Architectural Rehabilitation Programme.
 
 This document is the current architectural source of truth for the successor repository. It records the boundaries that have actually been established, rather than describing a future scaffold. Future work must extend these canonical paths instead of introducing parallel implementations.
 
@@ -69,6 +69,10 @@ Services should be the preferred seam for cross-feature reuse. A feature should 
 
 The canonical Google application facade is `src/services/googleWorkspaceService.ts`. Google UI surfaces use this service boundary for identity and capability authorization. The underlying `src/lib/googleAuthorization.ts`, `src/lib/googleCapabilityPolicy.ts`, and `src/lib/googleApi.ts` remain infrastructure/provider implementations during incremental migration.
 
+The canonical Workspace application facade is `src/services/workspaceService.ts`. Workspace feature orchestration uses this service boundary while `src/lib/workspaceStorage.ts` remains the underlying persistence implementation during incremental extraction.
+
+The canonical memory application facade is `src/services/memoryService.ts`. Memory load/save operations use the IndexedDB application store through this boundary, while `src/lib/memoryProcessor.ts` remains the mutation/consolidation engine and `src/lib/db.ts` remains the persistence adapter.
+
 ### Infrastructure
 
 Infrastructure owns platform and external details: IndexedDB and other persistence adapters, browser APIs, local storage projections, network clients, OAuth transport, Google API transport, HTTP adapters, and environment-specific mechanisms.
@@ -90,6 +94,12 @@ The runtime may depend on infrastructure adapters and domain/service contracts. 
 Pass 16 deliberately does not move files simply to satisfy the diagram. The current codebase contains transitional coupling, including feature controllers that still import `src/lib/*`, and `App.tsx` still performs a small amount of direct persistence/browser coordination. Those are known extraction targets for later passes.
 
 Pass 17 reduces Google coupling by routing the canonical Google settings UI through `src/services/googleWorkspaceService.ts` and removing the superseded, unreferenced `GoogleWorkspaceSettingsPanel` implementation. The underlying provider modules remain transitional infrastructure until later service/infrastructure extraction work.
+
+Pass 18 establishes `src/runtime/geminiRuntimeService.ts` as the application-facing Gemini execution boundary without creating a second Gemini implementation. The existing direct client and backend stream transport remain transitional implementation targets for later runtime extraction.
+
+Pass 19 establishes `src/services/workspaceService.ts` as the application-facing Workspace boundary and removes the obsolete Workspace patcher script. The underlying storage implementation remains transitional infrastructure.
+
+Pass 20 establishes `src/services/memoryService.ts` as the application-facing memory boundary. Structured IndexedDB memory remains authoritative; `memoryProcessor.ts` remains the mutation/consolidation engine; the older localStorage-oriented `memoryStorage.ts` remains compatibility/domain-support code until a later pass proves it can be safely removed.
 
 The architectural rule is therefore:
 
@@ -137,6 +147,8 @@ IndexedDB application persistence is canonicalized through `src/lib/db.ts` and t
 Markdown rendering is unified through the canonical message renderer path.
 
 Structured IndexedDB memory is authoritative; Scratchpad and similar views are derived projections.
+
+Memory application operations are exposed through `src/services/memoryService.ts`; direct feature-level ownership of the persistence adapter or memory-processing implementation should not be introduced.
 
 Google capability declarations and authenticated operations are centralized through `src/services/googleWorkspaceService.ts`, which is the application-facing boundary over the underlying Google authorization, capability-policy, and API infrastructure.
 
