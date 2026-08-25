@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
-import { getAgentConnectionContext, agentToolDeclarations, executeAgentTool } from '../agentToolRegistry';
+import { getAgentConnectionContext, agentToolDeclarations, executeAgentTool, getRegisteredAgentToolPluginIds } from '../agentToolRegistry';
 import { markGoogleAuthInvalid, clearGoogleAuthInvalid, isGoogleAuthInvalidated } from '../googleAuthLifecycle';
 
 test('agent registry exposes the canonical Google connection context', () => {
@@ -17,6 +17,16 @@ test('agent registry exposes a single combined tool declaration surface', () => 
   assert.ok(names.includes('sync_to_google_doc'));
   assert.ok(names.includes('disconnect_google_workspace'));
   assert.equal(new Set(names).size, names.length);
+  assert.ok(getRegisteredAgentToolPluginIds().includes('artifacts'));
+});
+
+test('artifact tools are independently owned and carry explicit capability metadata', () => {
+  const createArtifact = agentToolDeclarations.find((tool: any) => tool.name === 'create_artifact');
+  const readArtifact = agentToolDeclarations.find((tool: any) => tool.name === 'read_artifact');
+  assert.deepEqual(createArtifact?.capabilities, ['workspace.write']);
+  assert.deepEqual(createArtifact?.effects, ['write']);
+  assert.deepEqual(readArtifact?.capabilities, ['workspace.read']);
+  assert.deepEqual(readArtifact?.effects, ['read']);
 });
 
 test('external Google write declarations require explicit confirmation', () => {
