@@ -1,76 +1,78 @@
-import { describe, expect, it } from 'vitest';
+import assert from 'node:assert/strict';
+import test from 'node:test';
 import { clearApplicationCommandHandlers, dispatchApplicationCommand, registerApplicationCommand } from '../applicationCommands';
 import { clearApplicationEventHandlers, publishApplicationEvent, subscribeApplicationEvent } from '../applicationEventBus';
 
-describe('application event and command boundaries', () => {
-  it('delivers typed events and supports unsubscribe without leaking listeners', () => {
-    clearApplicationEventHandlers();
-    const received: string[] = [];
+test('application event and command boundaries: unsubscribe prevents listener leaks', () => {
+  clearApplicationEventHandlers();
+  const received: string[] = [];
 
-    const unsubscribe = subscribeApplicationEvent('background.job.completed', (event) => {
-      received.push(event.payload.jobId);
-    });
-
-    publishApplicationEvent({
-      type: 'background.job.completed',
-      payload: { jobId: 'job-1', status: 'completed' },
-    });
-
-    unsubscribe();
-
-    publishApplicationEvent({
-      type: 'background.job.completed',
-      payload: { jobId: 'job-2', status: 'completed' },
-    });
-
-    expect(received).toEqual(['job-1']);
+  const unsubscribe = subscribeApplicationEvent('background.job.completed', (event) => {
+    received.push(event.payload.jobId);
   });
 
-  it('isolates handler failures so one subscriber cannot stop the others', () => {
-    clearApplicationEventHandlers();
-    const received: string[] = [];
+  publishApplicationEvent({
+    type: 'background.job.completed',
+    payload: { jobId: 'job-1', status: 'completed' },
+  });
 
-    subscribeApplicationEvent('artifact.changed', () => {
-      throw new Error('intentional test failure');
-    });
-    subscribeApplicationEvent('artifact.changed', (event) => {
-      received.push(event.payload.artifact.id);
-    });
+  unsubscribe();
 
-    expect(() => publishApplicationEvent({
-      type: 'artifact.changed',
-      payload: {
-        artifact: {
-          id: 'artifact-1',
-          name: 'Test',
-          content: '# Test',
-          createdAt: 1,
-          updatedAt: 1,
-          type: 'markdown',
-        },
-        action: 'created',
+  publishApplicationEvent({
+    type: 'background.job.completed',
+    payload: { jobId: 'job-2', status: 'completed' },
+  });
+
+  assert.deepEqual(received, ['job-1']);
+});
+
+test('application event bus isolates subscriber failures', () => {
+  clearApplicationEventHandlers();
+  const received: string[] = [];
+
+  subscribeApplicationEvent('artifact.changed', () => {
+    throw new Error('intentional test failure');
+  });
+  subscribeApplicationEvent('artifact.changed', (event) => {
+    received.push(event.payload.artifact.id);
+  });
+
+  assert.doesNotThrow(() => publishApplicationEvent({
+    type: 'artifact.changed',
+    payload: {
+      artifact: {
+        id: 'artifact-1',
+        name: 'Test',
+        content: '# Test',
+        createdAt: 1,
+        updatedAt: 1,
+        type: 'markdown',
       },
-    })).not.toThrow();
-    expect(received).toEqual(['artifact-1']);
+      action: 'created',
+    },
+  }));
+  assert.deepEqual(received, ['artifact-1']);
+});
+
+test('application commands dispatch through registered handlers', async () => {
+  clearApplicationCommandHandlers();
+  const received: string[] = [];
+  const unregister = registerApplicationCommand('background.complete', async (command) => {
+    received.push(command.payload.jobId);
   });
 
-  it('dispatches typed commands through registered handlers', async () => {
-    clearApplicationCommandHandlers();
-    const received: string[] = [];
-    const unregister = registerApplicationCommand('background.complete', async (command) => {
-      received.push(command.payload.jobId);
-    });
+  await dispatchApplicationCommand({
+    type: 'background.complete',
+    payload: { jobId: 'job-7' },
+  });
 
-    await dispatchApplicationCommand({
-      type: 'background.complete',
-      payload: { jobId: 'job-7' },
-    });
-
-    unregister();
-    expect(received).toEqual(['job-7']);
-    await expect(dispatchApplicationCommand({
+  unregister();
+  assert.deepEqual(received, ['job-7']);
+  await assert.rejects(
+    dispatchApplicationCommand({
       type: 'background.complete',
       payload: { jobId: 'job-8' },
-    })).rejects.toThrow('No handler registered');
-  });
+    }),
+    /No handler registered/,
+  );
 });
