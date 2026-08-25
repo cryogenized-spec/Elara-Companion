@@ -28,14 +28,5 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Typecheck
-        run: npm run lint
-
-      - name: Unit tests
-        run: npm test
-
-      - name: Memory scaling benchmark
-        run: npm run benchmark:memory
-
-      - name: Build
-        run: npm run build
+      - name: Production verification
+        run: npm run verify:production
