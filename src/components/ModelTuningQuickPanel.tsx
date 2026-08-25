@@ -1,11 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Brain, Check, ChevronDown, RefreshCw, SlidersHorizontal, X, Zap } from 'lucide-react';
+import { Brain, Check, RefreshCw, SlidersHorizontal, X, Zap } from 'lucide-react';
 import type { ElaraSettings } from '../types';
-import { getDbSettings, setDbSettings } from '../lib/db';
-import { getModelProfile } from '../lib/modelRegistry';
-import { discoverGeminiModels, type DiscoveredModel } from '../lib/modelDiscovery';
-import { applySettingsAppearance } from '../lib/themeManager';
-import { DEFAULT_THINKING_DISPLAY_MODE, loadThinkingDisplayMode, saveThinkingDisplayMode, type ThinkingDisplayMode } from '../lib/thinkingDisplay';
+import { getModelTuningProfile, loadModelTuningSettings, saveModelTuningSettings, discoverAvailableModels, loadModelThinkingDisplayMode, saveModelThinkingDisplayMode } from '../services/modelTuningService';
+import type { DiscoveredModel } from '../lib/modelDiscovery';
+import { DEFAULT_THINKING_DISPLAY_MODE, type ThinkingDisplayMode } from '../lib/thinkingDisplay';
 
 export const ModelTuningQuickPanel: React.FC = () => {
   const [open, setOpen] = useState(false);
@@ -16,29 +14,27 @@ export const ModelTuningQuickPanel: React.FC = () => {
 
   useEffect(() => {
     if (!open) return;
-    getDbSettings().then(async (loaded) => {
+    loadModelTuningSettings().then(async (loaded) => {
       setSettings(loaded);
-      setThinkingDisplayMode(loadThinkingDisplayMode());
-      applySettingsAppearance(loaded);
+      setThinkingDisplayMode(loadModelThinkingDisplayMode());
       if (loaded.apiKey) {
         setLoadingModels(true);
-        try { setModels(await discoverGeminiModels(loaded.apiKey, false)); } finally { setLoadingModels(false); }
+        try { setModels(await discoverAvailableModels(loaded.apiKey, false)); } finally { setLoadingModels(false); }
       }
     });
   }, [open]);
 
-  const profile = useMemo(() => getModelProfile(settings?.model), [settings?.model]);
+  const profile = useMemo(() => getModelTuningProfile(settings?.model || ''), [settings?.model]);
 
   const update = (patch: Partial<ElaraSettings>) => {
     if (!settings) return;
     const next = { ...settings, ...patch };
     setSettings(next);
-    void setDbSettings(next);
-    applySettingsAppearance(next);
+    void saveModelTuningSettings(next);
   };
 
   const selectModel = (model: string) => {
-    const nextProfile = getModelProfile(model);
+    const nextProfile = getModelTuningProfile(model);
     update({
       model,
       maxOutputTokens: Math.min(nextProfile.maxOutputTokensMax, Math.max(nextProfile.maxOutputTokensMin, settings?.maxOutputTokens || 16384)),
@@ -68,9 +64,9 @@ export const ModelTuningQuickPanel: React.FC = () => {
             {settings && (
               <div className="space-y-4">
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/30 p-3">
-                  <div className="mb-2 flex items-center justify-between gap-2"><span className="text-xs font-medium text-zinc-400">Model</span><button type="button" onClick={async()=>{setLoadingModels(true);try{setModels(await discoverGeminiModels(settings.apiKey || '', true));}finally{setLoadingModels(false);}}} className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200" title="Refresh model catalogue">{loadingModels ? <RefreshCw className="h-4 w-4 animate-spin"/> : <RefreshCw className="h-4 w-4"/>}</button></div>
+                  <div className="mb-2 flex items-center justify-between gap-2"><span className="text-xs font-medium text-zinc-400">Model</span><button type="button" onClick={async()=>{setLoadingModels(true);try{setModels(await discoverAvailableModels(settings.apiKey || '', true));}finally{setLoadingModels(false);}}} className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200" title="Refresh model catalogue">{loadingModels ? <RefreshCw className="h-4 w-4 animate-spin"/> : <RefreshCw className="h-4 w-4"/>}</button></div>
                   <select value={settings.model} onChange={(e)=>selectModel(e.target.value)} className="h-12 w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 text-sm text-white">
-                    {(models.length ? models.map((m)=>m.id) : [profile.id]).map((id)=>{const p=getModelProfile(id); return <option key={id} value={id}>{p.name}{models.length ? '' : ' (catalogue)'} </option>;})}
+                    {(models.length ? models.map((m)=>m.id) : [profile.id]).map((id)=>{const p=getModelTuningProfile(id); return <option key={id} value={id}>{p.name}{models.length ? '' : ' (catalogue)'} </option>;})}
                   </select>
                   <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">{profile.description}</p>
                   <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-zinc-500"><span>Thinking: {profile.thinkingControl}</span><span>Output cap: {profile.maxOutputTokensMax.toLocaleString()}</span></div>
@@ -88,24 +84,11 @@ export const ModelTuningQuickPanel: React.FC = () => {
                 <div className="rounded-2xl border border-sky-900/40 bg-sky-950/10 p-3">
                   <div className="mb-2 flex items-center gap-2 text-sm font-medium text-zinc-200"><Brain className="h-4 w-4 text-sky-400"/> Thinking display</div>
                   <div className="grid grid-cols-3 gap-1.5">
-                    {([
-                      ['off', 'Off'],
-                      ['steps', 'Steps'],
-                      ['summaries', 'Summaries'],
-                    ] as const).map(([mode, label]) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => { setThinkingDisplayMode(mode); saveThinkingDisplayMode(mode); }}
-                        className={`min-h-11 rounded-xl border text-xs font-medium transition-colors ${thinkingDisplayMode === mode ? 'border-sky-500 bg-sky-500/10 text-sky-300' : 'border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'}`}
-                      >
-                        {label}
-                      </button>
+                    {([['off', 'Off'], ['steps', 'Steps'], ['summaries', 'Summaries']] as const).map(([mode, label]) => (
+                      <button key={mode} type="button" onClick={() => { setThinkingDisplayMode(mode); saveModelThinkingDisplayMode(mode); }} className={`min-h-11 rounded-xl border text-xs font-medium transition-colors ${thinkingDisplayMode === mode ? 'border-sky-500 bg-sky-500/10 text-sky-300' : 'border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'}`}>{label}</button>
                     ))}
                   </div>
-                  <p className="mt-2 text-[10px] leading-relaxed text-zinc-500">
-                    Off hides the thinking surface. Steps shows concise step labels only. Summaries shows the user-facing thinking summary and can be expanded.
-                  </p>
+                  <p className="mt-2 text-[10px] leading-relaxed text-zinc-500">Off hides the thinking surface. Steps shows concise step labels only. Summaries shows the user-facing thinking summary and can be expanded.</p>
                 </div>
 
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/30 p-3">
@@ -117,11 +100,7 @@ export const ModelTuningQuickPanel: React.FC = () => {
 
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/30 p-3 space-y-3">
                   <div className="flex items-center gap-2 text-sm font-medium text-zinc-200"><SlidersHorizontal className="h-4 w-4"/> Sampling</div>
-                  {([
-                    ['Temperature','temperature',profile.supportsTemperature,profile.temperatureMin,profile.temperatureMax,settings.temperature],
-                    ['Top-P','topP',profile.supportsTopP,profile.topPMin,profile.topPMax,settings.topP],
-                    ['Top-K','topK',profile.supportsTopK,profile.topKMin,profile.topKMax,settings.topK],
-                  ] as const).map(([label,key,supported,min,max,value])=> <label key={key} className={`block text-xs ${supported?'text-zinc-400':'text-zinc-600'}`}><div className="mb-1 flex justify-between"><span>{label}</span><span>{supported?String(value):'Unavailable'}</span></div><input disabled={!supported} type="range" min={min} max={max} step={key==='temperature'?0.05:key==='topP'?0.01:1} value={supported?(value as number):min} onChange={(e)=>update({[key]:Number(e.target.value)} as Partial<ElaraSettings>)} className="w-full disabled:opacity-30"/></label>)}
+                  {([['Temperature','temperature',profile.supportsTemperature,profile.temperatureMin,profile.temperatureMax,settings.temperature],['Top-P','topP',profile.supportsTopP,profile.topPMin,profile.topPMax,settings.topP],['Top-K','topK',profile.supportsTopK,profile.topKMin,profile.topKMax,settings.topK]] as const).map(([label,key,supported,min,max,value])=> <label key={key} className={`block text-xs ${supported?'text-zinc-400':'text-zinc-600'}`}><div className="mb-1 flex justify-between"><span>{label}</span><span>{supported?String(value):'Unavailable'}</span></div><input disabled={!supported} type="range" min={min} max={max} step={key==='temperature'?0.05:key==='topP'?0.01:1} value={supported?(value as number):min} onChange={(e)=>update({[key]:Number(e.target.value)} as Partial<ElaraSettings>)} className="w-full disabled:opacity-30"/></label>)}
                   <p className="text-[10px] leading-relaxed text-zinc-600">Unsupported controls are deliberately omitted from Gemini requests rather than sent and rejected.</p>
                 </div>
 
