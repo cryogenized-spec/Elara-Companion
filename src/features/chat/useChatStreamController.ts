@@ -1,7 +1,7 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { Conversation, CanvasData, ElaraSettings, MemoryScratchpadState, Message } from '../../types';
 import { DEFAULT_PERSONA_PROTOCOL, DEFAULT_INTIMACY_MODULE, DEFAULT_RUNTIME_RULES } from '../../constants/defaultPrompt';
-import { generateUniqueId, incrementRateLimit } from '../../lib/storage';
+import { incrementRateLimit } from '../../lib/storage';
 import { loadUserProfileNotes, loadActiveScratchpad, buildSystemPayload } from '../../lib/contextManager';
 import { getAccessToken } from '../../lib/googleApi';
 import { getActiveThoughtSentence, parseThoughtSteps, extractThoughtsAndContent } from '../../utils/thoughtUtils';
