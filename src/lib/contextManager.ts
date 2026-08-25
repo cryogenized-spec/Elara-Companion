@@ -7,10 +7,33 @@ import {
   withInjectedMemoryTrace,
   type MemoryRetrievalTrace,
 } from './memoryRetrieval';
+import { getLoadedMemoryState } from '../services/memoryService';
+import type { MemoryItem, MemoryScratchpadState } from '../types';
+import {
+  ACTIVE_SCRATCHPAD_KEY,
+  USER_PROFILE_NOTES_KEY,
+  loadActiveScratchpad,
+  saveActiveScratchpad,
+  appendActiveScratchpad,
+  clearActiveScratchpad,
+  loadUserProfileNotes,
+  saveUserProfileNotes,
+  appendUserProfileNotes,
+  clearUserProfileNotes,
+} from './contextProjectionStorage';
 
-export const USER_PROFILE_NOTES_KEY = 'elara_user_profile_notes_v1';
-export const ACTIVE_SCRATCHPAD_KEY = 'elara_active_scratchpad_v1';
-export const MEMORY_CONTEXT_MIRROR_KEY = 'elara_memory_context_mirror_v3';
+export {
+  ACTIVE_SCRATCHPAD_KEY,
+  USER_PROFILE_NOTES_KEY,
+  loadActiveScratchpad,
+  saveActiveScratchpad,
+  appendActiveScratchpad,
+  clearActiveScratchpad,
+  loadUserProfileNotes,
+  saveUserProfileNotes,
+  appendUserProfileNotes,
+  clearUserProfileNotes,
+} from './contextProjectionStorage';
 
 let lastMemoryRetrievalTrace: MemoryRetrievalTrace | null = null;
 let nextMemoryRetrievalQuery: string | null = null;
@@ -33,98 +56,37 @@ function consumeMemoryRetrievalQuery(): string {
   return query.trim();
 }
 
-function getStructuredMemoryMirror(): any[] {
-  try {
-    const raw = localStorage.getItem(MEMORY_CONTEXT_MIRROR_KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
-    return Array.isArray(parsed?.memories) ? parsed.memories : [];
-  } catch {
-    return [];
-  }
-}
-
-function buildRetrievedMemoryContext(): string {
-  const memories = getStructuredMemoryMirror();
-  const query = consumeMemoryRetrievalQuery();
+function buildRetrievedMemoryContext(memories: MemoryItem[], query: string): string {
   if (memories.length === 0 || !query) {
     lastMemoryRetrievalTrace = null;
     return '';
   }
 
-  const typedMemories = memories.filter((memory) => memory && typeof memory === 'object' && typeof memory.content === 'string');
+  const typedMemories = memories.filter(
+    (memory): memory is MemoryItem => Boolean(memory && typeof memory.content === 'string'),
+  );
   const retrievalOptions = { limit: 6, minimumScore: 0.18 };
-  const baseTrace = inspectMemoryRetrieval(typedMemories as any, query, retrievalOptions);
+  const baseTrace = inspectMemoryRetrieval(typedMemories, query, retrievalOptions);
   const core = typedMemories
     .filter((memory) => memory.resolution === 'core' || memory.lifecycle === 'core' || memory.importance === 'core')
-    .sort((a, b) => (b.importance === 'core' ? 1 : 0) - (a.importance === 'core' ? 1 : 0) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+    .sort(
+      (a, b) =>
+        (b.importance === 'core' ? 1 : 0) - (a.importance === 'core' ? 1 : 0) ||
+        String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')),
+    )
     .slice(0, 4);
 
-  const retrieved = retrieveRelevantMemories(typedMemories as any, query, retrievalOptions);
-  const combined = [...core.map((memory) => ({ memory, score: 1, reasons: ['stable core memory'] })), ...retrieved]
+  const retrieved = retrieveRelevantMemories(typedMemories, query, retrievalOptions);
+  const combined = [
+    ...core.map((memory) => ({ memory, score: 1, reasons: ['stable core memory'] })),
+    ...retrieved,
+  ]
     .filter((item, index, all) => all.findIndex((candidate) => candidate.memory.id === item.memory.id) === index)
     .slice(0, 8);
 
   const context = formatRetrievedMemoryContext(combined);
   lastMemoryRetrievalTrace = withInjectedMemoryTrace(baseTrace, combined, context);
   return context;
-}
-
-export function loadUserProfileNotes(): string {
-  try {
-    return localStorage.getItem(USER_PROFILE_NOTES_KEY) || '';
-  } catch {
-    return '';
-  }
-}
-
-export function saveUserProfileNotes(notes: string): void {
-  try {
-    localStorage.setItem(USER_PROFILE_NOTES_KEY, notes);
-  } catch (e) {
-    console.error('Failed to save user profile notes', e);
-  }
-}
-
-export function appendUserProfileNotes(newNotes: string): void {
-  const current = loadUserProfileNotes();
-  saveUserProfileNotes(current ? `${current}\n${newNotes}` : newNotes);
-}
-
-export function clearUserProfileNotes(): void {
-  try {
-    localStorage.removeItem(USER_PROFILE_NOTES_KEY);
-  } catch (e) {
-    console.error('Failed to clear user profile notes', e);
-  }
-}
-
-export function loadActiveScratchpad(): string {
-  try {
-    return localStorage.getItem(ACTIVE_SCRATCHPAD_KEY) || '';
-  } catch {
-    return '';
-  }
-}
-
-export function saveActiveScratchpad(scratchpad: string): void {
-  try {
-    localStorage.setItem(ACTIVE_SCRATCHPAD_KEY, scratchpad);
-  } catch (e) {
-    console.error('Failed to save active scratchpad', e);
-  }
-}
-
-export function appendActiveScratchpad(newNotes: string): void {
-  const current = loadActiveScratchpad();
-  saveActiveScratchpad(current ? `${current}\n${newNotes}` : newNotes);
-}
-
-export function clearActiveScratchpad(): void {
-  try {
-    localStorage.removeItem(ACTIVE_SCRATCHPAD_KEY);
-  } catch (e) {
-    console.error('Failed to clear active scratchpad', e);
-  }
 }
 
 export function buildSystemPayload({
@@ -138,6 +100,7 @@ export function buildSystemPayload({
   uiSettingsSummary,
   userProfileNotes,
   activeScratchpad: _activeScratchpad,
+  memoryState,
 }: {
   baseSystemInstruction: string;
   personaProtocol: string;
@@ -149,10 +112,13 @@ export function buildSystemPayload({
   uiSettingsSummary: string;
   userProfileNotes: string;
   activeScratchpad?: string;
+  memoryState?: MemoryScratchpadState;
 }): string {
   const timestamp = new Date().toLocaleString();
   const agentOperatingPolicy = loadAgentOperatingPolicy();
-  const retrievedMemoryContext = buildRetrievedMemoryContext();
+  const query = consumeMemoryRetrievalQuery();
+  const authoritativeMemoryState = memoryState || getLoadedMemoryState();
+  const retrievedMemoryContext = buildRetrievedMemoryContext(authoritativeMemoryState?.memories || [], query);
 
   const adultFictionBlock =
     adultFictionEnabled !== false && adultFictionModule && adultFictionModule.trim()

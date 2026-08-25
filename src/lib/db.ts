@@ -2,7 +2,7 @@ import { get, set, del } from 'idb-keyval';
 import { Conversation, ElaraSettings, WorldState, MemoryScratchpadState, Folder, PersonaSnapshot } from '../types';
 import { DEFAULT_SETTINGS, normalizeSettings } from './storage';
 import { loadAgentOperatingPolicy, saveAgentOperatingPolicy, AGENT_OPERATING_POLICY_KEY } from './agentPolicy';
-import { saveActiveScratchpad, clearActiveScratchpad, clearUserProfileNotes, USER_PROFILE_NOTES_KEY, ACTIVE_SCRATCHPAD_KEY, MEMORY_CONTEXT_MIRROR_KEY } from './contextManager';
+import { saveActiveScratchpad, clearActiveScratchpad, clearUserProfileNotes, USER_PROFILE_NOTES_KEY, ACTIVE_SCRATCHPAD_KEY } from './contextProjectionStorage';
 import { clearWorkspace } from './workspaceStorage';
 import { DEFAULT_WORLD_STATE } from '../constants/defaultWorldState';
 import { applySettingsAppearance } from './themeManager';
@@ -17,12 +17,12 @@ const WORLD_STATE_KEY = 'elara_world_state_v2';
 const MEMORY_STATE_KEY = 'elara_memory_state_v2';
 const SNAPSHOTS_KEY = 'elara_persona_snapshots_v1';
 const MIGRATION_KEY = 'elara_idb_migrated';
+const MEMORY_CONTEXT_MIRROR_KEY = 'elara_memory_context_mirror_v3';
 const CONVERSATION_PERSIST_DEBOUNCE_MS = 300;
 
 const LEGACY_KEYS = ['elara_conversations_v1','elara_settings_v1','elara_custom_portrait_v1','elara_folders_v1','elara_world_state','elara_memory_state'];
 function getLocalStorage(): Storage | null { return typeof localStorage !== 'undefined' ? localStorage : null; }
 function readLegacy(key: string): string | null { try { return getLocalStorage()?.getItem(key) ?? null; } catch { return null; } }
-function mirrorMemoryState(state: MemoryScratchpadState): void { try { getLocalStorage()?.setItem(MEMORY_CONTEXT_MIRROR_KEY, JSON.stringify({ schemaVersion: state.schemaVersion, memories: state.memories })); } catch (error) { console.warn('Context memory mirror unavailable:', error); } }
 function readMemoryMirrorFallback(): MemoryScratchpadState | null {
   try {
     const raw = getLocalStorage()?.getItem(MEMORY_CONTEXT_MIRROR_KEY);
@@ -38,6 +38,14 @@ async function migrateValue(idbKey: string, legacyKey: string, transform: (value
 
 let conversationsCache: Conversation[] | null = null;
 let conversationPersistTimer: ReturnType<typeof setTimeout> | null = null;
+let memoryStateChangedListener: ((state: MemoryScratchpadState) => void) | null = null;
+
+export function registerMemoryStateListener(listener: (state: MemoryScratchpadState) => void): () => void {
+  memoryStateChangedListener = listener;
+  return () => {
+    if (memoryStateChangedListener === listener) memoryStateChangedListener = null;
+  };
+}
 
 async function persistConversationsNow(): Promise<void> {
   if (!conversationsCache) return;
@@ -114,10 +122,8 @@ export async function getDbMemoryState(options: GetDbMemoryStateOptions = {}): P
   try {
     raw = await get(MEMORY_STATE_KEY);
   } catch (error) {
-    console.warn('Memory database unavailable; attempting structured mirror fallback:', error);
-    const fallback = readMemoryMirrorFallback() || { ...DEFAULT_MEMORY_STATE, memories: [] };
-    if (updateProjections) mirrorMemoryState(fallback);
-    return fallback;
+    console.warn('Memory database unavailable; attempting structured mirror recovery:', error);
+    return readMemoryMirrorFallback() || { ...DEFAULT_MEMORY_STATE, memories: [] };
   }
 
   const normalized = normalizeMemoryState(raw);
@@ -133,9 +139,8 @@ export async function getDbMemoryState(options: GetDbMemoryStateOptions = {}): P
     try {
       if (state.schemaVersion !== MEMORY_SCHEMA_VERSION || !raw || typeof raw !== 'object' || maintenanceRan) await set(MEMORY_STATE_KEY, state);
     } catch (error) {
-      console.warn('Memory database write-back unavailable; retaining runtime state and mirror:', error);
+      console.warn('Memory database write-back unavailable; retaining runtime state and scratchpad projection:', error);
     }
-    mirrorMemoryState(state);
     if (state.memories.length > 0) {
       const scratchpad = ['[ELARA PERSISTENT SCRATCHPAD]','Cross-session working memory about the user and ongoing relationship/context.','Do not invent facts. Treat uncertain observations as uncertain and prefer current user statements.',...state.memories.slice(0, 80).map((memory) => `- [${memory.isPrivate ? 'PRIVATE' : 'SHARED'}] [${memory.category}] [${memory.importance}/${memory.confidence}] ${memory.content}`),'[/ELARA PERSISTENT SCRATCHPAD]'].join('\n');
       saveActiveScratchpad(scratchpad);
@@ -151,7 +156,7 @@ export async function setDbMemoryState(data: MemoryScratchpadState) {
   } catch (error) {
     console.warn('Memory database write failed; current session will continue with in-memory state:', error);
   }
-  mirrorMemoryState(normalized);
+  memoryStateChangedListener?.(normalized);
 }
 
 export async function clearDbStorage() {
