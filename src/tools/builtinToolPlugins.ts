@@ -5,7 +5,16 @@ import { executeGoogleAuthLifecycleTool, GOOGLE_AUTH_LIFECYCLE_TOOL_DECLARATION 
 import { authorizeGoogleAction, classifyGoogleAction } from '../lib/googleAuthorizationPolicy';
 import { markGoogleAuthInvalid } from '../lib/googleAuthLifecycle';
 import { ToolPluginRegistry } from './toolPluginRegistry';
+import { artifactToolPlugin } from './artifactToolPlugin';
 import type { ToolPlugin, AgentToolDeclaration, ToolExecutionContext } from './toolPluginTypes';
+
+const ARTIFACT_TOOL_NAMES = new Set([
+  'create_artifact',
+  'read_artifact',
+  'update_artifact',
+  'list_artifacts',
+  'rename_artifact',
+]);
 
 const GOOGLE_BACKED_WORKSPACE_WRITE_TOOLS = new Set([
   'create_google_doc',
@@ -46,8 +55,8 @@ function googleAuthorization(context: ToolExecutionContext) {
 const workspacePlugin: ToolPlugin = {
   id: 'workspace',
   version: 1,
-  declarations: workspaceToolDeclarations.map(externalConfirmationForWorkspace),
-  owns: (toolName) => workspaceToolDeclarations.some((tool) => tool.name === toolName),
+  declarations: workspaceToolDeclarations.filter((tool) => !ARTIFACT_TOOL_NAMES.has(tool.name)).map(externalConfirmationForWorkspace),
+  owns: (toolName) => workspaceToolDeclarations.some((tool) => tool.name === toolName) && !ARTIFACT_TOOL_NAMES.has(toolName),
   authorize: (context) => GOOGLE_BACKED_WORKSPACE_WRITE_TOOLS.has(context.toolName) ? googleAuthorization(context) : { allowed: true },
   execute: async ({ workspace, toolName, args, googleToken }) => {
     const operation = await executeAnyWorkspaceTool(workspace, toolName, args, googleToken);
@@ -95,6 +104,7 @@ const googleAuthLifecyclePlugin: ToolPlugin = {
 };
 
 export const builtinToolPlugins: readonly ToolPlugin[] = [
+  artifactToolPlugin,
   workspacePlugin,
   googleAgentPlugin,
   googleOperationalPlugin,
