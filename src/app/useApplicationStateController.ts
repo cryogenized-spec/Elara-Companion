@@ -3,7 +3,8 @@ import type { Conversation, ElaraSettings, Folder, MemoryScratchpadState, WorldS
 import { DEFAULT_SETTINGS, generateUniqueId } from '../lib/storage';
 import { DEFAULT_WORLD_STATE } from '../constants/defaultWorldState';
 import { DEFAULT_MEMORY_STATE } from '../lib/memoryStorage';
-import { migrateFromLocalStorage, getDbConversations, getDbFolders, getDbSettings, getDbWorldState, getDbMemoryState, getDbPortrait, setDbConversations, setDbFolders, setDbSettings, setDbWorldState, setDbMemoryState, setDbPortrait } from '../lib/db';
+import { loadMemoryState, saveMemoryState } from '../services/memoryService';
+import { migrateFromLocalStorage, getDbConversations, getDbFolders, getDbSettings, getDbWorldState, getDbPortrait, setDbConversations, setDbFolders, setDbSettings, setDbWorldState, setDbPortrait } from '../lib/db';
 
 export type ApplicationState = {
   isLoaded: boolean;
@@ -38,7 +39,7 @@ export function useApplicationStateController(): ApplicationState {
       setFolders(await getDbFolders());
       setSettings(await getDbSettings());
       setWorldState(await getDbWorldState());
-      setMemoryState(await getDbMemoryState());
+      setMemoryState(await loadMemoryState());
       setCustomPortrait(await getDbPortrait());
       const loadedConvs = await getDbConversations();
       if (loadedConvs.length > 0) {
@@ -57,7 +58,7 @@ export function useApplicationStateController(): ApplicationState {
   useEffect(() => { if (isLoaded) void setDbFolders(folders); }, [folders, isLoaded]);
   useEffect(() => { if (isLoaded) void setDbSettings(settings); }, [settings, isLoaded]);
   useEffect(() => { if (isLoaded) void setDbWorldState(worldState); }, [worldState, isLoaded]);
-  useEffect(() => { if (isLoaded) void setDbMemoryState(memoryState); }, [memoryState, isLoaded]);
+  useEffect(() => { if (isLoaded) void saveMemoryState(memoryState); }, [memoryState, isLoaded]);
   useEffect(() => { if (isLoaded) void setDbPortrait(customPortrait); }, [customPortrait, isLoaded]);
 
   return { isLoaded, conversations, folders, activeId, settings, worldState, memoryState, customPortrait, setConversations, setFolders, setActiveId, setSettings, setWorldState, setMemoryState, setCustomPortrait };
