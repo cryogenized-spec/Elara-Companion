@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import type { Dispatch, SetStateAction, MutableRefObject } from 'react';
 import type { Conversation, ElaraSettings, Folder } from '../../types';
 import { exportAllDataJSON, importDataJSON, generateUniqueId } from '../../lib/storage';
-import { clearDbStorage } from '../../lib/db';
+import { clearApplicationPersistence } from '../../services/applicationPersistenceService';
 
 export type ConversationControllerArgs = {
   conversations: Conversation[];
@@ -74,7 +74,7 @@ export function useConversationController({
   }, [activeId, conversations, setActiveId, setConversations, setDeleteTargetId]);
 
   const clearAllData = useCallback(() => {
-    clearDbStorage();
+    void clearApplicationPersistence();
     const newConv: Conversation = { id: generateUniqueId('conv'), title: 'New Conversation', messages: [], createdAt: Date.now(), updatedAt: Date.now() };
     setConversations([newConv]); setActiveId(newConv.id);
   }, [setActiveId, setConversations]);
