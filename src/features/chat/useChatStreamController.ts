@@ -1,16 +1,16 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { Conversation, CanvasData, ElaraSettings, MemoryScratchpadState, Message } from '../../types';
 import { DEFAULT_PERSONA_PROTOCOL, DEFAULT_INTIMACY_MODULE, DEFAULT_RUNTIME_RULES } from '../../constants/defaultPrompt';
-import { incrementRateLimit } from '../../lib/storage';
 import { loadUserProfileNotes, loadActiveScratchpad, buildSystemPayload } from '../../lib/contextManager';
 import { getActiveThoughtSentence, parseThoughtSteps, extractThoughtsAndContent } from '../../utils/thoughtUtils';
 import { extractCanvases } from '../../utils/canvasUtils';
-import { runDirectTitleGeneration } from '../../lib/geminiDirectClient';
 import { createStreamUiScheduler } from '../../lib/streamUiScheduler';
 import { geminiRuntimeContract, backgroundRuntimeContract, memoryContract, workspaceContract } from '../../contracts/implementations';
 import { executeChatRuntime } from '../../services/chatRuntimeService';
 import { extractAndPersistConversationMemory } from '../../services/chatMemoryService';
 import { applyChatRuntimeWorkspaceUpdate, persistChatCanvases } from '../../services/chatWorkspaceService';
+import { generateChatConversationTitle } from '../../services/chatTitleService';
+import { recordChatRequest } from '../../services/chatRateLimitService';
 
 export type ChatStreamControllerArgs = {
   conversations: Conversation[];
@@ -239,7 +239,7 @@ export function useChatStreamController({
     }
 
     try {
-      incrementRateLimit(settings.model || 'gemini-3.7-flash');
+      recordChatRequest(settings.model || 'gemini-3.7-flash');
 
       const runtimeResult = await executeChatRuntime({
         conversationId: targetConvId,
@@ -396,39 +396,16 @@ export function useChatStreamController({
     userMsg: string,
     assistantMsg: string
   ) => {
-    try {
-      if (settings.apiKey && settings.apiKey.trim()) {
-        const title = await runDirectTitleGeneration(
-          settings.apiKey.trim(),
-          userMsg,
-          assistantMsg
-        );
-        if (title) {
-          setConversations((prev) =>
-            prev.map((c) => (c.id === convId ? { ...c, title } : c))
-          );
-        }
-        return;
-      }
+    const title = await generateChatConversationTitle({
+      apiKey: settings.apiKey?.trim(),
+      userMessage: userMsg,
+      assistantResponse: assistantMsg,
+    });
 
-      const res = await fetch('/api/chat/title', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          firstUserMessage: userMsg,
-          firstAssistantResponse: assistantMsg,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.title) {
-          setConversations((prev) =>
-            prev.map((c) => (c.id === convId ? { ...c, title: data.title } : c))
-          );
-        }
-      }
-    } catch (e) {
-      console.warn('Title generation skipped or offline:', e);
+    if (title) {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === convId ? { ...c, title } : c))
+      );
     }
   };
 
