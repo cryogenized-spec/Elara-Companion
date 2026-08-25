@@ -1,4 +1,8 @@
 import { createAutomationLockbox } from './automation-lockbox.mjs';
+import {
+  markExecutionRunning,
+  shouldStartExecutor,
+} from './automation-runtime.mjs';
 
 const GH_API = 'https://api.github.com';
 const lockbox = createAutomationLockbox();
@@ -40,10 +44,12 @@ async function putStateFile(path, value, sha, message) {
     headers: { ...headers(), 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  if (response.status === 409) return { conflict: true };
   if (!response.ok) {
     const text = await response.text().catch(() => '');
     throw new Error(`Failed to write ${path}: HTTP ${response.status}${text ? ` ${text}` : ''}`);
   }
+  return response.json();
 }
 
 function truncate(value, max = 12000) {
@@ -128,15 +134,9 @@ async function executeElaraAutomation(prompt, workspace, googleToken) {
   };
 }
 
-async function main() {
-  const automationsFile = await getStateFile('automations.json');
-  const runtimeFile = await getStateFile('runtime.json');
-  const automations = Array.isArray(automationsFile.value) ? automationsFile.value : [];
-  const automation = automations.find((item) => item?.id === automationId);
-  if (!automation) throw new Error(`Automation ${automationId} was not found in private state.`);
-
-  const runtime = runtimeFile.value && typeof runtimeFile.value === 'object'
-    ? runtimeFile.value
+async function markRunningWithCas(existingRuntime) {
+  const runtime = existingRuntime.value && typeof existingRuntime.value === 'object'
+    ? existingRuntime.value
     : { version: 1, jobs: {}, schedules: {} };
   runtime.version = 1;
   runtime.jobs ||= {};
@@ -144,22 +144,48 @@ async function main() {
 
   const existingJob = runtime.jobs[executionKey] || {
     automationId,
-    scheduledFor: automation.nextRunAt || new Date().toISOString(),
+    scheduledFor: new Date().toISOString(),
     attempts: 0,
   };
 
+  if (!shouldStartExecutor(existingJob, Date.now())) return { skip: true, runtime, job: existingJob };
+
   const now = new Date().toISOString();
-  runtime.jobs[executionKey] = {
-    ...existingJob,
-    status: 'running',
-    workerRunId: lockbox.config('GITHUB_RUN_ID') || null,
-    workerUrl: lockbox.config('GITHUB_SERVER_URL') && lockbox.config('GITHUB_REPOSITORY')
+  runtime.jobs[executionKey] = markExecutionRunning(
+    existingJob,
+    now,
+    lockbox.config('GITHUB_RUN_ID'),
+    lockbox.config('GITHUB_SERVER_URL') && lockbox.config('GITHUB_REPOSITORY')
       ? `${lockbox.config('GITHUB_SERVER_URL')}/${lockbox.config('GITHUB_REPOSITORY')}/actions/runs/${lockbox.config('GITHUB_RUN_ID')}`
       : null,
-    startedAt: existingJob.startedAt || now,
-    updatedAt: now,
-  };
-  await putStateFile('runtime.json', runtime, runtimeFile.sha, `automation: running ${executionKey}`);
+  );
+
+  const saved = await putStateFile('runtime.json', runtime, existingRuntime.sha, `automation: running ${executionKey}`);
+  if (saved?.conflict) return { conflict: true };
+  return { runtime, job: runtime.jobs[executionKey], skip: false };
+}
+
+async function main() {
+  const automationsFile = await getStateFile('automations.json');
+  const automation = (Array.isArray(automationsFile.value) ? automationsFile.value : [])
+    .find((item) => item?.id === automationId);
+  if (!automation) throw new Error(`Automation ${automationId} was not found in private state.`);
+
+  const runtimeFile = await getStateFile('runtime.json');
+  const running = await markRunningWithCas(runtimeFile);
+  if (running?.skip) {
+    console.log(`Skipping ${executionKey}: execution is already terminal or actively running.`);
+    return;
+  }
+  if (running?.conflict) {
+    const latest = await getStateFile('runtime.json');
+    const retry = await markRunningWithCas(latest);
+    if (retry?.skip) {
+      console.log(`Skipping ${executionKey}: execution was claimed by another worker.`);
+      return;
+    }
+    if (retry?.conflict) throw new Error(`Could not claim execution ${executionKey} after state conflict.`);
+  }
 
   const workspace = {
     id: `automation-${automationId}`,
@@ -191,7 +217,8 @@ async function main() {
       touchedArtifactIds: result.touchedArtifactIds,
       updatedAt: new Date().toISOString(),
     };
-    await putStateFile('runtime.json', refreshed, refreshedRuntime.sha, `automation: completed ${executionKey}`);
+    const saved = await putStateFile('runtime.json', refreshed, refreshedRuntime.sha, `automation: completed ${executionKey}`);
+    if (saved?.conflict) console.warn(`Runtime changed while recording success for ${executionKey}; completion will be reconciled by the next runtime pass.`);
     console.log(`Automation ${automationId} completed successfully.`);
     console.log(truncate(result.text, 2000));
   } catch (error) {
