@@ -113,6 +113,7 @@ interface SettingsModalProps {
 }
 
 import { loadRateLimits } from '../lib/storage';
+import { VoiceChatSettingsPanel } from './VoiceChatSettingsPanel';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
@@ -1684,6 +1685,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
               </div>
             </div>
+          )}
+
+          {/* TAB: VOICE & SPEECH-TO-TEXT */}
+          {activeTab === 'voice' && (
+            <VoiceChatSettingsPanel
+              settings={formData}
+              onChange={setFormData}
+            />
           )}
 
           {/* TAB: GOOGLE WORKSPACE & SYNC */}
