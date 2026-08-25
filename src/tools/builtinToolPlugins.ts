@@ -43,8 +43,28 @@ function withExternalActionConfirmation(tool: AgentToolDeclaration): AgentToolDe
   };
 }
 
+function withGoogleExposureMetadata(tool: AgentToolDeclaration, forceAuth = false): AgentToolDeclaration {
+  const actionClass = classifyGoogleAction(tool.name);
+  if (forceAuth) return { ...tool, capabilities: ['google.auth'], effects: ['auth-change'] };
+
+  if (actionClass === 'read') {
+    return {
+      ...tool,
+      capabilities: Array.from(new Set([...(tool.capabilities || []), 'google.read'])),
+      effects: Array.from(new Set([...(tool.effects || []), 'read'])),
+    };
+  }
+
+  return {
+    ...tool,
+    capabilities: Array.from(new Set([...(tool.capabilities || []), 'google.write'])),
+    effects: Array.from(new Set([...(tool.effects || []), actionClass === 'destructive' ? 'auth-change' : 'external-write'])),
+  };
+}
+
 function externalConfirmationForWorkspace(tool: AgentToolDeclaration): AgentToolDeclaration {
-  return GOOGLE_BACKED_WORKSPACE_WRITE_TOOLS.has(tool.name) ? withExternalActionConfirmation(tool) : tool;
+  const confirmed = GOOGLE_BACKED_WORKSPACE_WRITE_TOOLS.has(tool.name) ? withExternalActionConfirmation(tool) : tool;
+  return tool.name.includes('google') ? withGoogleExposureMetadata(confirmed) : confirmed;
 }
 
 function googleAuthorization(context: ToolExecutionContext) {
@@ -68,7 +88,7 @@ const workspacePlugin: ToolPlugin = {
 const googleAgentPlugin: ToolPlugin = {
   id: 'google-agent',
   version: 1,
-  declarations: googleAgentToolDeclarations.map(withExternalActionConfirmation),
+  declarations: googleAgentToolDeclarations.map(withExternalActionConfirmation).map(withGoogleExposureMetadata),
   owns: (toolName) => GOOGLE_AGENT_TOOL_NAMES.has(toolName),
   authorize: googleAuthorization,
   execute: async ({ toolName, args, googleToken, workspace }) => {
@@ -81,7 +101,7 @@ const googleAgentPlugin: ToolPlugin = {
 const googleOperationalPlugin: ToolPlugin = {
   id: 'google-operational',
   version: 1,
-  declarations: googleOperationalToolDeclarations.map(withExternalActionConfirmation),
+  declarations: googleOperationalToolDeclarations.map(withExternalActionConfirmation).map(withGoogleExposureMetadata),
   owns: (toolName) => GOOGLE_OPERATIONAL_TOOL_NAMES.has(toolName),
   authorize: googleAuthorization,
   execute: async ({ toolName, args, googleToken, workspace }) => {
@@ -94,7 +114,7 @@ const googleOperationalPlugin: ToolPlugin = {
 const googleAuthLifecyclePlugin: ToolPlugin = {
   id: 'google-auth-lifecycle',
   version: 1,
-  declarations: [withExternalActionConfirmation(GOOGLE_AUTH_LIFECYCLE_TOOL_DECLARATION)],
+  declarations: [withExternalActionConfirmation(GOOGLE_AUTH_LIFECYCLE_TOOL_DECLARATION)].map((tool) => withGoogleExposureMetadata(tool, true)),
   owns: (toolName) => toolName === GOOGLE_AUTH_LIFECYCLE_TOOL_DECLARATION.name,
   authorize: googleAuthorization,
   execute: async ({ toolName, args, workspace }) => ({
