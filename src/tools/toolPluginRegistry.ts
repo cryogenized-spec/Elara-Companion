@@ -1,4 +1,5 @@
 import type { AgentToolDeclaration, ToolExecutionContext, ToolExecutionResult, ToolInvocationSource, ToolPlugin } from './toolPluginTypes';
+import { isToolExposed, type ToolExposurePolicy } from '../security/toolExposurePolicy';
 
 function normalizeToolName(name: string): string {
   return name.trim();
@@ -62,8 +63,10 @@ export class ToolPluginRegistry {
     return pluginId ? this.plugins.get(pluginId) || null : null;
   }
 
-  getDeclarations(): AgentToolDeclaration[] {
-    return Array.from(this.plugins.values()).flatMap((plugin) => plugin.declarations.map((declaration) => ({ ...declaration })));
+  getDeclarations(policy?: ToolExposurePolicy): AgentToolDeclaration[] {
+    return Array.from(this.plugins.values()).flatMap((plugin) => plugin.declarations
+      .filter((declaration) => isToolExposed(declaration.capabilities, declaration.effects, policy))
+      .map((declaration) => ({ ...declaration })));
   }
 
   getPluginIds(): string[] {
