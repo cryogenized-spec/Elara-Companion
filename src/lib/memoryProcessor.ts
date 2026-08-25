@@ -111,7 +111,7 @@ export function applyMemoryActions(state: MemoryScratchpadState, actions: Memory
       stateModified = true;
     }
 
-    if (typeof window !== 'undefined' && action.type !== 'NO_ACTION') {
+    if (typeof window !== 'undefined' && String(action.type) !== 'NO_ACTION') {
       recordLiveMemoryActivity(action, action.reason);
     }
   }
