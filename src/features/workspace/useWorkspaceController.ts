@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { setActiveArtifact } from '../../lib/workspaceStorage';
+import { workspaceService } from '../../services/workspaceService';
 
 export type WorkspaceControllerArgs = {
   setCurrentView: Dispatch<SetStateAction<'chat' | 'workspace'>>;
@@ -10,13 +10,13 @@ export function useWorkspaceController({ setCurrentView }: WorkspaceControllerAr
   const [activeArtifactId, setActiveArtifactId] = useState<string | null>(null);
 
   const handleOpenArtifact = useCallback((artifactId: string) => {
-    setActiveArtifact(artifactId);
+    workspaceService.setActiveArtifact(artifactId);
     setActiveArtifactId(artifactId);
     setCurrentView('workspace');
   }, [setCurrentView]);
 
   const handleSelectArtifact = useCallback((artifactId: string) => {
-    setActiveArtifact(artifactId);
+    workspaceService.setActiveArtifact(artifactId);
     setActiveArtifactId(artifactId);
   }, []);
 
