@@ -1,13 +1,23 @@
 const DEFAULT_CLIENT_ID = '988991302383-rj8vah445mk9r991k10pc4knk2omk2p4.apps.googleusercontent.com';
 const BASE_SCOPES = ['openid', 'email', 'profile'].join(' ');
+const CUSTOM_CLIENT_ID_KEY = 'elara_custom_google_client_id';
 
 let tokenClient: any = null;
 let accessToken = '';
 let grantedScopes = '';
+let accessTokenExpiresAt = 0;
+
+export interface GoogleAuthorizationState {
+  clientId: string;
+  authorized: boolean;
+  accessToken: string;
+  expiresAt: number;
+  grantedScopes: string;
+}
 
 function getClientId(): string {
   if (typeof window !== 'undefined') {
-    const custom = localStorage.getItem('elara_custom_google_client_id');
+    const custom = localStorage.getItem(CUSTOM_CLIENT_ID_KEY);
     if (custom?.trim()) return custom.trim();
   }
   const env = typeof import.meta !== 'undefined' && (import.meta as any)?.env
@@ -16,11 +26,50 @@ function getClientId(): string {
   return env?.VITE_GOOGLE_CLIENT_ID || DEFAULT_CLIENT_ID;
 }
 
+function clearAuthorizationState(): void {
+  accessToken = '';
+  grantedScopes = '';
+  accessTokenExpiresAt = 0;
+}
+
+function applyAuthorizationResponse(response: any, fallbackScopes: string): string {
+  accessToken = response?.access_token || '';
+  grantedScopes = response?.scope || fallbackScopes || '';
+  const expiresInSeconds = Number(response?.expires_in);
+  accessTokenExpiresAt = Number.isFinite(expiresInSeconds) && expiresInSeconds > 0
+    ? Date.now() + (expiresInSeconds * 1000)
+    : 0;
+  return accessToken;
+}
+
 export function getGoogleBaseScopes(): string { return BASE_SCOPES; }
 export function getGoogleAuthorizationClientId(): string { return getClientId(); }
-export function getGoogleIdentityAccessToken(): string { return accessToken; }
-export function isGoogleIdentityAuthorized(): boolean { return Boolean(accessToken); }
-export function getGrantedGoogleScopes(): string { return grantedScopes; }
+export function getGoogleIdentityAccessToken(): string {
+  if (accessTokenExpiresAt > 0 && Date.now() >= accessTokenExpiresAt) {
+    clearAuthorizationState();
+  }
+  return accessToken;
+}
+export function isGoogleIdentityAuthorized(): boolean { return Boolean(getGoogleIdentityAccessToken()); }
+export function getGrantedGoogleScopes(): string { return isGoogleIdentityAuthorized() ? grantedScopes : ''; }
+export function getGoogleAuthorizationState(): GoogleAuthorizationState {
+  const token = getGoogleIdentityAccessToken();
+  return {
+    clientId: getClientId(),
+    authorized: Boolean(token),
+    accessToken: token,
+    expiresAt: accessTokenExpiresAt,
+    grantedScopes: token ? grantedScopes : '',
+  };
+}
+
+export function setCustomGoogleClientId(id: string | null): void {
+  if (typeof window !== 'undefined') {
+    if (id?.trim()) localStorage.setItem(CUSTOM_CLIENT_ID_KEY, id.trim());
+    else localStorage.removeItem(CUSTOM_CLIENT_ID_KEY);
+  }
+  tokenClient = null;
+}
 
 export function initGoogleBaseAuthorization(): void {
   if (typeof window === 'undefined' || !(window as any).google?.accounts?.oauth2) return;
@@ -43,9 +92,7 @@ export async function requestGoogleBaseAuthorization(forcePrompt = true): Promis
 
     tokenClient.callback = (response: any) => {
       if (response?.error) return reject(new Error(response.error_description || response.error || 'Google authorization was rejected.'));
-      accessToken = response.access_token || '';
-      grantedScopes = response.scope || BASE_SCOPES;
-      resolve(accessToken);
+      resolve(applyAuthorizationResponse(response, BASE_SCOPES));
     };
     tokenClient.requestAccessToken({ prompt: forcePrompt ? 'consent' : '' });
   });
@@ -66,18 +113,15 @@ export async function requestGoogleCapabilityAuthorization(scopes: string[], for
   return new Promise((resolve, reject) => {
     client.callback = (response: any) => {
       if (response?.error) return reject(new Error(response.error_description || response.error || 'Google capability authorization was rejected.'));
-      accessToken = response.access_token || accessToken;
-      grantedScopes = response.scope || grantedScopes;
-      resolve(accessToken);
+      resolve(applyAuthorizationResponse(response, grantedScopes));
     };
     client.requestAccessToken({ prompt: forcePrompt ? 'consent' : '' });
   });
 }
 
 export async function revokeGoogleBaseAuthorization(): Promise<{ success: boolean; message: string }> {
-  const token = accessToken;
-  accessToken = '';
-  grantedScopes = '';
+  const token = getGoogleIdentityAccessToken();
+  clearAuthorizationState();
   if (!token) return { success: true, message: 'Google authorization was already cleared locally.' };
   try {
     const response = await fetch('https://oauth2.googleapis.com/revoke', {

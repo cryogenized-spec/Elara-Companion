@@ -1,6 +1,7 @@
 import {
   getGrantedGoogleScopes,
   getGoogleAuthorizationClientId,
+  getGoogleAuthorizationState,
   getGoogleBaseScopes,
   getGoogleIdentityAccessToken,
   initGoogleBaseAuthorization,
@@ -8,8 +9,8 @@ import {
   requestGoogleBaseAuthorization,
   requestGoogleCapabilityAuthorization,
   revokeGoogleBaseAuthorization,
+  setCustomGoogleClientId,
 } from '../lib/googleAuthorization';
-import { getAccessToken } from '../lib/googleApi';
 import {
   getGoogleCapabilityScopes,
   isGoogleCapabilityGranted,
@@ -20,6 +21,7 @@ export type { GoogleCapability };
 
 export const googleIdentity = {
   getClientId: getGoogleAuthorizationClientId,
+  getState: getGoogleAuthorizationState,
   getBaseScopes: getGoogleBaseScopes,
   getAccessToken: getGoogleIdentityAccessToken,
   isAuthorized: isGoogleIdentityAuthorized,
@@ -27,6 +29,7 @@ export const googleIdentity = {
   requestBaseAuthorization: requestGoogleBaseAuthorization,
   requestCapabilityAuthorization: requestGoogleCapabilityAuthorization,
   revoke: revokeGoogleBaseAuthorization,
+  setCustomClientId: setCustomGoogleClientId,
 };
 
 export const googleCapabilities = {
@@ -35,6 +38,7 @@ export const googleCapabilities = {
   getGrantedScopes: getGrantedGoogleScopes,
 };
 
+/** Application-facing Google credential access. This is the only canonical token source. */
 export function getGoogleAgentAccessToken(): string {
-  return getAccessToken();
+  return getGoogleIdentityAccessToken();
 }
