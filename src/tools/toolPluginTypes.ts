@@ -4,10 +4,13 @@ export type ToolInvocationSource = 'model' | 'user' | 'background' | 'automation
 export type ToolCapability = 'workspace.read' | 'workspace.write' | 'google.read' | 'google.write' | 'google.auth' | 'memory.read' | 'memory.write';
 export type ToolEffect = 'read' | 'write' | 'external-write' | 'auth-change';
 
+/** JSON-schema-like tool parameter metadata owned by the model/tool boundary. */
+export type ToolParameterSchema = Record<string, any>;
+
 export interface AgentToolDeclaration {
   name: string;
   description?: string;
-  parameters?: Record<string, unknown>;
+  parameters?: ToolParameterSchema;
   capabilities?: readonly ToolCapability[];
   effects?: readonly ToolEffect[];
   [key: string]: unknown;
