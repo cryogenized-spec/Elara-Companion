@@ -1,0 +1,50 @@
+name: Pass 41 fix
+on:
+  push:
+    branches: [pass41-memory-tool-boundary]
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply Pass 41 fixes
+        env:
+          BRANCH: pass41-memory-tool-boundary
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('server/routes/chat.ts')
+          s = p.read_text()
+          s = s.replace('  mergeTouchedArtifactIds,\n', '')
+          marker = 'import { executeAgentToolCall } from "../../src/services/agentToolExecutionService";\n'
+          if marker not in s:
+              raise SystemExit('server tool import marker not found')
+          s = s.replace(marker, marker + 'import { mergeTouchedArtifactIds } from "../../src/services/agentToolExecutionService";\n', 1)
+          p.write_text(s)
+
+          p = Path('src/lib/geminiDirectClient.ts')
+          s = p.read_text()
+          s = s.replace('  mergeTouchedArtifactIds,\n', '')
+          marker = "import { executeAgentToolCall } from '../services/agentToolExecutionService';\n"
+          if marker not in s:
+              raise SystemExit('client tool import marker not found')
+          s = s.replace(marker, marker + "import { mergeTouchedArtifactIds } from '../services/agentToolExecutionService';\n", 1)
+          p.write_text(s)
+
+          p = Path('src/services/__tests__/chatMemoryService.test.ts')
+          s = p.read_text()
+          s = s.replace("            id: action.memory?.id || `memory-${state.memories.length + 1}`,\n            ...action.memory,\n", "            id: `memory-${state.memories.length + 1}`,\n            ...action.memory,\n")
+          p.write_text(s)
+          PY
+
+          git add server/routes/chat.ts src/lib/geminiDirectClient.ts src/services/__tests__/chatMemoryService.test.ts
+          git commit -m "fix(memory-tools): align moved symbol imports and test types"
+          git push origin "$BRANCH"
+          git rm .github/workflows/pass41-fix.yml
+          git commit -m "chore: remove one-shot Pass 41 fix workflow"
+          git push origin "$BRANCH"
