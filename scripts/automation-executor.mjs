@@ -84,6 +84,15 @@ async function executeElaraAutomation(prompt, workspace, googleToken) {
     systemPrompt,
     workspace,
     googleToken,
+    toolExposure: {
+      source: 'automation',
+      availableCapabilities: [
+        'workspace.read',
+        'workspace.write',
+        ...(googleToken ? ['google.read'] as const : []),
+      ],
+      disallowedEffects: ['external-write', 'auth-change'],
+    },
     includeSafetySettings: true,
   });
 
@@ -110,7 +119,7 @@ async function executeElaraAutomation(prompt, workspace, googleToken) {
     const toolResponseParts = [];
 
     for (const fc of functionCalls) {
-      const execution = await executeAgentToolCall(currentWorkspace, fc.name, fc.args, googleToken);
+      const execution = await executeAgentToolCall(currentWorkspace, fc.name, fc.args, googleToken, 'automation');
       currentWorkspace = execution.updatedWorkspace;
       touchedArtifactIds = mergeTouchedArtifactIds(touchedArtifactIds, execution);
       toolResponseParts.push({
