@@ -105,12 +105,22 @@ export function setBackgroundRuntimeEnabled(enabled: boolean): void {
 }
 
 export function loadPersistedBackgroundJobs(): PersistedBackgroundJob[] {
-  return readJson<PersistedBackgroundJob[]>(JOBS_KEY, []);
+  const jobs = readJson<unknown>(JOBS_KEY, []);
+  if (!Array.isArray(jobs)) return [];
+  return jobs.filter((item): item is PersistedBackgroundJob => {
+    if (!item || typeof item !== 'object') return false;
+    const candidate = item as Record<string, unknown>;
+    return typeof candidate.jobId === 'string'
+      && candidate.jobId.trim().length > 0
+      && typeof candidate.conversationId === 'string'
+      && typeof candidate.assistantMessageId === 'string'
+      && typeof candidate.createdAt === 'number';
+  });
 }
 
 export function persistBackgroundJob(record: PersistedBackgroundJob): void {
   try {
-    const current = loadPersistedBackgroundJobs().filter((item) => item.conversationId !== record.conversationId);
+    const current = loadPersistedBackgroundJobs().filter((item) => item.jobId !== record.jobId);
     current.push(record);
     localStorage.setItem(JOBS_KEY, JSON.stringify(current));
   } catch {
@@ -118,9 +128,9 @@ export function persistBackgroundJob(record: PersistedBackgroundJob): void {
   }
 }
 
-export function removePersistedBackgroundJob(conversationId: string): void {
+export function removePersistedBackgroundJob(jobId: string): void {
   try {
-    const next = loadPersistedBackgroundJobs().filter((item) => item.conversationId !== conversationId);
+    const next = loadPersistedBackgroundJobs().filter((item) => item.jobId !== jobId);
     localStorage.setItem(JOBS_KEY, JSON.stringify(next));
   } catch {
     // Best effort only.
