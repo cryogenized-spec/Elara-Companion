@@ -1,8 +1,12 @@
 import type { MemoryAction, MemoryScratchpadState } from '../types';
-import { getDbMemoryState, setDbMemoryState } from '../lib/db';
+import { getDbMemoryState, registerMemoryStateListener, setDbMemoryState } from '../lib/db';
 import { applyMemoryActions } from '../lib/memoryProcessor';
 
 let currentMemoryState: MemoryScratchpadState | null = null;
+
+registerMemoryStateListener((state) => {
+  currentMemoryState = state;
+});
 
 /** Canonical application boundary for Elara memory. */
 export async function loadMemoryState(): Promise<MemoryScratchpadState> {
