@@ -119,7 +119,7 @@ async function executeElaraAutomation(prompt, workspace, googleToken) {
     const toolResponseParts = [];
 
     for (const fc of functionCalls) {
-      const execution = await executeAgentToolCall(currentWorkspace, fc.name, fc.args, googleToken);
+      const execution = await executeAgentToolCall(currentWorkspace, fc.name, fc.args, googleToken, 'automation');
       currentWorkspace = execution.updatedWorkspace;
       touchedArtifactIds = mergeTouchedArtifactIds(touchedArtifactIds, execution);
       toolResponseParts.push({
@@ -147,3 +147,110 @@ async function markRunningWithCas(existingRuntime) {
   const runtime = existingRuntime.value && typeof existingRuntime.value === 'object'
     ? existingRuntime.value
     : { version: 1, jobs: {}, schedules: {} };
+  runtime.version = 1;
+  runtime.jobs ||= {};
+  runtime.schedules ||= {};
+
+  const existingJob = runtime.jobs[executionKey] || {
+    automationId,
+    scheduledFor: new Date().toISOString(),
+    attempts: 0,
+  };
+
+  if (!shouldStartExecutor(existingJob, Date.now())) return { skip: true, runtime, job: existingJob };
+
+  const now = new Date().toISOString();
+  runtime.jobs[executionKey] = markExecutionRunning(
+    existingJob,
+    now,
+    lockbox.config('GITHUB_RUN_ID'),
+    lockbox.config('GITHUB_SERVER_URL') && lockbox.config('GITHUB_REPOSITORY')
+      ? `${lockbox.config('GITHUB_SERVER_URL')}/${lockbox.config('GITHUB_REPOSITORY')}/actions/runs/${lockbox.config('GITHUB_RUN_ID')}`
+      : null,
+  );
+
+  const saved = await putStateFile('runtime.json', runtime, existingRuntime.sha, `automation: running ${executionKey}`);
+  if (saved?.conflict) return { conflict: true };
+  return { runtime, job: runtime.jobs[executionKey], skip: false };
+}
+
+async function main() {
+  const automationsFile = await getStateFile('automations.json');
+  const automation = (Array.isArray(automationsFile.value) ? automationsFile.value : [])
+    .find((item) => item?.id === automationId);
+  if (!automation) throw new Error(`Automation ${automationId} was not found in private state.`);
+
+  const runtimeFile = await getStateFile('runtime.json');
+  const running = await markRunningWithCas(runtimeFile);
+  if (running?.skip) {
+    console.log(`Skipping ${executionKey}: execution is already terminal or actively running.`);
+    return;
+  }
+  if (running?.conflict) {
+    const latest = await getStateFile('runtime.json');
+    const retry = await markRunningWithCas(latest);
+    if (retry?.skip) {
+      console.log(`Skipping ${executionKey}: execution was claimed by another worker.`);
+      return;
+    }
+    if (retry?.conflict) throw new Error(`Could not claim execution ${executionKey} after state conflict.`);
+  }
+
+  const workspace = {
+    id: `automation-${automationId}`,
+    name: automation.name || 'Automation Workspace',
+    artifacts: [],
+    activeArtifactId: null,
+  };
+
+  try {
+    const result = await executeElaraAutomation(
+      String(automation.prompt || ''),
+      workspace,
+      lockbox.optionalSecret('ELARA_GOOGLE_TOKEN'),
+    );
+    const refreshedRuntime = await getStateFile('runtime.json');
+    const refreshed = refreshedRuntime.value && typeof refreshedRuntime.value === 'object'
+      ? refreshedRuntime.value
+      : { version: 1, jobs: {}, schedules: {} };
+    refreshed.version = 1;
+    refreshed.jobs ||= {};
+    refreshed.schedules ||= {};
+    refreshed.jobs[executionKey] = {
+      ...refreshed.jobs[executionKey],
+      status: 'success',
+      completedAt: new Date().toISOString(),
+      result: truncate(result.text),
+      model: result.model,
+      iterations: result.iterations,
+      touchedArtifactIds: result.touchedArtifactIds,
+      updatedAt: new Date().toISOString(),
+    };
+    const saved = await putStateFile('runtime.json', refreshed, refreshedRuntime.sha, `automation: completed ${executionKey}`);
+    if (saved?.conflict) console.warn(`Runtime changed while recording success for ${executionKey}; completion will be reconciled by the next runtime pass.`);
+    console.log(`Automation ${automationId} completed successfully.`);
+    console.log(truncate(result.text, 2000));
+  } catch (error) {
+    const refreshedRuntime = await getStateFile('runtime.json');
+    const refreshed = refreshedRuntime.value && typeof refreshedRuntime.value === 'object'
+      ? refreshedRuntime.value
+      : { version: 1, jobs: {}, schedules: {} };
+    refreshed.version = 1;
+    refreshed.jobs ||= {};
+    refreshed.schedules ||= {};
+    refreshed.jobs[executionKey] = {
+      ...refreshed.jobs[executionKey],
+      status: 'failed',
+      completedAt: new Date().toISOString(),
+      error: String(error?.message || error),
+      updatedAt: new Date().toISOString(),
+    };
+    await putStateFile('runtime.json', refreshed, refreshedRuntime.sha, `automation: failed ${executionKey}`);
+    throw error;
+  }
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
