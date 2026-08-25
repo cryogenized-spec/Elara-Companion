@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import type { Dispatch, SetStateAction, MutableRefObject } from 'react';
 import type { Conversation, ElaraSettings, Folder } from '../../types';
 import { exportAllDataJSON, importDataJSON, generateUniqueId } from '../../lib/storage';
-import { clearDbStorage, setDbConversations, setDbFolders, setDbSettings } from '../../lib/db';
+import { clearDbStorage } from '../../lib/db';
 
 export type ConversationControllerArgs = {
   conversations: Conversation[];
@@ -35,29 +35,28 @@ export function useConversationController({
 
   const handleCreateFolder = useCallback((name: string) => {
     const nextFolders = [...folders, { id: generateUniqueId('folder'), name, isExpanded: true }];
-    setFolders(nextFolders); setDbFolders(nextFolders);
+    setFolders(nextFolders);
   }, [folders, setFolders]);
 
   const handleRenameFolder = useCallback((id: string, name: string) => {
     const nextFolders = folders.map((folder) => folder.id === id ? { ...folder, name } : folder);
-    setFolders(nextFolders); setDbFolders(nextFolders);
+    setFolders(nextFolders);
   }, [folders, setFolders]);
 
   const handleDeleteFolder = useCallback((id: string) => {
     const nextFolders = folders.filter((folder) => folder.id !== id);
     const nextConversations = conversations.map((conversation) => conversation.folderId === id ? { ...conversation, folderId: undefined } : conversation);
     setFolders(nextFolders); setConversations(nextConversations);
-    setDbFolders(nextFolders); setDbConversations(nextConversations);
   }, [conversations, folders, setConversations, setFolders]);
 
   const handleToggleFolder = useCallback((id: string) => {
     const nextFolders = folders.map((folder) => folder.id === id ? { ...folder, isExpanded: !folder.isExpanded } : folder);
-    setFolders(nextFolders); setDbFolders(nextFolders);
+    setFolders(nextFolders);
   }, [folders, setFolders]);
 
   const handleMoveToFolder = useCallback((conversationId: string, folderId: string | null) => {
     const nextConversations = conversations.map((conversation) => conversation.id === conversationId ? { ...conversation, folderId: folderId || undefined } : conversation);
-    setConversations(nextConversations); setDbConversations(nextConversations);
+    setConversations(nextConversations);
   }, [conversations, setConversations]);
 
   const renameConversation = useCallback((renameTargetId: string | null, newTitle: string) => {
@@ -71,7 +70,7 @@ export function useConversationController({
     const remaining = conversations.filter((conversation) => conversation.id !== deleteTargetId);
     setConversations(remaining);
     if (activeId === deleteTargetId) setActiveId(remaining.length > 0 ? remaining[0].id : null);
-    setDbConversations(remaining); setDeleteTargetId(null);
+    setDeleteTargetId(null);
   }, [activeId, conversations, setActiveId, setConversations, setDeleteTargetId]);
 
   const clearAllData = useCallback(() => {
@@ -85,7 +84,7 @@ export function useConversationController({
   const importData = useCallback((jsonStr: string) => {
     const { conversations: importedConversations, settings: importedSettings } = importDataJSON(jsonStr);
     if (importedConversations.length > 0) {
-      setConversations(importedConversations); setActiveId(importedConversations[0].id); setDbConversations(importedConversations);
+      setConversations(importedConversations); setActiveId(importedConversations[0].id);
     }
     if (importedSettings) {
       const mergedSettings = { ...settings, ...importedSettings };
