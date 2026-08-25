@@ -24,20 +24,25 @@ Remove Chat's remaining direct Workspace persistence and durable-background life
 - `artifact.changed` and `background.job.completed` event boundaries remain available for downstream consumers.
 - The legacy repository remains untouched.
 
+## Verification
+
+A temporary repository-owned verification workflow initially failed before dependency installation because the repository uses `bun.lock` rather than an npm lockfile. The verifier was corrected to use `npm install` without npm lockfile caching and was rerun successfully.
+
+Final Pass 42 verification passed on the refactor branch:
+
+```text
+npm install        PASS
+npm run lint       PASS
+npm test           PASS
+npm run build      PASS
+npm run benchmark:memory PASS
+```
+
+The temporary verification workflow was then physically removed. The repository's normal CI verification also triggered on the same Pass 42 head.
+
 ## Deliberately deferred
 
 This pass does not attempt to minimize remaining Chat state, remove title-generation provider mechanics, or rehabilitate the broader Workspace implementation. Those remain owned by Pass 43+ and the later Workspace programme.
-
-## Verification target
-
-Focused tests cover the background execution boundary. Repository verification remains:
-
-```bash
-npm run lint
-npm test
-npm run build
-npm run benchmark:memory
-```
 
 ## Handoff to Pass 43
 
