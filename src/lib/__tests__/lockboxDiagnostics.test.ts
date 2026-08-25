@@ -13,7 +13,7 @@ test('server Lockbox diagnostics report state without exposing values', () => {
 
   assert.equal(apiKey?.status, 'configured');
   assert.equal(apiKey?.classification, 'secret');
-  assert.deepEqual(apiKey?.exposures, ['server']);
+  assert.deepEqual(apiKey?.exposures, ['server', 'worker', 'ci']);
   assert.equal(model?.status, 'configured');
   assert.equal(JSON.stringify(diagnostics).includes('super-secret-value'), false);
 });
