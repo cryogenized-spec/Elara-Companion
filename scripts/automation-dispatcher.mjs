@@ -2,6 +2,7 @@ import { createAutomationLockbox } from './automation-lockbox.mjs';
 import {
   createDispatchClaim,
   executionKeyFor,
+  markDispatchAccepted,
   shouldDispatch,
 } from './automation-runtime.mjs';
 
@@ -139,7 +140,7 @@ async function main() {
 
     if (!shouldDispatch(existing, now.getTime(), { manual, due })) continue;
 
-    const claim = createDispatchClaim({
+    runtime.jobs[executionKey] = createDispatchClaim({
       automationId: automation.id,
       scheduledFor: scheduled.toISOString(),
       executionKey,
@@ -147,7 +148,6 @@ async function main() {
       dispatcherRunId: lockbox.config('GITHUB_RUN_ID'),
     });
 
-    runtime.jobs[executionKey] = claim;
     const claimWrite = await putStateFile(
       'runtime.json',
       runtime,
@@ -164,13 +164,11 @@ async function main() {
       const attempts = await dispatchWithRetry(automation, executionKey);
       const latest = await getStateFile('runtime.json');
       const latestRuntime = normalizeRuntime(latest.value);
-      latestRuntime.jobs[executionKey] = {
-        ...latestRuntime.jobs[executionKey],
-        status: 'dispatched',
+      latestRuntime.jobs[executionKey] = markDispatchAccepted(
+        latestRuntime.jobs[executionKey],
         attempts,
-        dispatchedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+        new Date().toISOString(),
+      );
       latestRuntime.schedules[automation.id] = {
         nextRunAt: advanceNextRun(automation, scheduled.toISOString()),
       };
