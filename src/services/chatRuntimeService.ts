@@ -3,8 +3,8 @@ import type {
   GeminiHistoryMessage,
   GeminiRuntimeContract,
   GeminiStreamChunk,
-  GoogleContract,
 } from '../contracts';
+import { googleContract } from '../contracts/implementations';
 
 export interface ChatRuntimeExecutionRequest {
   conversationId: string;
@@ -23,7 +23,6 @@ export interface ChatRuntimeExecutionRequest {
   workspace?: import('../types').Workspace;
   signal?: AbortSignal;
   runtime: GeminiRuntimeContract;
-  google: Pick<GoogleContract, 'getAccessToken'>;
   background: Pick<BackgroundRuntimeContract,
     'isEnabled' | 'createChatJob' | 'persistJob' | 'waitForJob' | 'removeJob'
   >;
@@ -117,12 +116,12 @@ async function streamBackendChat(
 /**
  * Owns the model/background execution decision for Chat.
  * The Chat feature supplies a request and receives normalized runtime chunks;
- * provider-specific Gemini, backend SSE, and durable-job mechanics stay behind this boundary.
+ * provider-specific Gemini, backend SSE, credential lookup, and durable-job mechanics stay behind this boundary.
  */
 export async function executeChatRuntime(
   request: ChatRuntimeExecutionRequest,
 ): Promise<{ durable: boolean }> {
-  const googleToken = request.google.getAccessToken();
+  const googleToken = googleContract.getAccessToken();
 
   if (request.background.isEnabled()) {
     const durableJob = await request.background.createChatJob({
