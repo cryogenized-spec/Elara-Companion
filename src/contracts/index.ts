@@ -19,7 +19,7 @@ export interface ConversationContract {
 /** Stable application contract for canonical memory ownership. */
 export interface MemoryContract {
   load(): Promise<MemoryScratchpadState>;
-  save(state: MemoryScratchpadState): Promise<void>;
+  save(state: MemoryScratchpadState, conversationId?: string): Promise<void>;
   getLoaded(): MemoryScratchpadState | null;
   reduce(state: MemoryScratchpadState, actions: MemoryAction[], conversationId?: string): MemoryScratchpadState;
 }

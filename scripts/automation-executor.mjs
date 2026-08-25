@@ -62,10 +62,10 @@ async function executeElaraAutomation(prompt, workspace, googleToken) {
   const {
     buildConversationContents,
     buildRuntimeConfig,
-    executeAgentToolCall,
     mergeTouchedArtifactIds,
     MAX_AGENT_ITERATIONS,
   } = await import('../src/lib/chatRuntime.ts');
+  const { executeAgentToolCall } = await import('../src/services/agentToolExecutionService.ts');
 
   const model = normalizeModelName(lockbox.config('GEMINI_MODEL') || 'gemini-3.6-flash');
   const ai = getGeminiClient();
