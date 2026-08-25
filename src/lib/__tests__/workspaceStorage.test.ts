@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import test, { beforeEach } from 'node:test';
-import { createArtifact, getWorkspace, saveWorkspace, setActiveArtifact } from '../workspaceStorage';
+import { clearWorkspace, createArtifact, getWorkspace, saveWorkspace, setActiveArtifact } from '../workspaceStorage';
 import { Workspace } from '../../types';
 
 class MemoryStorage {
@@ -14,7 +14,10 @@ class MemoryStorage {
 const storage = new MemoryStorage();
 Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true });
 
-beforeEach(() => storage.clear());
+beforeEach(() => {
+  clearWorkspace();
+  storage.clear();
+});
 
 test('Workspace persists through the same browser storage used for reads and writes', () => {
   const workspace: Workspace = {

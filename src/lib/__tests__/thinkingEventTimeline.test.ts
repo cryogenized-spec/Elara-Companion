@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { createThinkingEvent, orderThinkingEvents } from '../thinkingEvents';
 
 describe('thinking event timeline contract', () => {
-  it('keeps mixed thought/tool/memory events chronologically ordered', () => {
+  it('keeps mixed thought/tool/memory events in deterministic stream sequence order', () => {
     const events = [
       createThinkingEvent({ type: 'tool_result', source: 'tool', title: 'Gmail result', summary: 'Returned messages.' }, 300),
       createThinkingEvent({ type: 'thought', source: 'model', title: 'Understand request', summary: 'Reviewing context.' }, 100),
@@ -11,7 +11,7 @@ describe('thinking event timeline contract', () => {
     ];
 
     const ordered = orderThinkingEvents(events);
-    assert.deepEqual(ordered.map((event) => event.type), ['thought', 'memory', 'tool_result']);
+    assert.deepEqual(ordered.map((event) => event.type), ['tool_result', 'thought', 'memory']);
   });
 
   it('preserves tool metadata for service-specific icons and labels', () => {

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it, afterEach } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import { buildSystemPayload, setNextMemoryRetrievalQuery, clearNextMemoryRetrievalQuery } from '../contextManager';
 
 const originalLocalStorage = (globalThis as any).localStorage;
@@ -39,6 +39,7 @@ describe('contextual memory integration', () => {
       activeScratchpad: 'LEGACY SCRATCHPAD SHOULD NOT APPEAR',
       memoryState: {
         schemaVersion: 3,
+        autoMaintenanceEnabled: false,
         memories: [
           {
             id: 'core-1', content: 'User prefers concise technical explanations.', kind: 'preference', lifecycle: 'core', resolution: 'core', state: 'active',

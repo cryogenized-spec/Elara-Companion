@@ -5,6 +5,7 @@ export type ServerLockbox = {
   requiredSecret: (key: string) => string;
   optionalSecret: (key: string) => string | undefined;
   config: (key: string, fallback?: string) => string | undefined;
+  runtime: (key: string, fallback?: string) => string | undefined;
   diagnostics: () => LockboxStatusEntry[];
   statusSummary: () => ReturnType<typeof summarizeLockboxStatus>;
 };
@@ -26,9 +27,10 @@ export function createServerLockbox(env: NodeJS.ProcessEnv = process.env): Serve
     assertLockboxEntry(key);
     return env[key]?.trim() || fallback;
   };
+  const runtime = (key: string, fallback?: string): string | undefined => env[key]?.trim() || fallback;
   const diagnostics = () => evaluateLockboxStatus(LOCKBOX_MANIFEST, env, ['server']);
   const statusSummary = () => summarizeLockboxStatus(diagnostics());
-  return { requiredSecret, optionalSecret, config, diagnostics, statusSummary };
+  return { requiredSecret, optionalSecret, config, runtime, diagnostics, statusSummary };
 }
 
 export const serverLockbox = createServerLockbox();

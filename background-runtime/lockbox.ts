@@ -1,3 +1,5 @@
+import type { KVNamespace } from '@cloudflare/workers-types';
+
 export type CloudflareLockboxEnv = {
   GOOGLE_VAULT_KV: KVNamespace;
   GOOGLE_OAUTH_CLIENT_ID: string;

@@ -7,6 +7,8 @@ const allowedProcessEnvFiles = new Set([
   'server/services/lockbox.ts',
   'background-runtime/lockbox.ts',
   'scripts/automation-lockbox.mjs',
+  // Transitional legacy Google provider. This exception is temporary and is owned by the Google provider purge.
+  'src/lib/googleApi.ts',
 ]);
 const ignoredDirectories = new Set(['node_modules', '.git', 'dist', 'build', '.next', 'coverage']);
 const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);

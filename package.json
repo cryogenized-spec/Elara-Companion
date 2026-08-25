@@ -14,9 +14,10 @@
     "lockbox:secrets": "node scripts/lockbox-secret-scan.mjs",
     "lockbox:status": "node scripts/lockbox-status.mjs",
     "lockbox:verify": "node scripts/lockbox-verify.mjs",
-    "lint": "npm run lockbox:validate && npm run lockbox:audit && npm run lockbox:secrets && tsc --noEmit && npm --prefix background-runtime install --no-audit --no-fund && npm --prefix background-runtime run typecheck",
+    "lint": "npm run lockbox:validate && npm run lockbox:audit && npm run lockbox:secrets && npm --prefix background-runtime install --no-audit --no-fund && tsc --noEmit && npm --prefix background-runtime run typecheck",
     "test": "node --import tsx --test",
-    "benchmark:memory": "tsx scripts/benchmark-memory-consolidation.ts"
+    "benchmark:memory": "tsx scripts/benchmark-memory-consolidation.ts",
+    "verify:production": "node scripts/verify-production.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.15.0",

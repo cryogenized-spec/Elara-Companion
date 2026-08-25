@@ -10,9 +10,6 @@ import { exportConversationMarkdown, incrementRateLimit } from './lib/storage';
 import { resetWorldState, exportWorldStateJSON, importWorldStateJSON } from './lib/worldStorage';
 import { resetMemoryState, exportMemoryJSON, importMemoryJSON } from './lib/memoryStorage';
 
-import { 
-  setDbPortrait
-} from './lib/db';
 
 import { Sidebar } from './components/Sidebar';
 import { MessageComposer } from './components/MessageComposer';
@@ -90,12 +87,10 @@ export default function App() {
 
   const handleUploadPortrait = (base64Img: string) => {
     setCustomPortrait(base64Img);
-    setDbPortrait(base64Img);
   };
 
   const handleRemovePortrait = () => {
     setCustomPortrait(null);
-    setDbPortrait(null);
   };
 
   const activeConversation = conversations.find((c) => c.id === activeId) || null;
@@ -481,7 +476,6 @@ export default function App() {
         memoryState={memoryState}
         onSaveMemoryState={(newMem) => {
           setMemoryState(newMem);
-          setDbMemoryState(newMem);
         }}
         onResetMemoryState={() => {
           const res = resetMemoryState();
@@ -491,7 +485,6 @@ export default function App() {
         onImportMemory={(jsonStr) => {
           const imp = importMemoryJSON(jsonStr);
           setMemoryState(imp);
-          setDbMemoryState(imp);
         }}
         userName={settings.userName || 'User'}
         apiKey={settings.apiKey}
@@ -503,7 +496,6 @@ export default function App() {
         worldState={worldState}
         onSaveWorldState={(newWS) => {
           setWorldState(newWS);
-          setDbWorldState(newWS);
         }}
         onResetWorldState={() => {
           const res = resetWorldState();
@@ -513,7 +505,6 @@ export default function App() {
         onImportWorldState={(jsonStr) => {
           const imp = importWorldStateJSON(jsonStr);
           setWorldState(imp);
-          setDbWorldState(imp);
         }}
         userName={settings.userName || 'User'}
       />

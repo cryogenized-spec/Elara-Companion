@@ -88,7 +88,7 @@ const workspacePlugin: ToolPlugin = {
 const googleAgentPlugin: ToolPlugin = {
   id: 'google-agent',
   version: 1,
-  declarations: googleAgentToolDeclarations.map(withExternalActionConfirmation).map(withGoogleExposureMetadata),
+  declarations: googleAgentToolDeclarations.map((tool) => withGoogleExposureMetadata(withExternalActionConfirmation(tool))),
   owns: (toolName) => GOOGLE_AGENT_TOOL_NAMES.has(toolName),
   authorize: googleAuthorization,
   execute: async ({ toolName, args, googleToken, workspace }) => {
@@ -101,7 +101,7 @@ const googleAgentPlugin: ToolPlugin = {
 const googleOperationalPlugin: ToolPlugin = {
   id: 'google-operational',
   version: 1,
-  declarations: googleOperationalToolDeclarations.map(withExternalActionConfirmation).map(withGoogleExposureMetadata),
+  declarations: googleOperationalToolDeclarations.map((tool) => withGoogleExposureMetadata(withExternalActionConfirmation(tool))),
   owns: (toolName) => GOOGLE_OPERATIONAL_TOOL_NAMES.has(toolName),
   authorize: googleAuthorization,
   execute: async ({ toolName, args, googleToken, workspace }) => {
@@ -114,7 +114,7 @@ const googleOperationalPlugin: ToolPlugin = {
 const googleAuthLifecyclePlugin: ToolPlugin = {
   id: 'google-auth-lifecycle',
   version: 1,
-  declarations: [withExternalActionConfirmation(GOOGLE_AUTH_LIFECYCLE_TOOL_DECLARATION)].map((tool) => withGoogleExposureMetadata(tool, true)),
+  declarations: [withGoogleExposureMetadata(withExternalActionConfirmation(GOOGLE_AUTH_LIFECYCLE_TOOL_DECLARATION), true)],
   owns: (toolName) => toolName === GOOGLE_AUTH_LIFECYCLE_TOOL_DECLARATION.name,
   authorize: googleAuthorization,
   execute: async ({ toolName, args, workspace }) => ({

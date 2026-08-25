@@ -89,7 +89,7 @@ async function executeElaraAutomation(prompt, workspace, googleToken) {
       availableCapabilities: [
         'workspace.read',
         'workspace.write',
-        ...(googleToken ? ['google.read'] as const : []),
+        ...(googleToken ? ['google.read'] : []),
       ],
       disallowedEffects: ['external-write', 'auth-change'],
     },
