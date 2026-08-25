@@ -1,7 +1,8 @@
 import { getGoogleRuntimeStatus } from './googleRuntime';
 import { createBuiltinToolPluginRegistry } from '../tools/builtinToolPlugins';
-import type { ToolExecutionResult } from '../tools/toolPluginTypes';
+import type { ToolExecutionResult, ToolInvocationSource } from '../tools/toolPluginTypes';
 import type { Workspace } from '../types';
+import type { ToolExposurePolicy } from '../security/toolExposurePolicy';
 
 const toolRegistry = createBuiltinToolPluginRegistry();
 
@@ -12,17 +13,23 @@ export function getAgentConnectionContext(): string {
   return getGoogleRuntimeStatus().hint;
 }
 
+export function getAgentToolDeclarations(policy?: ToolExposurePolicy) {
+  return toolRegistry.getDeclarations(policy);
+}
+
 export async function executeAgentTool(
   workspace: Workspace,
   toolName: string,
   args: any,
   googleToken?: string,
+  source: ToolInvocationSource = 'model',
 ): Promise<AgentToolExecution> {
   return toolRegistry.execute({
     workspace,
     toolName,
     args: args && typeof args === 'object' ? args : {},
     googleToken,
+    source,
   });
 }
 

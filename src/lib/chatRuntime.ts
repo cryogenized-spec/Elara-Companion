@@ -2,10 +2,11 @@ import { HarmCategory, HarmBlockThreshold } from '@google/genai';
 import { Workspace } from '../types';
 import { publishApplicationEvent } from '../events/applicationEventBus';
 import { getModelProfile } from './modelRegistry';
-import { agentToolDeclarations, executeAgentTool, AgentToolExecution } from './agentToolRegistry';
+import { agentToolDeclarations, executeAgentTool, AgentToolExecution, getAgentToolDeclarations } from './agentToolRegistry';
 import { buildWorkspaceContextPrompt } from './workspaceTools';
 import { TEXT_PROCESSING_POLICY } from '../constants/textProcessingPolicy';
 import { recordLiveToolActivity } from './thinkingLiveRuntime';
+import type { ToolExposurePolicy } from '../security/toolExposurePolicy';
 
 export const MAX_AGENT_ITERATIONS = 5;
 
@@ -35,6 +36,7 @@ export interface RuntimeConfigOptions {
   topK?: number;
   thinkingBudget?: number;
   thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
+  toolExposure?: ToolExposurePolicy;
   /** @deprecated Always applied. Kept for type compatibility only. */
   includeSafetySettings?: boolean;
 }
@@ -117,7 +119,7 @@ export function buildRuntimeConfig(options: RuntimeConfigOptions): any {
     config.thinkingConfig = { thinkingBudget: typeof options.thinkingBudget === 'number' ? options.thinkingBudget : -1, includeThoughts: true };
   }
 
-  config.tools = [{ functionDeclarations: agentToolDeclarations }];
+  config.tools = [{ functionDeclarations: options.toolExposure ? getAgentToolDeclarations(options.toolExposure) : agentToolDeclarations }];
   return config;
 }
 
@@ -126,8 +128,9 @@ export async function executeAgentToolCall(
   toolName: string,
   args: any,
   googleToken?: string,
+  source: 'model' | 'user' | 'background' | 'automation' | 'system' = 'model',
 ): Promise<AgentToolExecution> {
-  const execution = await executeAgentTool(workspace, toolName, args, googleToken);
+  const execution = await executeAgentTool(workspace, toolName, args, googleToken, source);
 
   if (typeof window !== 'undefined') {
     recordLiveToolActivity({
