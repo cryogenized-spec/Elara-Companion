@@ -21,11 +21,11 @@ test('automation Lockbox accepts only CI-approved secrets and config', () => {
 test('automation Lockbox rejects browser-only or worker-only entries', () => {
   const lockbox = createAutomationLockbox({
     VITE_GOOGLE_CLIENT_ID: 'public-client',
-    GOOGLE_OAUTH_CLIENT_SECRET: 'worker-secret',
+    GOOGLE_VAULT_KV: 'worker-binding',
   });
 
   assert.throws(() => lockbox.config('VITE_GOOGLE_CLIENT_ID'), /not approved for CI exposure/);
-  assert.throws(() => lockbox.secret('GOOGLE_OAUTH_CLIENT_SECRET'), /not approved for CI exposure/);
+  assert.throws(() => lockbox.config('GOOGLE_VAULT_KV'), /not approved for CI exposure/);
 });
 
 test('automation Lockbox fails closed for missing critical values', () => {
