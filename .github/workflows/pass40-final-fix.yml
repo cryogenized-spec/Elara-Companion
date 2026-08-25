@@ -1,0 +1,36 @@
+name: Pass 40 final wiring fix
+
+on:
+  push:
+    branches:
+      - pass40-chat-runtime-extraction
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fix transitional memory bridge
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/features/chat/useChatStreamController.ts')
+          s = p.read_text()
+          if "import { setDbMemoryState } from '../../lib/db';" not in s:
+              marker = "import { executeChatRuntime } from '../../services/chatRuntimeService';\n"
+              s = s.replace(marker, marker + "import { setDbMemoryState } from '../../lib/db';\n")
+          s = s.replace("import { geminiRuntimeContract, backgroundRuntimeContract } from '../../contracts/implementations';", "import { geminiRuntimeContract, backgroundRuntimeContract } from '../../contracts/implementations';")
+          s = s.replace("        google: googleContract,\n", "")
+          p.write_text(s)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/features/chat/useChatStreamController.ts
+          git commit -m "fix(chat): preserve transitional memory persistence bridge" || true
+          git push
+          git rm .github/workflows/pass40-final-fix.yml
+          git commit -m "chore: remove one-shot Pass 40 final fix workflow"
+          git push
