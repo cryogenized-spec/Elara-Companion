@@ -15,9 +15,11 @@ import { applyChatRuntimeWorkspaceUpdate, persistChatCanvases } from '../../serv
 export type ChatStreamControllerArgs = {
   conversations: Conversation[];
   settings: ElaraSettings;
-  memoryState: MemoryScratchpadState;
+  /** Transitional compatibility input; Chat no longer reads or owns this state. */
+  memoryState?: MemoryScratchpadState;
   setConversations: Dispatch<SetStateAction<Conversation[]>>;
-  setMemoryState: Dispatch<SetStateAction<MemoryScratchpadState>>;
+  /** Transitional compatibility input; Chat no longer mutates memory state. */
+  setMemoryState?: Dispatch<SetStateAction<MemoryScratchpadState>>;
   setIsStreaming: Dispatch<SetStateAction<boolean>>;
   abortControllerRef: MutableRefObject<AbortController | null>;
   userHasScrolledUpRef: MutableRefObject<boolean>;
@@ -26,9 +28,7 @@ export type ChatStreamControllerArgs = {
 export function useChatStreamController({
   conversations,
   settings,
-  memoryState,
   setConversations,
-  setMemoryState,
   setIsStreaming,
   abortControllerRef,
   userHasScrolledUpRef,
@@ -43,11 +43,9 @@ export function useChatStreamController({
     setIsStreaming(true);
     userHasScrolledUpRef.current = false;
 
-    // Create abort controller
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // Create Assistant Placeholder Message
     const assistantMsgId = generateUniqueId('msg_ast');
     const isThinkingInitially = settings.thinkingBudget !== 0;
     const assistantStartTime = Date.now();
@@ -66,7 +64,6 @@ export function useChatStreamController({
         : undefined,
     };
 
-    // Add assistant message to conversation
     setConversations((prev) =>
       prev.map((c) => {
         if (c.id !== targetConvId) return c;
@@ -89,8 +86,6 @@ export function useChatStreamController({
     const userProfileNotes = loadUserProfileNotes();
     const activeScratchpad = loadActiveScratchpad();
 
-    // Live Google data is agent-selected through the canonical tool registry.
-
     const formattedSystemPrompt = buildSystemPayload({
       baseSystemInstruction,
       personaProtocol: settings.personaProtocol || DEFAULT_PERSONA_PROTOCOL,
@@ -102,7 +97,6 @@ export function useChatStreamController({
       activeScratchpad,
     });
 
-    // Filter history if enabled
     const historyPayload = settings.includeHistory
       ? historyMessages.map((m) => {
           let reconstructedContent = m.content;
@@ -119,7 +113,6 @@ export function useChatStreamController({
 
     let accumulatedText = '';
     let streamedThoughts = '';
-
     let lastChunkTime = Date.now();
     let isDone = false;
     let durableJobAccepted = false;
@@ -136,7 +129,6 @@ export function useChatStreamController({
       );
     });
 
-    // Watchdog interval to catch stalled background processes on mobile
     const WATCHDOG_TIMEOUT_MS = 20000;
     const watchdogInterval = setInterval(() => {
       if (isDone) {
@@ -172,7 +164,6 @@ export function useChatStreamController({
       artifactIds?: string[];
     }) => {
       lastChunkTime = Date.now();
-
       streamArtifactIds.push(...applyChatRuntimeWorkspaceUpdate(chunk));
 
       if (chunk.finishReason === 'SAFETY') {
@@ -248,10 +239,8 @@ export function useChatStreamController({
     }
 
     try {
-      // Increment API rate limit
       incrementRateLimit(settings.model || 'gemini-3.7-flash');
 
-      // Runtime execution is owned by the application runtime boundary.
       const runtimeResult = await executeChatRuntime({
         conversationId: targetConvId,
         assistantMessageId: assistantMsgId,
@@ -279,7 +268,6 @@ export function useChatStreamController({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       streamUiScheduler.flush();
 
-      // Mark streaming and thinking completed & finalize structured steps
       const { cleanContent, combinedThoughts } = extractThoughtsAndContent(
         accumulatedText,
         streamedThoughts
@@ -287,7 +275,6 @@ export function useChatStreamController({
       const { cleanContent: finalCleanContent, canvases } = extractCanvases(cleanContent);
       const finalSteps = parseThoughtSteps(combinedThoughts);
 
-      // Persist generated canvases through the canonical Workspace boundary.
       const persistedCanvases = canvases && canvases.length > 0
         ? persistChatCanvases(canvases)
         : [];
@@ -321,7 +308,6 @@ export function useChatStreamController({
         })
       );
 
-      // Automatically generate a conversation title if it's new
       const targetConv = conversations.find((c) => c.id === targetConvId);
       if (
         targetConv &&
@@ -330,12 +316,10 @@ export function useChatStreamController({
         generateConversationTitle(targetConvId, messageText, accumulatedText);
       }
 
-      // Memory extraction is owned by the canonical memory boundary.
       void extractAndPersistConversationMemory({
         apiKey: settings.apiKey?.trim(),
         userMessage: messageText,
         assistantResponse: accumulatedText,
-        memoryState,
         userName: settings.userName || 'User',
         conversationId: targetConvId,
         memory: memoryContract,
@@ -407,7 +391,6 @@ export function useChatStreamController({
     }
   };
 
-  // Generate Title via Server API or Direct Client
   const generateConversationTitle = async (
     convId: string,
     userMsg: string,
@@ -448,7 +431,6 @@ export function useChatStreamController({
       console.warn('Title generation skipped or offline:', e);
     }
   };
-
 
   return { streamAssistantResponse, generateConversationTitle };
 }

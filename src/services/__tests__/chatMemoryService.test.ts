@@ -44,28 +44,33 @@ function createMemoryContract(initial: MemoryScratchpadState) {
   };
 }
 
-test('backend memory extraction reduces actions and persists through MemoryContract', async () => {
+test('memory extraction loads current authoritative state from MemoryContract', async () => {
   const originalFetch = globalThis.fetch;
-  const initialState = { memories: [] } as unknown as MemoryScratchpadState;
-  const { contract, getSaved } = createMemoryContract(initialState);
+  const authoritativeState = {
+    memories: [{ id: 'existing', content: 'Authoritative memory' }],
+  } as unknown as MemoryScratchpadState;
+  const { contract, getSaved } = createMemoryContract(authoritativeState);
 
-  globalThis.fetch = async () => new Response(JSON.stringify({
-    actions: [{
-      type: 'CREATE',
-      memory: { content: 'The user is working on Elara.' },
-    }],
-  }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
+  globalThis.fetch = async (_input, init) => {
+    const payload = JSON.parse(String(init?.body));
+    assert.deepEqual(payload.currentMemories, authoritativeState.memories);
+    return new Response(JSON.stringify({
+      actions: [{
+        type: 'CREATE',
+        memory: { content: 'The user is working on Elara.' },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
 
   try {
     await extractAndPersistConversationMemory({
       userMessage: 'I am working on Elara.',
       assistantResponse: 'That sounds good.',
-      memoryState: initialState,
       userName: 'User',
-      conversationId: 'conv_41',
+      conversationId: 'conv_43',
       memory: contract,
     });
   } finally {
@@ -73,7 +78,7 @@ test('backend memory extraction reduces actions and persists through MemoryContr
   }
 
   const saved = getSaved();
-  assert.equal(saved.conversationId, 'conv_41');
-  assert.equal(saved.state?.memories.length, 1);
-  assert.equal((saved.state?.memories[0] as any).content, 'The user is working on Elara.');
+  assert.equal(saved.conversationId, 'conv_43');
+  assert.equal(saved.state?.memories.length, 2);
+  assert.equal((saved.state?.memories[1] as any).content, 'The user is working on Elara.');
 });
