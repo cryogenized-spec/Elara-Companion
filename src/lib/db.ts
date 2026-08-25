@@ -38,6 +38,14 @@ async function migrateValue(idbKey: string, legacyKey: string, transform: (value
 
 let conversationsCache: Conversation[] | null = null;
 let conversationPersistTimer: ReturnType<typeof setTimeout> | null = null;
+let memoryStateChangedListener: ((state: MemoryScratchpadState) => void) | null = null;
+
+export function registerMemoryStateListener(listener: (state: MemoryScratchpadState) => void): () => void {
+  memoryStateChangedListener = listener;
+  return () => {
+    if (memoryStateChangedListener === listener) memoryStateChangedListener = null;
+  };
+}
 
 async function persistConversationsNow(): Promise<void> {
   if (!conversationsCache) return;
@@ -148,6 +156,7 @@ export async function setDbMemoryState(data: MemoryScratchpadState) {
   } catch (error) {
     console.warn('Memory database write failed; current session will continue with in-memory state:', error);
   }
+  memoryStateChangedListener?.(normalized);
 }
 
 export async function clearDbStorage() {
