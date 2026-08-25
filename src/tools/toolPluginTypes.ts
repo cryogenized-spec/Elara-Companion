@@ -1,4 +1,4 @@
-import type { AgentToolExecution } from '../lib/agentToolRegistry';
+import type { Workspace } from '../types';
 
 export interface AgentToolDeclaration {
   name: string;
@@ -7,8 +7,16 @@ export interface AgentToolDeclaration {
   [key: string]: unknown;
 }
 
+export interface ToolExecutionResult {
+  result: any;
+  updatedWorkspace: Workspace;
+  createdArtifactId?: string;
+  modifiedArtifactId?: string;
+  externalDocUrl?: string;
+}
+
 export interface ToolExecutionContext {
-  workspace: import('../types').Workspace;
+  workspace: Workspace;
   toolName: string;
   args: Record<string, unknown>;
   googleToken?: string;
@@ -20,5 +28,5 @@ export interface ToolPlugin {
   declarations: readonly AgentToolDeclaration[];
   owns(toolName: string): boolean;
   authorize?(context: ToolExecutionContext): { allowed: true } | { allowed: false; result: unknown } | Promise<{ allowed: true } | { allowed: false; result: unknown }>;
-  execute(context: ToolExecutionContext): Promise<AgentToolExecution>;
+  execute(context: ToolExecutionContext): Promise<ToolExecutionResult>;
 }
