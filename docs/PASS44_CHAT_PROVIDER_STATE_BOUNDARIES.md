@@ -34,19 +34,36 @@ This pass does not attempt to extract the watchdog, stream accumulators, artifac
 
 The optional `memoryState` / `setMemoryState` compatibility props remain transitional shell debt from Pass 43.
 
-## Verification target
+## Verification
+
+Pass 44 verification completed successfully on the PR head:
 
 ```text
-npm install
-npm run lint
-npm test
-npm run build
-npm run benchmark:memory
+npm install               PASS
+npm run lint              PASS
+npm test                  PASS
+npm run build             PASS
+npm run benchmark:memory  PASS
 ```
 
-## Handoff
+The temporary Pass 44 verification workflow was physically removed before merge. The repository's normal CI path was not allowed to become a reason to leave temporary verification infrastructure behind.
 
-Pass 45 should reassess Google/provider ownership now that Chat no longer directly owns title-provider mechanics or memory state. Do not move provider logic back into Chat simply because a new feature needs it.
+## Handoff to Pass 45
+
+Pass 45 should reassess Google/provider ownership now that Chat no longer directly owns title-provider mechanics or memory state. Start with a Google provider inventory and canonical-path audit rather than editing Chat further.
+
+Specifically establish for every Google capability:
+
+- canonical authorization owner
+- current token/credential owner
+- service adapter owner
+- direct UI/feature callers
+- legacy compatibility callers
+- webhook and callback ownership
+- scope requirements
+- obsolete `googleApi` paths still reachable from the active architecture
+
+Do not move provider logic back into Chat simply because a new feature needs it.
 
 Architectural invariant:
 
