@@ -81,6 +81,7 @@ async function dispatchExecutor(automation, executionKey) {
         automation_id: automation.id,
         execution_key: executionKey,
       },
+    }),
   });
   if (!response.ok) throw new Error(`Executor dispatch failed: HTTP ${response.status}`);
 }
@@ -101,34 +102,21 @@ async function dispatchWithRetry(automation, executionKey) {
   throw lastError;
 }
 
-async function updateRuntimeJob(executionKey, updater, message) {
-  const latest = await getStateFile('runtime.json');
-  const runtime = latest.value && typeof latest.value === 'object'
-    ? latest.value
+function normalizeRuntime(value) {
+  const runtime = value && typeof value === 'object'
+    ? value
     : { version: 1, jobs: {}, schedules: {} };
   runtime.version = 1;
   runtime.jobs ||= {};
   runtime.schedules ||= {};
-  const current = runtime.jobs[executionKey];
-  runtime.jobs[executionKey] = updater(current);
-  const saved = await putStateFile('runtime.json', runtime, latest.sha, message);
-  return { runtime, saved };
+  return runtime;
 }
 
 async function main() {
   const now = new Date();
 
   const automationsFile = await getStateFile('automations.json');
-  const runtimeFile = await getStateFile('runtime.json');
-
   const automations = Array.isArray(automationsFile.value) ? automationsFile.value : [];
-  const runtime = runtimeFile.value && typeof runtimeFile.value === 'object'
-    ? runtimeFile.value
-    : { version: 1, jobs: {}, schedules: {} };
-  runtime.version = 1;
-  runtime.jobs ||= {};
-  runtime.schedules ||= {};
-
   const candidates = automations.filter((automation) => {
     if (!automation || automation.enabled !== true) return false;
     if (automationIdFilter && automation.id !== automationIdFilter) return false;
@@ -136,6 +124,8 @@ async function main() {
   });
 
   for (const automation of candidates) {
+    const runtimeFile = await getStateFile('runtime.json');
+    const runtime = normalizeRuntime(runtimeFile.value);
     const configuredNextRunAt = runtime.schedules[automation.id]?.nextRunAt ?? automation.nextRunAt;
     if (!configuredNextRunAt) continue;
 
@@ -157,61 +147,60 @@ async function main() {
       dispatcherRunId: lockbox.config('GITHUB_RUN_ID'),
     });
 
-    const claimRuntime = {
-      ...runtime,
-      jobs: { ...runtime.jobs, [executionKey]: claim },
-    };
+    runtime.jobs[executionKey] = claim;
     const claimWrite = await putStateFile(
       'runtime.json',
-      claimRuntime,
+      runtime,
       runtimeFile.sha,
       `automation: claim ${executionKey}`,
     );
 
     if (claimWrite?.conflict) {
-      console.log(`Skipped ${executionKey}: another writer claimed or changed runtime state.`);
+      console.log(`Skipped ${executionKey}: runtime changed before claim.`);
       continue;
     }
 
     try {
       const attempts = await dispatchWithRetry(automation, executionKey);
-      await updateRuntimeJob(
-        executionKey,
-        (current) => ({
-          ...current,
-          status: 'dispatched',
-          attempts,
-          dispatchedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }),
-        `automation: dispatched ${executionKey}`,
-      );
-
       const latest = await getStateFile('runtime.json');
-      const latestRuntime = latest.value && typeof latest.value === 'object'
-        ? latest.value
-        : { version: 1, jobs: {}, schedules: {} };
-      latestRuntime.version = 1;
-      latestRuntime.jobs ||= {};
-      latestRuntime.schedules ||= {};
+      const latestRuntime = normalizeRuntime(latest.value);
+      latestRuntime.jobs[executionKey] = {
+        ...latestRuntime.jobs[executionKey],
+        status: 'dispatched',
+        attempts,
+        dispatchedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
       latestRuntime.schedules[automation.id] = {
         nextRunAt: advanceNextRun(automation, scheduled.toISOString()),
       };
-      await putStateFile('runtime.json', latestRuntime, latest.sha, `automation: advance schedule ${automation.id}`);
+      const saved = await putStateFile(
+        'runtime.json',
+        latestRuntime,
+        latest.sha,
+        `automation: dispatched ${executionKey}`,
+      );
+      if (saved?.conflict) {
+        console.warn(`Runtime changed while recording dispatch ${executionKey}; executor idempotency protects the work.`);
+      }
       console.log(`Dispatched automation ${automation.id} (${executionKey}) after ${attempts} attempt(s).`);
     } catch (error) {
-      const failure = await updateRuntimeJob(
-        executionKey,
-        (current) => ({
-          ...current,
-          status: 'dispatch_failed',
-          error: String(error?.message || error),
-          failedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }),
+      const latest = await getStateFile('runtime.json');
+      const latestRuntime = normalizeRuntime(latest.value);
+      latestRuntime.jobs[executionKey] = {
+        ...latestRuntime.jobs[executionKey],
+        status: 'dispatch_failed',
+        error: String(error?.message || error),
+        failedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const saved = await putStateFile(
+        'runtime.json',
+        latestRuntime,
+        latest.sha,
         `automation: dispatch failed ${executionKey}`,
       );
-      if (failure.saved?.conflict) console.error(`Could not persist dispatch failure for ${executionKey}; runtime changed concurrently.`);
+      if (saved?.conflict) console.error(`Could not persist dispatch failure for ${executionKey}; runtime changed concurrently.`);
       console.error(`Failed to dispatch automation ${automation.id}:`, error);
     }
   }
