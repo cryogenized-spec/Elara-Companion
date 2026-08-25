@@ -13,9 +13,11 @@ jobs:
         env:
           BRANCH: pass41-memory-tool-boundary
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           python - <<'PY'
           from pathlib import Path
-          
+
           p = Path('src/features/chat/useChatStreamController.ts')
           s = p.read_text()
           s = s.replace(
@@ -32,7 +34,7 @@ jobs:
               raise SystemExit('memory extraction block not found')
           s = s.replace(old, new)
           p.write_text(s)
-          
+
           p = Path('src/lib/geminiDirectClient.ts')
           s = p.read_text()
           s = s.replace(
@@ -45,13 +47,12 @@ jobs:
               1,
           )
           p.write_text(s)
-          
+
           p = Path('src/lib/chatRuntime.ts')
           s = p.read_text()
           s = s.replace("import { publishApplicationEvent } from '../events/applicationEventBus';\n", "")
           s = s.replace("import { agentToolDeclarations, executeAgentTool, AgentToolExecution, getAgentToolDeclarations } from './agentToolRegistry';", "import { agentToolDeclarations, getAgentToolDeclarations } from './agentToolRegistry';")
           s = s.replace("import { recordLiveToolActivity } from './thinkingLiveRuntime';\n", "")
-          s = s.replace("import type { ToolExposurePolicy } from '../security/toolExposurePolicy';\n", "import type { ToolExposurePolicy } from '../security/toolExposurePolicy';\n")
           start = s.find("export async function executeAgentToolCall(")
           end = s.find("export function mergeTouchedArtifactIds(", start)
           if start == -1 or end == -1:
@@ -59,11 +60,9 @@ jobs:
           merge_end = s.find("\n}\n", end)
           if merge_end == -1:
               raise SystemExit('tool merge block not found')
-          # Keep mergeTouchedArtifactIds in the new service; remove both functions from chatRuntime.
-          merge_end += 3
-          s = s[:start] + s[merge_end:]
+          s = s[:start] + s[merge_end + 3:]
           p.write_text(s)
-          
+
           p = Path('server/routes/chat.ts')
           s = p.read_text()
           s = s.replace("  executeAgentToolCall,\n", "")
@@ -72,7 +71,7 @@ jobs:
               raise SystemExit('server chat import marker not found')
           s = s.replace(marker, marker + "import { executeAgentToolCall } from \"../../src/services/agentToolExecutionService\";\n", 1)
           p.write_text(s)
-          
+
           p = Path('scripts/automation-executor.mjs')
           s = p.read_text()
           s = s.replace("    executeAgentToolCall,\n", "")
@@ -82,12 +81,11 @@ jobs:
           s = s.replace(marker, marker + "  const { executeAgentToolCall } = await import('../src/services/agentToolExecutionService.ts');\n", 1)
           p.write_text(s)
           PY
-          
+
           git add src/features/chat/useChatStreamController.ts src/lib/geminiDirectClient.ts src/lib/chatRuntime.ts server/routes/chat.ts scripts/automation-executor.mjs
           git commit -m "refactor(memory-tools): extract Chat memory and tool boundaries"
           git push origin "$BRANCH"
-          
-          # The workflow is intentionally self-removing once its patch has landed.
+
           git rm .github/workflows/pass41-apply.yml
           git commit -m "chore: remove one-shot Pass 41 refactor workflow"
           git push origin "$BRANCH"
