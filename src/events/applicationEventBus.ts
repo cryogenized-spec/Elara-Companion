@@ -1,14 +1,7 @@
-import type {
-  ApplicationEvent,
-  ApplicationEventOf,
-  ApplicationEventType,
-} from './applicationEvents';
+import type { ApplicationEvent, ApplicationEventOf, ApplicationEventType } from './applicationEvents';
 
 type Handler<TEvent extends ApplicationEvent> = (event: TEvent) => void;
-
-type HandlerMap = {
-  [TType in ApplicationEventType]?: Set<Handler<ApplicationEventOf<TType>>>;
-};
+type HandlerMap = Partial<Record<ApplicationEventType, Set<Handler<ApplicationEvent>>>>;
 
 const handlers: HandlerMap = {};
 
@@ -16,7 +9,6 @@ export function publishApplicationEvent<TEvent extends ApplicationEvent>(event: 
   const listeners = handlers[event.type] as Set<Handler<TEvent>> | undefined;
   if (!listeners) return;
 
-  // Snapshot the listeners so handlers may safely subscribe/unsubscribe while dispatching.
   for (const listener of Array.from(listeners)) {
     try {
       listener(event);
