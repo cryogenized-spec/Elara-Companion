@@ -9,7 +9,7 @@ import { runDirectMemoryExtraction, runDirectTitleGeneration } from '../../lib/g
 import { applyMemoryActions } from '../../lib/memoryProcessor';
 import { createStreamUiScheduler } from '../../lib/streamUiScheduler';
 import { saveAgentArtifact, getWorkspace, saveWorkspace } from '../../lib/workspaceStorage';
-import { geminiRuntimeContract, backgroundRuntimeContract, googleContract } from '../../contracts/implementations';
+import { geminiRuntimeContract, backgroundRuntimeContract } from '../../contracts/implementations';
 import { executeChatRuntime } from '../../services/chatRuntimeService';
 import { setDbMemoryState } from '../../lib/db';
 
