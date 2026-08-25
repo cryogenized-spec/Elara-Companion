@@ -1,6 +1,5 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import type { ElaraSettings } from '../../types';
-import { setDbSettings } from '../../lib/db';
 
 export type SettingsControllerArgs = {
   settings: ElaraSettings;
@@ -18,7 +17,6 @@ export function useSettingsController({ settings, setSettings }: SettingsControl
   const handleSaveSettings = (newSettings: ElaraSettings) => {
     setSettings(newSettings);
     setTheme(newSettings.theme);
-    setDbSettings(newSettings);
   };
 
   const handleToggleTheme = () => {
@@ -26,7 +24,6 @@ export function useSettingsController({ settings, setSettings }: SettingsControl
     setTheme(nextTheme);
     const updatedSettings: ElaraSettings = { ...settings, theme: nextTheme };
     setSettings(updatedSettings);
-    setDbSettings(updatedSettings);
   };
 
   return { theme, handleSaveSettings, handleToggleTheme };
