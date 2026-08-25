@@ -25,6 +25,10 @@ Commands are requests to perform state-changing work. Events are facts about wor
 
 The event bus is intentionally in-process and framework-independent. It is not a replacement for durable background messaging, a distributed queue, or React state management.
 
+## Delivery semantics
+
+Events currently provide **at-least-once observation semantics within the running page**, not exactly-once delivery. For example, a background status poll can observe an already-completed job more than once and therefore publish the completion fact more than once. Consumers must therefore be idempotent and must not treat an event as proof that they are the sole observer or owner of a state transition.
+
 ## Deliberate deferrals
 
 `google.authorization.changed` is defined but the legacy OAuth provider remains the producer until the Google provider consolidation is completed. This avoids introducing a second authorization path during Pass 33.
@@ -38,6 +42,7 @@ The event bus is intentionally in-process and framework-independent. It is not a
 - Mutations that require an owner should enter through an explicit command/handler boundary rather than being broadcast as events.
 - Event subscribers must remain observational; they must not become hidden owners of domain state.
 - Durable work completion remains owned by the background runtime; the `background.job.completed` event only announces the completed fact.
+- Event consumers must be safe under duplicate delivery.
 
 ## Future handoff
 
