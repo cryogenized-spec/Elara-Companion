@@ -1,4 +1,5 @@
 import type { MemoryAction, MemoryScratchpadState } from '../types';
+import { publishApplicationEvent } from '../events/applicationEventBus';
 import { getDbMemoryState, registerMemoryStateListener, setDbMemoryState } from '../lib/db';
 import { applyMemoryActions } from '../lib/memoryProcessor';
 
@@ -12,12 +13,20 @@ registerMemoryStateListener((state) => {
 export async function loadMemoryState(): Promise<MemoryScratchpadState> {
   const state = await getDbMemoryState();
   currentMemoryState = state;
+  publishApplicationEvent({
+    type: 'memory.changed',
+    payload: { state, reason: 'load' },
+  });
   return state;
 }
 
-export async function saveMemoryState(state: MemoryScratchpadState): Promise<void> {
+export async function saveMemoryState(state: MemoryScratchpadState, conversationId?: string): Promise<void> {
   currentMemoryState = state;
   await setDbMemoryState(state);
+  publishApplicationEvent({
+    type: 'memory.changed',
+    payload: { conversationId, state, reason: 'save' },
+  });
 }
 
 /** Returns the most recently loaded authoritative memory state for synchronous payload construction. */
