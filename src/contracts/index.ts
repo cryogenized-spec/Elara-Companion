@@ -6,16 +6,6 @@ import type {
   Workspace,
   WorkspaceArtifact,
 } from '../types';
-import type {
-  BackgroundChatJobRequest,
-  BackgroundJobStatus,
-  PersistedBackgroundJob,
-} from '../lib/backgroundChatClient';
-import type {
-  GeminiStreamChunk,
-  GeminiStreamRequest,
-} from '../runtime/geminiRuntimeService';
-import type { GoogleCapability } from '../services/googleWorkspaceService';
 
 /** Stable application contract for conversation ownership. */
 export interface ConversationContract {
@@ -36,8 +26,8 @@ export interface MemoryContract {
 
 /** Stable application contract for Workspace ownership. */
 export interface WorkspaceContract {
-  get(): Workspace;
-  save(workspace: Workspace): void;
+  getWorkspace(): Workspace;
+  saveWorkspace(workspace: Workspace): void;
   getArtifactById(artifactId: string): WorkspaceArtifact | null;
   setActiveArtifact(artifactId: string | null): Workspace;
   createArtifact(name: string, content: string, type?: string): WorkspaceArtifact;
@@ -45,6 +35,15 @@ export interface WorkspaceContract {
   deleteArtifact(artifactId: string): boolean;
   saveAgentArtifact(name: string, content: string, type?: string, artifactId?: string): WorkspaceArtifact;
 }
+
+/** Canonical Google capabilities. This type belongs to the application contract, not the OAuth implementation. */
+export type GoogleCapability =
+  | 'gmail.read' | 'gmail.compose' | 'gmail.send' | 'gmail.modify'
+  | 'calendar.read' | 'calendar.write' | 'tasks'
+  | 'docs' | 'drive.read' | 'drive.file'
+  | 'sheets.read' | 'sheets.write'
+  | 'keep.read' | 'keep.write'
+  | 'contacts.read' | 'chat.read' | 'chat.send' | 'chat.manage';
 
 /** Stable external-state contract for Google identity/capabilities. */
 export interface GoogleContract {
@@ -55,6 +54,52 @@ export interface GoogleContract {
   isCapabilityGranted(capability: GoogleCapability): boolean;
   requestCapabilityAuthorization(capability: GoogleCapability): Promise<{ success: boolean; message: string }>;
   revoke(): Promise<{ success: boolean; message: string }>;
+}
+
+export interface BackgroundHistoryMessage {
+  role: 'user' | 'assistant';
+  content?: string;
+  image?: string;
+}
+
+export interface BackgroundChatJobRequest {
+  message: string;
+  image?: string;
+  history?: BackgroundHistoryMessage[];
+  systemPrompt: string;
+  model?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+  topP?: number;
+  topK?: number;
+  workspace?: Workspace;
+}
+
+export interface BackgroundJobStatus {
+  id: string;
+  status: string;
+  output?: {
+    status?: string;
+    completedAt?: string;
+    result?: {
+      text?: string;
+      model?: string;
+      finishReason?: string | null;
+      responseId?: string | null;
+      workspace?: Workspace;
+      createdArtifactIds?: string[];
+      modifiedArtifactIds?: string[];
+      toolRounds?: number;
+    };
+  };
+  error?: unknown;
+}
+
+export interface PersistedBackgroundJob {
+  conversationId: string;
+  assistantMessageId: string;
+  jobId: string;
+  createdAt: number;
 }
 
 /** Stable application contract for durable background execution. */
@@ -69,9 +114,43 @@ export interface BackgroundRuntimeContract {
   waitForJob(jobId: string): Promise<BackgroundJobStatus>;
 }
 
+export interface GeminiStreamChunk {
+  text?: string;
+  thoughtText?: string;
+  finishReason?: string;
+  safetyRatings?: unknown;
+  toolCall?: unknown;
+  workspace?: Workspace;
+  artifactIds?: string[];
+}
+
+export interface GeminiHistoryMessage {
+  role: 'user' | 'model' | 'assistant';
+  content: string;
+  image?: string;
+}
+
+export interface GeminiRuntimeRequest {
+  apiKey: string;
+  model: string;
+  systemPrompt: string;
+  history: GeminiHistoryMessage[];
+  message: string;
+  image?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+  topP?: number;
+  topK?: number;
+  thinkingBudget?: number;
+  workspace?: Workspace;
+  googleToken?: string;
+  onChunk: (chunk: GeminiStreamChunk) => void;
+  signal?: AbortSignal;
+}
+
 /** Stable model/runtime contract for streaming generation. */
 export interface GeminiRuntimeContract {
-  stream(request: GeminiStreamRequest): Promise<void>;
+  stream(request: GeminiRuntimeRequest): Promise<void>;
   normalizeWorkspace(workspace?: Workspace): Workspace | undefined;
 }
 
