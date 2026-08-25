@@ -1,4 +1,5 @@
 import type { Workspace } from '../types';
+import { publishApplicationEvent } from '../events/applicationEventBus';
 import { getWorkspace, saveWorkspace } from './workspaceStorage';
 
 export interface BackgroundRuntimeConfig {
@@ -166,14 +167,23 @@ function reconcileBackgroundResult(status: BackgroundJobStatus) {
   for (const artifactId of result.createdArtifactIds || []) {
     const artifact = result.workspace.artifacts.find((item) => item.id === artifactId);
     if (artifact) {
-      window.dispatchEvent(new CustomEvent('elara:artifact-created', { detail: { artifact, action: 'created' } }));
+      publishApplicationEvent({
+        type: 'artifact.changed',
+        payload: { artifact, action: 'created' },
+      });
     }
   }
 }
 
 export async function getBackgroundChatJob(id: string): Promise<BackgroundJobStatus> {
   const status = await runtimeFetch(`/jobs/${encodeURIComponent(id)}`, { method: 'GET' }) as BackgroundJobStatus;
-  if (['complete', 'completed'].includes(status.status)) reconcileBackgroundResult(status);
+  if (['complete', 'completed'].includes(status.status)) {
+    reconcileBackgroundResult(status);
+    publishApplicationEvent({
+      type: 'background.job.completed',
+      payload: { jobId: id, status: status.status },
+    });
+  }
   return status;
 }
 
