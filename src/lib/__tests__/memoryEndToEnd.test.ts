@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import type { MemoryAction, MemoryItem, MemoryScratchpadState } from '../../types';
 import { applyMemoryActions } from '../memoryProcessor';
-import { buildSystemPayload, MEMORY_CONTEXT_MIRROR_KEY, clearNextMemoryRetrievalQuery, setNextMemoryRetrievalQuery } from '../contextManager';
+import { buildSystemPayload, clearNextMemoryRetrievalQuery, setNextMemoryRetrievalQuery } from '../contextManager';
 import { retrieveRelevantMemories } from '../memoryRetrieval';
 
 const originalLocalStorage = (globalThis as any).localStorage;
@@ -51,7 +51,7 @@ afterEach(() => {
 });
 
 describe('memory lifecycle end-to-end', () => {
-  it('flows observation -> reinforcement -> promotion -> retrieval -> prompt injection', () => {
+  it('flows observation -> reinforcement -> promotion -> retrieval -> prompt injection without creating a legacy mirror', () => {
     installBrowserStubs();
     let state = emptyState();
     const actions = [0, 1, 2, 3].map(() => observationAction('User prefers coffee in the morning.'));
@@ -62,10 +62,7 @@ describe('memory lifecycle end-to-end', () => {
     assert.ok(promoted, 'repeated evidence should promote a preference to core');
     assert.equal(typeof promoted.evidenceCount, 'number');
     assert.ok(promoted.evidenceCount >= 3, 'promotion should retain evidence coverage');
-
-    const storedMirror = JSON.parse((globalThis as any).localStorage.getItem(MEMORY_CONTEXT_MIRROR_KEY) || '{}');
-    assert.equal(storedMirror.schemaVersion, 3);
-    assert.ok(Array.isArray(storedMirror.memories));
+    assert.equal((globalThis as any).localStorage.getItem('elara_memory_context_mirror_v3'), null);
 
     setNextMemoryRetrievalQuery('What does the user prefer to drink in the morning?');
     const payload = buildSystemPayload({
@@ -77,6 +74,7 @@ describe('memory lifecycle end-to-end', () => {
       uiSettingsSummary: 'test',
       userProfileNotes: '',
       activeScratchpad: 'LEGACY SHOULD NOT BE USED',
+      memoryState: state,
     });
 
     assert.match(payload, /\[RETRIEVED MEMORY CONTEXT\]/);
