@@ -40,6 +40,18 @@ export function createDispatchClaim({ automationId, scheduledFor, executionKey, 
   };
 }
 
+export function markDispatchAccepted(existingJob, attempts, nowIso) {
+  const current = existingJob || {};
+  const advancedByExecutor = ['running', 'success', 'succeeded', 'failed'].includes(current.status);
+  return {
+    ...current,
+    status: advancedByExecutor ? current.status : 'dispatched',
+    attempts,
+    dispatchedAt: current.dispatchedAt || nowIso,
+    updatedAt: nowIso,
+  };
+}
+
 export function shouldStartExecutor(existingJob, nowMs, options = {}) {
   const { leaseMs = DEFAULT_EXECUTION_LEASE_MS } = options;
   if (isTerminalJobStatus(existingJob?.status)) return false;
