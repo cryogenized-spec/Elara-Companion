@@ -36,7 +36,7 @@ export interface ChatRuntimeExecutionRequest {
  */
 export async function executeChatRuntime(
   request: ChatRuntimeExecutionRequest,
-): Promise<void> {
+): Promise<{ durable: boolean }> {
   if (request.background.isEnabled()) {
     const durableJob = await request.background.createChatJob({
       message: request.message,
@@ -78,7 +78,7 @@ export async function executeChatRuntime(
       ],
     });
     request.background.removeJob(durableJob.id);
-    return;
+    return { durable: true };
   }
 
   await request.runtime.stream({
@@ -98,4 +98,5 @@ export async function executeChatRuntime(
     signal: request.signal,
     onChunk: request.onChunk,
   });
+  return { durable: false };
 }
