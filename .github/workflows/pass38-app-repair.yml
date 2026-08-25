@@ -1,0 +1,58 @@
+name: Pass 38 App repair
+
+on:
+  push:
+    branches: [pass38-production-hardening]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor == 'cryogenized-spec'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: pass38-production-hardening
+          fetch-depth: 1
+
+      - name: Remove stale direct persistence calls
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('src/App.tsx')
+          text = p.read_text()
+          replacements = [
+              ("import { \n  setDbPortrait,\n  setDbMemoryState,\n  setDbWorldState,\n} from './lib/db';\n", ""),
+              ("import { \n  setDbPortrait\n} from './lib/db';\n", ""),
+              ("    setDbPortrait(base64Img);\n", ""),
+              ("    setDbPortrait(null);\n", ""),
+              ("          setDbMemoryState(newMem);\n", ""),
+              ("          setDbWorldState(newWS);\n", ""),
+              ("          setDbMemoryState(imp);\n", ""),
+              ("          setDbWorldState(imp);\n", ""),
+          ]
+          original = text
+          for old, new in replacements:
+              text = text.replace(old, new)
+          if text == original:
+              raise SystemExit('No App.tsx changes were made; refusing to create a no-op commit.')
+          p.write_text(text)
+
+      - name: Verify intended source cleanup
+        shell: bash
+        run: |
+          ! grep -n "setDbMemoryState\|setDbWorldState\|setDbPortrait" src/App.tsx
+          grep -n "setMemoryState\|setWorldState\|setCustomPortrait" src/App.tsx
+
+      - name: Commit and remove repair workflow
+        shell: bash
+        run: |
+          git config user.name "cryogenized-spec"
+          git config user.email "cryogenized@gmail.com"
+          git rm .github/workflows/pass38-app-repair.yml
+          git add src/App.tsx
+          git commit -m "fix: remove stale App persistence calls"
+          git push origin pass38-production-hardening
