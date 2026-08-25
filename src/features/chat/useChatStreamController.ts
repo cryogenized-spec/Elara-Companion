@@ -1,5 +1,5 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import type { Conversation, CanvasData, ElaraSettings, Message } from '../../types';
+import type { Conversation, CanvasData, ElaraSettings, MemoryScratchpadState, Message } from '../../types';
 import { DEFAULT_PERSONA_PROTOCOL, DEFAULT_INTIMACY_MODULE, DEFAULT_RUNTIME_RULES } from '../../constants/defaultPrompt';
 import { incrementRateLimit } from '../../lib/storage';
 import { loadUserProfileNotes, loadActiveScratchpad, buildSystemPayload } from '../../lib/contextManager';
@@ -15,7 +15,11 @@ import { applyChatRuntimeWorkspaceUpdate, persistChatCanvases } from '../../serv
 export type ChatStreamControllerArgs = {
   conversations: Conversation[];
   settings: ElaraSettings;
+  /** Transitional compatibility input; Chat no longer reads or owns this state. */
+  memoryState?: MemoryScratchpadState;
   setConversations: Dispatch<SetStateAction<Conversation[]>>;
+  /** Transitional compatibility input; Chat no longer mutates memory state. */
+  setMemoryState?: Dispatch<SetStateAction<MemoryScratchpadState>>;
   setIsStreaming: Dispatch<SetStateAction<boolean>>;
   abortControllerRef: MutableRefObject<AbortController | null>;
   userHasScrolledUpRef: MutableRefObject<boolean>;
