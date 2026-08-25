@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { AlertTriangle, Calendar, CheckCircle2, Cloud, FileText, Inbox, Loader2, LogOut, MessageSquare, ShieldCheck, Users } from 'lucide-react';
-import { getGrantedGoogleScopes, isGoogleIdentityAuthorized, requestGoogleBaseAuthorization, requestGoogleCapabilityAuthorization, revokeGoogleBaseAuthorization } from '../lib/googleAuthorization';
-import { getGoogleCapabilityScopes, isGoogleCapabilityGranted, type GoogleCapability } from '../lib/googleCapabilityPolicy';
+import { googleCapabilities, googleIdentity, type GoogleCapability } from '../services/googleWorkspaceService';
 
 type ServiceState = 'idle' | 'loading' | 'success' | 'error';
 type ServiceMeta = { key: string; label: string; capability: GoogleCapability; extraCapabilities?: GoogleCapability[]; icon: React.ComponentType<{ className?: string }> };
@@ -19,16 +18,16 @@ const SERVICES: ServiceMeta[] = [
 const initialState = Object.fromEntries(SERVICES.map(({ key }) => [key, 'idle'])) as Record<string, ServiceState>;
 
 function scopesForService(service: ServiceMeta): string[] {
-  return [...new Set([service.capability, ...(service.extraCapabilities || [])].flatMap(getGoogleCapabilityScopes))];
+  return [...new Set([service.capability, ...(service.extraCapabilities || [])].flatMap(googleCapabilities.getScopes))];
 }
 
 function grantedForService(grantedScopes: string, service: ServiceMeta): boolean {
-  return [service.capability, ...(service.extraCapabilities || [])].every((capability) => isGoogleCapabilityGranted(grantedScopes, capability));
+  return [service.capability, ...(service.extraCapabilities || [])].every((capability) => googleCapabilities.isGranted(grantedScopes, capability));
 }
 
 export const GoogleCapabilitySettingsPanel: React.FC = () => {
-  const [connected, setConnected] = useState(isGoogleIdentityAuthorized());
-  const [grantedScopes, setGrantedScopes] = useState(getGrantedGoogleScopes());
+  const [connected, setConnected] = useState(googleIdentity.isAuthorized());
+  const [grantedScopes, setGrantedScopes] = useState(googleCapabilities.getGrantedScopes());
   const [states, setStates] = useState<Record<string, ServiceState>>(initialState);
   const [message, setMessage] = useState<string | null>(null);
   const [showDisconnectWarning, setShowDisconnectWarning] = useState(false);
@@ -39,9 +38,9 @@ export const GoogleCapabilitySettingsPanel: React.FC = () => {
   const connect = async () => {
     setMessage(null);
     try {
-      await requestGoogleBaseAuthorization(true);
+      await googleIdentity.requestBaseAuthorization(true);
       setConnected(true);
-      setGrantedScopes(getGrantedGoogleScopes());
+      setGrantedScopes(googleCapabilities.getGrantedScopes());
       setMessage('Google identity authorization completed. Workspace access remains separate.');
     } catch (error: any) {
       setConnected(false);
@@ -53,8 +52,8 @@ export const GoogleCapabilitySettingsPanel: React.FC = () => {
     setStates((current) => ({ ...current, [service.key]: 'loading' }));
     setMessage(null);
     try {
-      await requestGoogleCapabilityAuthorization(scopesForService(service), true);
-      setGrantedScopes(getGrantedGoogleScopes());
+      await googleIdentity.requestCapabilityAuthorization(scopesForService(service), true);
+      setGrantedScopes(googleCapabilities.getGrantedScopes());
       setStates((current) => ({ ...current, [service.key]: 'success' }));
       setMessage(`${service.label} authorization completed.`);
     } catch (error: any) {
@@ -67,7 +66,7 @@ export const GoogleCapabilitySettingsPanel: React.FC = () => {
     setDisconnecting(true);
     setMessage(null);
     try {
-      const result = await revokeGoogleBaseAuthorization();
+      const result = await googleIdentity.revoke();
       setConnected(false);
       setGrantedScopes('');
       setStates(initialState);
