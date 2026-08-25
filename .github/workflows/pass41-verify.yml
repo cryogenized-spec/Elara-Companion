@@ -1,0 +1,25 @@
+name: Pass 41 verification
+on:
+  push:
+    branches: [pass41-memory-tool-boundary]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: true
+      - run: npm install --no-audit --no-fund
+      - run: npm run verify:production
+      - name: Remove temporary workflow
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/pass41-verify.yml
+          git commit -m "chore: remove temporary Pass 41 verification workflow"
+          git push origin pass41-memory-tool-boundary
