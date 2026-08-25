@@ -1,0 +1,41 @@
+name: Pass 40 google runtime wire
+
+on:
+  push:
+    branches:
+      - pass40-chat-runtime-extraction
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wire canonical Google contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/features/chat/useChatStreamController.ts')
+          s = p.read_text()
+          s = s.replace(
+              "import { geminiRuntimeContract, backgroundRuntimeContract } from '../../contracts/implementations';",
+              "import { geminiRuntimeContract, backgroundRuntimeContract, googleContract } from '../../contracts/implementations';"
+          )
+          s = s.replace(
+              "        workspace: getWorkspace(),\n        signal: controller.signal,",
+              "        workspace: getWorkspace(),\n        signal: controller.signal,\n        google: googleContract,"
+          )
+          if 'google: googleContract' not in s:
+              raise SystemExit('google contract insertion failed')
+          p.write_text(s)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/features/chat/useChatStreamController.ts
+          git commit -m "refactor(chat): use canonical Google contract in runtime" || true
+          git push
+          git rm .github/workflows/pass40-wire-google.yml
+          git commit -m "chore: remove one-shot Google wiring workflow"
+          git push
