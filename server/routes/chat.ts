@@ -96,6 +96,14 @@ export function setupChatRoutes(app: express.Express) {
         systemPrompt: creativeFramingPrefix + (systemPrompt || ''),
         workspace,
         googleToken,
+        toolExposure: {
+          source: 'model',
+          availableCapabilities: [
+            'workspace.read',
+            'workspace.write',
+            ...(googleToken ? ['google.read', 'google.write', 'google.auth'] as const : []),
+          ],
+        },
         temperature,
         maxOutputTokens,
         topP,
@@ -139,7 +147,7 @@ export function setupChatRoutes(app: express.Express) {
         const toolResponseParts: any[] = [];
 
         for (const fc of functionCalls) {
-          const op = await executeAgentToolCall(currentWorkspace, fc.name, fc.args, googleToken);
+          const op = await executeAgentToolCall(currentWorkspace, fc.name, fc.args, googleToken, 'model');
           currentWorkspace = op.updatedWorkspace;
           touchedArtifactIds = mergeTouchedArtifactIds(touchedArtifactIds, op);
           if (fc.name === 'generate_canvas') {
