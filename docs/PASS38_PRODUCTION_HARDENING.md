@@ -48,6 +48,10 @@ The persisted `customPortrait` application state is not automatically injected i
 
 The production-hardening review explicitly rejected an incomplete Chat-controller extraction that left the active stream controller as an unreachable stub. The verified complete controller implementation was restored before hardening changes were finalized. No production candidate may proceed with an incomplete orchestration replacement merely because the surrounding contracts compile.
 
+### Application-state persistence integrity
+
+The final App shell no longer performs direct persistence writes for memory, world state, or portrait changes. Those mutations now flow only through `useApplicationStateController`, whose persistence effects are the authoritative application-state boundary.
+
 ## Known pre-production conditions
 
 The refactor repository is not yet the production repository. `cryogenized-spec/Elara-companion-app-v2` remains the production/reference baseline. This repository becomes a production candidate only after stabilization and final comparison against that baseline.
