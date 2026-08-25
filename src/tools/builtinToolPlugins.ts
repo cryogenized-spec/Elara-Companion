@@ -4,6 +4,7 @@ import { executeGoogleOperationalTool, googleOperationalToolDeclarations, GOOGLE
 import { executeGoogleAuthLifecycleTool, GOOGLE_AUTH_LIFECYCLE_TOOL_DECLARATION } from '../lib/googleAuthLifecycleTool';
 import { authorizeGoogleAction, classifyGoogleAction } from '../lib/googleAuthorizationPolicy';
 import { markGoogleAuthInvalid } from '../lib/googleAuthLifecycle';
+import { ToolPluginRegistry } from './toolPluginRegistry';
 import type { ToolPlugin, AgentToolDeclaration, ToolExecutionContext } from './toolPluginTypes';
 
 const GOOGLE_BACKED_WORKSPACE_WRITE_TOOLS = new Set([
@@ -101,7 +102,6 @@ export const builtinToolPlugins: readonly ToolPlugin[] = [
 ];
 
 export function createBuiltinToolPluginRegistry() {
-  const { ToolPluginRegistry } = require('./toolPluginRegistry') as typeof import('./toolPluginRegistry');
   const registry = new ToolPluginRegistry();
   registry.registerAll(builtinToolPlugins);
   return registry;
