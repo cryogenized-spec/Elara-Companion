@@ -1,6 +1,6 @@
 # Elara Canonical Architecture
 
-Status: locked at Pass 16 of the Architectural Rehabilitation Programme.
+Status: locked at Pass 17 of the Architectural Rehabilitation Programme.
 
 This document is the current architectural source of truth for the successor repository. It records the boundaries that have actually been established, rather than describing a future scaffold. Future work must extend these canonical paths instead of introducing parallel implementations.
 
@@ -67,6 +67,8 @@ A service may orchestrate domain rules plus infrastructure/runtime dependencies.
 
 Services should be the preferred seam for cross-feature reuse. A feature should depend on a stable service capability instead of importing another feature's internals merely to reach shared infrastructure.
 
+The canonical Google application facade is `src/services/googleWorkspaceService.ts`. Google UI surfaces use this service boundary for identity and capability authorization. The underlying `src/lib/googleAuthorization.ts`, `src/lib/googleCapabilityPolicy.ts`, and `src/lib/googleApi.ts` remain infrastructure/provider implementations during incremental migration.
+
 ### Infrastructure
 
 Infrastructure owns platform and external details: IndexedDB and other persistence adapters, browser APIs, local storage projections, network clients, OAuth transport, Google API transport, HTTP adapters, and environment-specific mechanisms.
@@ -77,7 +79,7 @@ The existing `src/lib/db.ts` persistence layer is therefore infrastructure even 
 
 ### Runtime
 
-Runtime owns execution lifecycle rather than product policy: Gemini/model invocation, streaming transport, retries, cancellation, model health/fallback state, tool loops, durable background execution, recovery and related resilience concerns.
+Runtime owns execution lifecycle rather than product policy: Gemini/model invocation, streaming, retries, cancellation, model health/fallback state, tool loops, durable background execution, recovery and related resilience concerns.
 
 The runtime may depend on infrastructure adapters and domain/service contracts. UI and feature code should request execution through stable runtime/service interfaces rather than parse provider streams or manage retry machinery themselves.
 
@@ -87,7 +89,9 @@ The runtime may depend on infrastructure adapters and domain/service contracts. 
 
 Pass 16 deliberately does not move files simply to satisfy the diagram. The current codebase contains transitional coupling, including feature controllers that still import `src/lib/*`, and `App.tsx` still performs a small amount of direct persistence/browser coordination. Those are known extraction targets for later passes.
 
-The architectural rule from this pass is therefore:
+Pass 17 reduces Google coupling by routing the canonical Google settings UI through `src/services/googleWorkspaceService.ts` and removing the superseded, unreferenced `GoogleWorkspaceSettingsPanel` implementation. The underlying provider modules remain transitional infrastructure until later service/infrastructure extraction work.
+
+The architectural rule is therefore:
 
 **Do not deepen the coupling. Future work must reduce it.**
 
@@ -134,7 +138,7 @@ Markdown rendering is unified through the canonical message renderer path.
 
 Structured IndexedDB memory is authoritative; Scratchpad and similar views are derived projections.
 
-Google capability declarations and authenticated operations are centralized through the established Google capability/tool boundaries and API helpers.
+Google capability declarations and authenticated operations are centralized through `src/services/googleWorkspaceService.ts`, which is the application-facing boundary over the underlying Google authorization, capability-policy, and API infrastructure.
 
 ## What is prohibited
 
@@ -153,6 +157,8 @@ Do not introduce feature-to-feature dependencies when a domain or service contra
 Do not resurrect deleted migration workflows, pass trigger files, or one-shot source-rewrite machinery.
 
 Do not copy legacy repository implementations into the successor repository merely because they already exist there.
+
+Do not reintroduce the superseded `GoogleWorkspaceSettingsPanel`; the canonical Google UI is `GoogleCapabilitySettingsPanel` through the Google service boundary.
 
 ## Change rule for future passes
 
