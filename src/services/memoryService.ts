@@ -20,6 +20,13 @@ export async function loadMemoryState(): Promise<MemoryScratchpadState> {
   return state;
 }
 
+/** Read-only application boundary for memory transparency and diagnostics UI. */
+export async function loadMemoryTransparencyState(
+  options: { runMaintenance?: boolean; updateProjections?: boolean } = { runMaintenance: false, updateProjections: false },
+): Promise<MemoryScratchpadState> {
+  return getDbMemoryState(options);
+}
+
 export async function saveMemoryState(state: MemoryScratchpadState, conversationId?: string): Promise<void> {
   currentMemoryState = state;
   await setDbMemoryState(state);
