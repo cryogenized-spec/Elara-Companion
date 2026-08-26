@@ -1,6 +1,8 @@
 name: Pass 56 Workspace Cut
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [refactor/pass56-workspace-editor-service]
 
@@ -9,6 +11,7 @@ permissions:
 
 jobs:
   cut:
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.ref == 'refactor/pass56-workspace-editor-service' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
@@ -70,9 +73,9 @@ jobs:
         run: |
           git fetch origin main --depth=1
           git checkout origin/main -- .github/workflows/ci.yml
-          rm -f .github/workflows/pass56-cut.yml
+          rm -f .github/workflows/pass56-cut.yml docs/PASS56_CUT_TRIGGER.md
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/components/WorkspaceView.tsx src/services/workspaceEditorService.ts .github/workflows/pass56-cut.yml
+          git add src/components/WorkspaceView.tsx src/services/workspaceEditorService.ts .github/workflows/pass56-cut.yml docs/PASS56_CUT_TRIGGER.md
           git commit -m 'refactor(workspace): move editor persistence behind service [pass56-bot]'
           git push origin HEAD:refs/heads/refactor/pass56-workspace-editor-service
