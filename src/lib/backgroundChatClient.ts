@@ -1,4 +1,5 @@
 import type { Workspace } from '../types';
+import { reconcileBackgroundWorkspaceResult } from '../services/workspaceBackgroundService';
 import { getWorkspace } from './workspaceStorage';
 
 export interface BackgroundRuntimeConfig {
@@ -160,7 +161,11 @@ export async function createBackgroundChatJob(request: BackgroundChatJobRequest)
 }
 
 export async function getBackgroundChatJob(id: string): Promise<BackgroundJobStatus> {
-  return await runtimeFetch(`/jobs/${encodeURIComponent(id)}`, { method: 'GET' }) as BackgroundJobStatus;
+  const status = await runtimeFetch(`/jobs/${encodeURIComponent(id)}`, { method: 'GET' }) as BackgroundJobStatus;
+  if (['complete', 'completed'].includes(status.status)) {
+    reconcileBackgroundWorkspaceResult(status);
+  }
+  return status;
 }
 
 export async function waitForBackgroundChatJob(
