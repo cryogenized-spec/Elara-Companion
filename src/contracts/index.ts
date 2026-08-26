@@ -56,6 +56,28 @@ export interface GoogleContract {
   revoke(): Promise<{ success: boolean; message: string }>;
 }
 
+/** Stable application contract for Google Calendar operations. */
+export interface GoogleCalendarEvent {
+  id: string;
+  summary: string;
+  description?: string;
+  start: { dateTime?: string; date?: string };
+  end: { dateTime?: string; date?: string };
+  location?: string;
+  htmlLink?: string;
+}
+
+export interface GoogleCalendarContract {
+  getUpcoming(maxResults?: number): Promise<{ items: GoogleCalendarEvent[] }>;
+  create(
+    summary: string,
+    startTime: string,
+    endTime: string,
+    description?: string,
+    location?: string,
+  ): Promise<GoogleCalendarEvent>;
+}
+
 export interface BackgroundHistoryMessage {
   role: 'user' | 'assistant';
   content?: string;
