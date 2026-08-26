@@ -12,10 +12,27 @@ import {
   setBackgroundRuntimeEnabled,
   waitForBackgroundChatJob,
 } from '../lib/backgroundChatClient';
+import { workspaceService } from './workspaceService';
+import { reconcileBackgroundWorkspaceResult } from './workspaceBackgroundService';
 
 export type { BackgroundChatJobRequest, BackgroundJobStatus, PersistedBackgroundJob };
 
-export const backgroundRuntimeService = {
+async function createChatJob(request: BackgroundChatJobRequest): Promise<{ id: string }> {
+  return createBackgroundChatJob({
+    ...request,
+    workspace: request.workspace || workspaceService.getWorkspace(),
+  });
+}
+
+async function waitForJob(id: string): Promise<BackgroundJobStatus> {
+  const status = await waitForBackgroundChatJob(id);
+  if (['complete', 'completed'].includes(status.status)) {
+    reconcileBackgroundWorkspaceResult(status);
+  }
+  return status;
+}
+
+export const backgroundRuntimeApplicationService = {
   getConfig: getBackgroundRuntimeConfig,
   isConfigured: isBackgroundRuntimeConfigured,
   isEnabled: isBackgroundRuntimeEnabled,
@@ -24,9 +41,9 @@ export const backgroundRuntimeService = {
   loadPersistedJobs: loadPersistedBackgroundJobs,
   persistJob: persistBackgroundJob,
   removeJob: removePersistedBackgroundJob,
-  createChatJob: createBackgroundChatJob,
+  createChatJob,
   getJob: getBackgroundChatJob,
-  waitForJob: waitForBackgroundChatJob,
+  waitForJob,
 };
 
-export type BackgroundRuntimeService = typeof backgroundRuntimeService;
+export type BackgroundRuntimeApplicationService = typeof backgroundRuntimeApplicationService;

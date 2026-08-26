@@ -7,7 +7,7 @@ import type {
   MemoryContract,
   WorkspaceContract,
 } from './index';
-import { backgroundRuntimeService } from '../services/backgroundRuntimeService';
+import { backgroundRuntimeApplicationService } from '../services/backgroundRuntimeApplicationService';
 import { createCalendarEvent, getUpcomingCalendarEvents } from '../services/googleCalendarService';
 import { googleCapabilities, googleIdentity } from '../services/googleWorkspaceService';
 import { getLoadedMemoryState, loadMemoryState, reduceMemoryActions, saveMemoryState } from '../services/memoryService';
@@ -75,14 +75,14 @@ export const googleCalendarContract: GoogleCalendarContract = {
 };
 
 export const backgroundRuntimeContract: BackgroundRuntimeContract = {
-  isEnabled: backgroundRuntimeService.isEnabled,
-  isConfigured: backgroundRuntimeService.isConfigured,
-  loadPersistedJobs: backgroundRuntimeService.loadPersistedJobs,
-  persistJob: backgroundRuntimeService.persistJob,
-  removeJob: backgroundRuntimeService.removeJob,
-  createChatJob: backgroundRuntimeService.createChatJob,
-  getJob: backgroundRuntimeService.getJob,
-  waitForJob: backgroundRuntimeService.waitForJob,
+  isEnabled: backgroundRuntimeApplicationService.isEnabled,
+  isConfigured: backgroundRuntimeApplicationService.isConfigured,
+  loadPersistedJobs: backgroundRuntimeApplicationService.loadPersistedJobs,
+  persistJob: backgroundRuntimeApplicationService.persistJob,
+  removeJob: backgroundRuntimeApplicationService.removeJob,
+  createChatJob: backgroundRuntimeApplicationService.createChatJob,
+  getJob: backgroundRuntimeApplicationService.getJob,
+  waitForJob: backgroundRuntimeApplicationService.waitForJob,
 };
 
 export const geminiRuntimeContract: GeminiRuntimeContract = {

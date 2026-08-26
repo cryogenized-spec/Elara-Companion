@@ -1,6 +1,6 @@
 import { useEffect, type Dispatch, type SetStateAction } from 'react';
 import type { Conversation } from '../types';
-import { backgroundRuntimeService } from '../services/backgroundRuntimeService';
+import { backgroundRuntimeApplicationService } from '../services/backgroundRuntimeApplicationService';
 import { notifyBackgroundCompletion } from '../lib/backgroundService';
 
 const TERMINAL_SUCCESS_STATUSES = new Set(['complete', 'completed']);
@@ -18,7 +18,7 @@ export function useBackgroundRuntimeController({ isLoaded, setConversations }: B
 
     const reconcileConversationMessage = (
       job: { conversationId: string; assistantMessageId: string },
-      status: Awaited<ReturnType<typeof backgroundRuntimeService.waitForJob>>,
+      status: Awaited<ReturnType<typeof backgroundRuntimeApplicationService.waitForJob>>,
     ) => {
       if (cancelled) return;
       const succeeded = TERMINAL_SUCCESS_STATUSES.has(status.status);
@@ -42,15 +42,15 @@ export function useBackgroundRuntimeController({ isLoaded, setConversations }: B
     };
 
     const resumeJobs = async () => {
-      const jobs = backgroundRuntimeService.loadPersistedJobs();
+      const jobs = backgroundRuntimeApplicationService.loadPersistedJobs();
       for (const job of jobs) {
         try {
-          const status = await backgroundRuntimeService.waitForJob(job.jobId);
+          const status = await backgroundRuntimeApplicationService.waitForJob(job.jobId);
           const terminal = TERMINAL_SUCCESS_STATUSES.has(status.status) || TERMINAL_FAILURE_STATUSES.has(status.status);
           if (!terminal) continue;
 
           reconcileConversationMessage(job, status);
-          backgroundRuntimeService.removeJob(job.jobId);
+          backgroundRuntimeApplicationService.removeJob(job.jobId);
 
           if (!cancelled && TERMINAL_SUCCESS_STATUSES.has(status.status)) {
             const text = status.output?.result?.text || '';
