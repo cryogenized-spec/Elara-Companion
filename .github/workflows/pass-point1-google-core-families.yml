@@ -1,0 +1,91 @@
+name: Point 1 Remaining Google Families
+on:
+  push:
+    branches: [refactor/point1-google-docs-drive]
+permissions:
+  contents: write
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+      - name: Extract Tasks Sheets Contacts Keep
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path('src/lib/googleApi.ts')
+          text = path.read_text()
+          def extract(start_marker, end_marker):
+            start = text.index(start_marker)
+            end = text.index(end_marker)
+            return start, end, text[start:end].strip() + '\n'
+          def replace_fn(block, fn, replacement):
+            pattern = rf'(export async function {re.escape(fn)}\b[\s\S]*?)(?=\nexport |\n// ----------------|\Z)'
+            m = re.search(pattern, block)
+            if not m:
+              raise SystemExit(f'missing function: {fn}')
+            chunk = m.group(1).replace('await requestGoogleAuth()', replacement)
+            return block[:m.start(1)] + chunk + block[m.end(1):]
+          helpers = """import { googleCapabilities, googleIdentity } from './googleWorkspaceService';\nimport type { GoogleCapability } from './googleWorkspaceService';\n\nasync function getGoogleFamilyAccessToken(capability: GoogleCapability): Promise<string> {\n  const token = googleIdentity.getAccessToken();\n  if (token && googleCapabilities.isGranted(googleCapabilities.getGrantedScopes(), capability)) return token;\n  return googleIdentity.requestCapabilityAuthorization(googleCapabilities.getScopes(capability), false);\n}\n\nasync function parseGoogleApiError(res: Response, prefix: string): Promise<string> {\n  const raw = await res.text().catch(() => '');\n  try {\n    const json = JSON.parse(raw);\n    return `${prefix}: ${json?.error?.message || json?.error || `HTTP ${res.status}`}`;\n  } catch {\n    return `${prefix}: ${raw || `HTTP ${res.status}`}`;\n  }\n}\n\nfunction authHeaders(token: string) { return { Authorization: `Bearer ${token}` }; }\nfunction jsonHeaders(token: string) { return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }; }\n\n"""
+          blocks = {}
+          ranges = {}
+          for name, start_marker, end_marker in [
+            ('tasks','// ---------------- Tasks ----------------','// ---------------- Sheets ----------------'),
+            ('sheets','// ---------------- Sheets ----------------','// ---------------- People / Contacts ----------------'),
+            ('contacts','// ---------------- People / Contacts ----------------','// ---------------- Google Keep REAL API ----------------'),
+          ]:
+            s,e,b = extract(start_marker,end_marker)
+            ranges[name]=(s,e)
+            blocks[name]=b
+          s,e,keep = extract('// ---------------- Google Keep REAL API ----------------','// ---------------- Local reference archive compatibility ----------------')
+          ranges['keep']=(s,e); blocks['keep']=keep
+          for fn in ['getTaskLists','getTasks','createTask']:
+            blocks['tasks']=replace_fn(blocks['tasks'],fn,"await getGoogleFamilyAccessToken('tasks')")
+          for fn in ['createGoogleSheet','appendSheetRow']:
+            blocks['sheets']=replace_fn(blocks['sheets'],fn,"await getGoogleFamilyAccessToken('sheets.write')")
+          for fn in ['getSpreadsheetDetails','readSheetValues']:
+            blocks['sheets']=replace_fn(blocks['sheets'],fn,"await getGoogleFamilyAccessToken('sheets.read')")
+          for fn in ['searchContacts','listContacts']:
+            blocks['contacts']=replace_fn(blocks['contacts'],fn,"await getGoogleFamilyAccessToken('contacts.read')")
+          for fn, cap in [('createGoogleKeepNote','keep.write'),('listGoogleKeepNotes','keep.read'),('getGoogleKeepNote','keep.read'),('deleteGoogleKeepNote','keep.write')]:
+            blocks['keep']=replace_fn(blocks['keep'],fn,f"await getGoogleFamilyAccessToken('{cap}')")
+          for name in blocks:
+            blocks[name] = helpers + blocks[name].split('\n',1)[1]
+          # Replace imports/exports in the façade while retaining public symbols.
+          exports = {
+            'tasks': "export { getTaskLists, getTasks, createTask } from '../services/googleTasksService';\nexport type { TaskItem } from '../services/googleTasksService';\n\n",
+            'sheets': "export { createGoogleSheet, getSpreadsheetDetails, readSheetValues, appendSheetRow } from '../services/googleSheetsService';\nexport type { SheetMetadata } from '../services/googleSheetsService';\n\n",
+            'contacts': "export { searchContacts, listContacts } from '../services/googleContactsService';\nexport type { ContactPerson } from '../services/googleContactsService';\n\n",
+            'keep': "export { createGoogleKeepNote, listGoogleKeepNotes, getGoogleKeepNote, deleteGoogleKeepNote } from '../services/googleKeepService';\nexport type { GoogleKeepNote } from '../services/googleKeepService';\n\n",
+          }
+          files = {
+            'tasks':'src/services/googleTasksService.ts',
+            'sheets':'src/services/googleSheetsService.ts',
+            'contacts':'src/services/googleContactsService.ts',
+            'keep':'src/services/googleKeepService.ts',
+          }
+          for name,p in files.items(): Path(p).write_text(blocks[name])
+          additions = ''.join(exports.values())
+          start = min(v[0] for v in ranges.values())
+          end = max(v[1] for v in ranges.values())
+          text = text[:start] + additions + text[end:]
+          path.write_text(text)
+          PY
+          npm install --no-audit --no-fund
+          npm run lint
+          npx tsc --noEmit
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/lib/googleApi.ts src/services/googleTasksService.ts src/services/googleSheetsService.ts src/services/googleContactsService.ts src/services/googleKeepService.ts
+          git commit -m 'refactor(google): extract Tasks Sheets Contacts Keep providers [point1]'
+          git push origin HEAD:$BRANCH
+          rm -f .github/workflows/pass-point1-google-docs-drive.yml .github/workflows/pass-point1-google-core-families.yml
+          git add -u .github/workflows/pass-point1-google-docs-drive.yml .github/workflows/pass-point1-google-core-families.yml
+          git commit -m 'chore(point1): remove temporary Google family runners' || true
+          git push origin HEAD:$BRANCH
