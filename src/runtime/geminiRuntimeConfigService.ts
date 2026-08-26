@@ -31,6 +31,11 @@ export interface RuntimeConfigOptions {
   includeSafetySettings?: boolean;
 }
 
+export function parseRuntimeDataUrl(value: string): { mimeType: string; data: string } | null {
+  const match = value.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+  return match ? { mimeType: match[1], data: match[2] } : null;
+}
+
 export function deriveThinkingLevel(explicitLevel: RuntimeConfigOptions['thinkingLevel'], budget?: number): 'minimal' | 'low' | 'medium' | 'high' {
   if (explicitLevel) return explicitLevel;
   if (typeof budget !== 'number' || budget < 0) return 'medium';
