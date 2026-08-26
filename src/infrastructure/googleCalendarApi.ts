@@ -49,7 +49,7 @@ export async function getUpcomingCalendarEventsWithToken(
     { headers: authHeaders(token) },
   );
   if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to fetch calendar events'));
-  const data = await res.json();
+  const data: any = await res.json();
   return { items: (data.items || []).map(normalizeEvent) };
 }
 
@@ -72,7 +72,7 @@ export async function getCalendarEventsRangeWithToken(
     { headers: authHeaders(token) },
   );
   if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to fetch calendar events'));
-  const data = await res.json();
+  const data: any = await res.json();
   return { startTime: timeMin, endTime: timeMax, items: (data.items || []).map(normalizeEvent) };
 }
 
@@ -98,5 +98,6 @@ export async function createCalendarEventWithToken(
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to create calendar event'));
-  return normalizeEvent(await res.json());
+  const data: any = await res.json();
+  return normalizeEvent(data);
 }
