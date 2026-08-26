@@ -1,0 +1,45 @@
+name: Pass 56 export verifier
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  transform:
+    if: ${{ github.event.pull_request.head.ref == 'refactor/pass56-workspace-editor-service' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Transform WorkspaceView
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/components/WorkspaceView.tsx')
+          text = p.read_text()
+          old_storage = "import { createArtifact, deleteArtifact, getWorkspace, saveWorkspace, setActiveArtifact, updateArtifact } from '../lib/workspaceStorage';"
+          old_revision = "import { compareRevisions, createCheckpoint, restoreRevision } from '../lib/revisionUtils';"
+          if old_storage not in text or old_revision not in text:
+              raise SystemExit('Expected import surface not found')
+          text = text.replace(old_storage, "import { workspaceEditorService } from '../services/workspaceEditorService';")
+          text = text.replace(old_revision, '')
+          p.write_text(text)
+          PY
+
+      - name: Validate import boundary
+        run: |
+          ! grep -n "../lib/workspaceStorage\|../lib/revisionUtils" src/components/WorkspaceView.tsx
+          grep -n "workspaceEditorService" src/components/WorkspaceView.tsx
+
+      - name: Upload transformed file
+        uses: actions/upload-artifact@v4
+        with:
+          name: pass56-workspace-view
+          path: src/components/WorkspaceView.tsx
+          if-no-files-found: error
