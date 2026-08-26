@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Workspace, WorkspaceArtifact, ArtifactRevision } from '../types';
-import { createArtifact, deleteArtifact, getWorkspace, saveWorkspace, setActiveArtifact, updateArtifact } from '../lib/workspaceStorage';
+import { workspaceEditorService } from '../services/workspaceEditorService';
+const { getWorkspace, saveWorkspace, selectArtifact: setActiveArtifact, createArtifact, deleteArtifact, updateArtifact, checkpoint: createCheckpoint, restoreRevision, compareRevisions } = workspaceEditorService;
 import { executeAnyWorkspaceTool } from '../lib/workspaceTools';
-import { compareRevisions, createCheckpoint, restoreRevision } from '../lib/revisionUtils';
+
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { AlertTriangle, ArrowLeft, Check, Clock3, Code2, Columns3, Download, Eye, FileText, FileType2, History, Menu, MoreHorizontal, Plus, RefreshCw, Save, X } from 'lucide-react';
 
