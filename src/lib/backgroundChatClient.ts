@@ -1,6 +1,4 @@
 import type { Workspace } from '../types';
-import { reconcileBackgroundWorkspaceResult } from '../services/workspaceBackgroundService';
-import { getWorkspace } from './workspaceStorage';
 
 export interface BackgroundRuntimeConfig {
   baseUrl: string;
@@ -155,17 +153,12 @@ async function runtimeFetch(path: string, init: RequestInit = {}) {
 }
 
 export async function createBackgroundChatJob(request: BackgroundChatJobRequest): Promise<{ id: string }> {
-  const payload = { ...request, workspace: request.workspace || getWorkspace() };
-  const data = await runtimeFetch('/jobs', { method: 'POST', body: JSON.stringify(payload) });
+  const data = await runtimeFetch('/jobs', { method: 'POST', body: JSON.stringify(request) });
   return { id: data.id };
 }
 
 export async function getBackgroundChatJob(id: string): Promise<BackgroundJobStatus> {
-  const status = await runtimeFetch(`/jobs/${encodeURIComponent(id)}`, { method: 'GET' }) as BackgroundJobStatus;
-  if (['complete', 'completed'].includes(status.status)) {
-    reconcileBackgroundWorkspaceResult(status);
-  }
-  return status;
+  return await runtimeFetch(`/jobs/${encodeURIComponent(id)}`, { method: 'GET' }) as BackgroundJobStatus;
 }
 
 export async function waitForBackgroundChatJob(
