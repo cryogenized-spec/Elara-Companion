@@ -36,7 +36,7 @@ jobs:
           helper = """import { googleCapabilities, googleIdentity } from './googleWorkspaceService';\nimport type { GoogleCapability } from './googleWorkspaceService';\n\nasync function getGoogleGmailAccessToken(capability: GoogleCapability): Promise<string> {\n  const token = googleIdentity.getAccessToken();\n  if (token && googleCapabilities.isGranted(googleCapabilities.getGrantedScopes(), capability)) return token;\n  return googleIdentity.requestCapabilityAuthorization(googleCapabilities.getScopes(capability), false);\n}\n\nasync function parseGoogleApiError(res: Response, prefix: string): Promise<string> {\n  const raw = await res.text().catch(() => '');\n  try {\n    const json = JSON.parse(raw);\n    return `${prefix}: ${json?.error?.message || json?.error || `HTTP ${res.status}`}`;\n  } catch {\n    return `${prefix}: ${raw || `HTTP ${res.status}`}`;\n  }\n}\n\nfunction authHeaders(token: string) { return { Authorization: `Bearer ${token}` }; }\nfunction jsonHeaders(token: string) { return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }; }\n\nfunction encodeBase64Url(value: string): string {\n  const bytes = new TextEncoder().encode(value);\n  let binary = '';\n  bytes.forEach((b) => { binary += String.fromCharCode(b); });\n  return btoa(binary).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');\n}\n\n"""
           service = helper + gmail.replace(start_marker + '\n', '')
           Path('src/services/googleGmailService.ts').write_text(service)
-          export_block = "// Gmail compatibility export. Implementation lives in the canonical Gmail service.\nexport { listGmailMessages, getGmailMessageDetails, createGmailDraft, sendGmailMessage } from '../services/googleGmailService';\nexport type { GmailMessageSummary, GmailMessageFull } from '../services/googleGmailService';\n\n"
+          export_block = "import { listGmailMessages, getGmailMessageDetails, createGmailDraft, sendGmailMessage } from '../services/googleGmailService';\nexport type { GmailMessageSummary, GmailMessageFull } from '../services/googleGmailService';\n\n"
           path.write_text(text[:start] + export_block + text[end:])
           PY
           npm install --no-audit --no-fund
@@ -46,4 +46,8 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add src/lib/googleApi.ts src/services/googleGmailService.ts
           git commit -m 'refactor(google): extract Gmail provider service [pass59]'
+          git push origin HEAD:$BRANCH
+          rm -f .github/workflows/pass59-google-gmail-push.yml
+          git add -u .github/workflows/pass59-google-gmail-push.yml
+          git commit -m 'chore(pass59): remove Gmail extraction runner' || true
           git push origin HEAD:$BRANCH
