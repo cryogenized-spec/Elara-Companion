@@ -1,3 +1,5 @@
+import { createCalendarEvent, getCalendarEventsRange } from '../services/googleCalendarService';
+
 type OperationalResult = { success: true; provider: string; operation: string; [key: string]: any } | { success: false; provider: string; errorCode: string; message: string; requiresUserAuth?: boolean };
 
 function authToken(token?: string): string | null {
@@ -167,22 +169,30 @@ export async function executeGoogleOperationalTool(toolName: string, args: any, 
         const bounds = rangeQuery(safeArgs.startTime, safeArgs.endTime);
         if (!bounds.timeMin || !bounds.timeMax) return { success: false, provider: 'google_calendar', errorCode: 'GOOGLE_BAD_REQUEST', message: 'Valid startTime and endTime are required.' };
         const maxResults = Math.max(1, Math.min(Number(safeArgs.maxResults || 50), 250));
-        const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(bounds.timeMin)}&timeMax=${encodeURIComponent(bounds.timeMax)}&maxResults=${maxResults}&singleEvents=true&orderBy=startTime`;
-        const res = await fetch(url, { headers });
-        if (!res.ok) return await googleError(res, 'calendar');
-        const data = await res.json();
-        return { success: true, provider: 'google_calendar', operation: 'range_read', startTime: bounds.timeMin, endTime: bounds.timeMax, count: (data.items || []).length, events: (data.items || []).map((event: any) => ({ id: event.id, summary: event.summary || '(Untitled)', description: event.description, start: event.start, end: event.end, location: event.location, status: event.status, htmlLink: event.htmlLink })) };
+        try {
+          const result = await getCalendarEventsRange(bounds.timeMin, bounds.timeMax, maxResults, token);
+          return {
+            success: true,
+            provider: 'google_calendar',
+            operation: 'range_read',
+            startTime: result.startTime,
+            endTime: result.endTime,
+            count: result.items.length,
+            events: result.items,
+          };
+        } catch (error: any) {
+          return { success: false, provider: 'google_calendar', errorCode: 'GOOGLE_UNKNOWN_ERROR', message: String(error?.message || error || 'Google Calendar range read failed') };
+        }
       }
       case 'create_calendar_event': {
         const { summary, startTime, endTime, description, location } = safeArgs;
         if (!summary || !startTime || !endTime) return { success: false, provider: 'google_calendar', errorCode: 'GOOGLE_BAD_REQUEST', message: 'summary, startTime, and endTime are required.' };
-        const body: any = { summary: String(summary), start: { dateTime: String(startTime) }, end: { dateTime: String(endTime) } };
-        if (description) body.description = String(description);
-        if (location) body.location = String(location);
-        const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', { method: 'POST', headers, body: JSON.stringify(body) });
-        if (!res.ok) return await googleError(res, 'calendar');
-        const data = await res.json();
-        return { success: true, provider: 'google_calendar', operation: 'create', eventId: data.id, summary: data.summary, start: data.start, end: data.end, htmlLink: data.htmlLink };
+        try {
+          const result = await createCalendarEvent(String(summary), String(startTime), String(endTime), description ? String(description) : undefined, location ? String(location) : undefined, token);
+          return { success: true, provider: 'google_calendar', operation: 'create', eventId: result.id, summary: result.summary, start: result.start, end: result.end, htmlLink: result.htmlLink };
+        } catch (error: any) {
+          return { success: false, provider: 'google_calendar', errorCode: 'GOOGLE_UNKNOWN_ERROR', message: String(error?.message || error || 'Google Calendar create failed') };
+        }
       }
       case 'list_google_tasks': {
         const listRes = await fetch('https://tasks.googleapis.com/tasks/v1/users/@me/lists', { headers });
