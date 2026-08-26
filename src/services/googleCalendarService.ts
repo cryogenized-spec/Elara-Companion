@@ -1,15 +1,12 @@
 import { googleIdentity, googleCapabilities } from './googleWorkspaceService';
+import {
+  CalendarEventItem,
+  createCalendarEventWithToken,
+  getCalendarEventsRangeWithToken,
+  getUpcomingCalendarEventsWithToken,
+} from '../infrastructure/googleCalendarApi';
 
-export interface CalendarEventItem {
-  id: string;
-  summary: string;
-  description?: string;
-  start: { dateTime?: string; date?: string };
-  end: { dateTime?: string; date?: string };
-  location?: string;
-  htmlLink?: string;
-  status?: string;
-}
+export type { CalendarEventItem } from '../infrastructure/googleCalendarApi';
 
 async function getCalendarToken(
   capability: 'calendar.read' | 'calendar.write',
@@ -27,47 +24,9 @@ async function getCalendarToken(
   return token;
 }
 
-function authHeaders(token: string) {
-  return { Authorization: `Bearer ${token}` };
-}
-
-function jsonHeaders(token: string) {
-  return { ...authHeaders(token), 'Content-Type': 'application/json' };
-}
-
-async function parseGoogleApiError(res: Response, prefix: string): Promise<string> {
-  const raw = await res.text().catch(() => '');
-  try {
-    const json = JSON.parse(raw);
-    return `${prefix}: ${json?.error?.message || json?.error || `HTTP ${res.status}`}`;
-  } catch {
-    return `${prefix}: ${raw || `HTTP ${res.status}`}`;
-  }
-}
-
-function normalizeEvent(event: any): CalendarEventItem {
-  return {
-    id: event.id,
-    summary: event.summary || '(Untitled Event)',
-    description: event.description,
-    start: event.start || {},
-    end: event.end || {},
-    location: event.location,
-    htmlLink: event.htmlLink,
-    status: event.status,
-  };
-}
-
-/** Canonical Calendar read adapter. UI code should not know the Google REST URL. */
+/** Canonical Calendar application service. It owns authorization policy and delegates REST mechanics to shared infrastructure. */
 export async function getUpcomingCalendarEvents(maxResults = 10, passedToken?: string): Promise<{ items: CalendarEventItem[] }> {
-  const token = await getCalendarToken('calendar.read', passedToken);
-  const res = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(new Date().toISOString())}&maxResults=${maxResults}&singleEvents=true&orderBy=startTime`,
-    { headers: authHeaders(token) },
-  );
-  if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to fetch calendar events'));
-  const data = await res.json();
-  return { items: (data.items || []).map(normalizeEvent) };
+  return getUpcomingCalendarEventsWithToken(await getCalendarToken('calendar.read', passedToken), maxResults);
 }
 
 export async function getCalendarEventsRange(
@@ -76,22 +35,12 @@ export async function getCalendarEventsRange(
   maxResults = 50,
   passedToken?: string,
 ): Promise<{ items: CalendarEventItem[]; startTime: string; endTime: string }> {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    throw new Error('Valid startTime and endTime are required.');
-  }
-  if (end <= start) throw new Error('endTime must be after startTime.');
-  const token = await getCalendarToken('calendar.read', passedToken);
-  const timeMin = start.toISOString();
-  const timeMax = end.toISOString();
-  const res = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&maxResults=${maxResults}&singleEvents=true&orderBy=startTime`,
-    { headers: authHeaders(token) },
+  return getCalendarEventsRangeWithToken(
+    await getCalendarToken('calendar.read', passedToken),
+    startTime,
+    endTime,
+    maxResults,
   );
-  if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to fetch calendar events'));
-  const data = await res.json();
-  return { startTime: timeMin, endTime: timeMax, items: (data.items || []).map(normalizeEvent) };
 }
 
 export async function createCalendarEvent(
@@ -102,20 +51,12 @@ export async function createCalendarEvent(
   location?: string,
   passedToken?: string,
 ): Promise<CalendarEventItem> {
-  const token = await getCalendarToken('calendar.write', passedToken);
-  const body: Record<string, unknown> = {
+  return createCalendarEventWithToken(
+    await getCalendarToken('calendar.write', passedToken),
     summary,
-    start: { dateTime: startTime },
-    end: { dateTime: endTime },
-  };
-  if (description) body.description = description;
-  if (location) body.location = location;
-
-  const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-    method: 'POST',
-    headers: jsonHeaders(token),
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to create calendar event'));
-  return normalizeEvent(await res.json());
+    startTime,
+    endTime,
+    description,
+    location,
+  );
 }
