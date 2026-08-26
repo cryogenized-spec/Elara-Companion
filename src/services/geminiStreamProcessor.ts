@@ -1,3 +1,5 @@
+import { classifyApiError } from '../lib/apiError';
+
 export type StreamChunk = {
   text?: string;
   thoughtText?: string;
@@ -7,6 +9,7 @@ export type StreamChunk = {
 };
 
 export type ProcessGeminiStreamOptions = {
+  model: string;
   responseStream: AsyncIterable<any>;
   onChunk: (chunk: StreamChunk) => void;
   signal?: AbortSignal;
@@ -113,6 +116,15 @@ export async function processGeminiResponseStream(
         options.onChunk({ finishReason, safetyRatings });
       }
     }
+  } catch (error) {
+    batcher.flush();
+    if (emittedOutput) {
+      const classified = classifyApiError(error, options.model);
+      throw Object.assign(new Error(classified.message), {
+        apiError: { ...classified, retryable: false, failoverOverride: false },
+      });
+    }
+    throw error;
   } finally {
     batcher.flush();
   }
