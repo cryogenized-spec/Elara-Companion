@@ -20,6 +20,19 @@ export const workspaceService = {
   createArtifact,
   updateArtifact,
   deleteArtifact,
+  selectArtifact(artifactId: string): Workspace {
+    return setActiveArtifact(artifactId);
+  },
+  removeArtifact(artifactId: string): boolean {
+    const current = getWorkspace();
+    if (!current.artifacts.some((artifact) => artifact.id === artifactId)) return false;
+    deleteArtifact(current, artifactId);
+    return true;
+  },
+  updateArtifactById(artifactId: string, patch: Partial<WorkspaceArtifact>): WorkspaceArtifact | null {
+    const updated = updateArtifact(getWorkspace(), artifactId, patch);
+    return updated.artifacts.find((artifact) => artifact.id === artifactId) || null;
+  },
 } as const;
 
 export type WorkspaceService = typeof workspaceService;
