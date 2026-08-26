@@ -6,6 +6,6 @@ The canonical service layer now owns the provider implementation. `googleSheetsS
 
 `googleAgentTools.ts` remains responsible for tool declarations, argument adaptation, and ToolResult shaping; it no longer owns Google REST endpoints for Sheets or Keep.
 
-The next part of Pass 59 should audit `googleAgentOperationalTools.ts` for the same duplicate-provider pattern and then verify that the tool registry is composition-only.
+Next: audit `googleAgentOperationalTools.ts` for the same duplicate-provider pattern and verify the tool registry is composition-only.
 
-Main/legacy reference separation remains unchanged: the legacy repository is untouched; all surgery occurs in `Elara-Companion`.
+The legacy/reference repository remains untouched; all surgery occurs in `Elara-Companion`.
