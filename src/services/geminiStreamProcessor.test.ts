@@ -1,76 +1,74 @@
-import { describe, expect, it, vi } from 'vitest';
+import assert from 'node:assert/strict';
+import test from 'node:test';
 import { processGeminiResponseStream } from './geminiStreamProcessor';
 
 async function* streamOf(...chunks: any[]) {
   for (const chunk of chunks) yield chunk;
 }
 
-describe('geminiStreamProcessor', () => {
-  it('emits text and thought chunks while collecting model parts', async () => {
-    const emitted: any[] = [];
-    const result = await processGeminiResponseStream({
-      model: 'model-a',
-      responseStream: streamOf(
-        { candidates: [{ content: { parts: [{ text: 'hello ' }] } }] },
-        { candidates: [{ content: { parts: [{ thought: true, text: 'thinking' }] } }] },
-        { text: 'world' },
-      ),
-      onChunk: (chunk) => emitted.push(chunk),
-    });
-
-    expect(result.emittedOutput).toBe(true);
-    expect(result.functionCalls).toEqual([]);
-    expect(result.modelParts).toHaveLength(2);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(emitted.some((chunk) => chunk.text === 'hello world')).toBe(true);
-    expect(emitted.some((chunk) => chunk.thoughtText === 'thinking')).toBe(true);
+test('emits text and thought chunks while collecting model parts', async () => {
+  const emitted: any[] = [];
+  const result = await processGeminiResponseStream({
+    model: 'model-a',
+    responseStream: streamOf(
+      { candidates: [{ content: { parts: [{ text: 'hello ' }] } }] },
+      { candidates: [{ content: { parts: [{ text: 'world' }] } }] },
+      { candidates: [{ content: { parts: [{ thought: true, text: 'thinking' }] } }] },
+    ),
+    onChunk: (chunk) => emitted.push(chunk),
   });
 
-  it('flushes before function calls and returns the calls', async () => {
-    const emitted: any[] = [];
-    const result = await processGeminiResponseStream({
-      model: 'model-a',
-      responseStream: streamOf(
-        { candidates: [{ content: { parts: [{ text: 'before' }, { functionCall: { name: 'foo', args: { x: 1 } } }] } }] },
-      ),
-      onChunk: (chunk) => emitted.push(chunk),
-    });
+  assert.equal(result.emittedOutput, true);
+  assert.deepEqual(result.functionCalls, []);
+  assert.equal(result.modelParts.length, 3);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.ok(emitted.some((chunk) => chunk.text === 'hello world'));
+  assert.ok(emitted.some((chunk) => chunk.thoughtText === 'thinking'));
+});
 
-    expect(result.functionCalls).toEqual([{ name: 'foo', args: { x: 1 } }]);
-    expect(emitted).toEqual([{ text: 'before' }]);
+test('flushes before function calls and returns the calls', async () => {
+  const emitted: any[] = [];
+  const result = await processGeminiResponseStream({
+    model: 'model-a',
+    responseStream: streamOf({
+      candidates: [{ content: { parts: [{ text: 'before' }, { functionCall: { name: 'foo', args: { x: 1 } } }] } }],
+    }),
+    onChunk: (chunk) => emitted.push(chunk),
   });
 
-  it('stops on abort without turning the result into an error', async () => {
-    const controller = new AbortController();
-    controller.abort();
-    const onChunk = vi.fn();
+  assert.deepEqual(result.functionCalls, [{ name: 'foo', args: { x: 1 } }]);
+  assert.deepEqual(emitted, [{ text: 'before' }]);
+});
 
-    const result = await processGeminiResponseStream({
-      model: 'model-a',
-      responseStream: streamOf({ text: 'ignored' }),
-      onChunk,
-      signal: controller.signal,
-    });
+test('stops on abort without turning the result into an error', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const emitted: any[] = [];
 
-    expect(result.emittedOutput).toBe(false);
-    expect(result.functionCalls).toEqual([]);
-    expect(onChunk).not.toHaveBeenCalled();
+  const result = await processGeminiResponseStream({
+    model: 'model-a',
+    responseStream: streamOf({ text: 'ignored' }),
+    onChunk: (chunk) => emitted.push(chunk),
+    signal: controller.signal,
   });
 
-  it('classifies a post-output stream failure as non-retryable', async () => {
-    async function* failingStream() {
-      yield { text: 'partial' };
-      throw new Error('connection lost');
-    }
+  assert.equal(result.emittedOutput, false);
+  assert.deepEqual(result.functionCalls, []);
+  assert.deepEqual(emitted, []);
+});
 
-    const promise = processGeminiResponseStream({
+test('classifies a post-output stream failure as non-retryable', async () => {
+  async function* failingStream() {
+    yield { text: 'partial' };
+    throw new Error('connection lost');
+  }
+
+  await assert.rejects(
+    processGeminiResponseStream({
       model: 'model-a',
       responseStream: failingStream(),
       onChunk: () => undefined,
-    });
-
-    await expect(promise).rejects.toMatchObject({
-      apiError: { retryable: false, failoverOverride: false },
-    });
-  });
+    }),
+    (error: any) => error?.apiError?.retryable === false && error?.apiError?.failoverOverride === false,
+  );
 });
