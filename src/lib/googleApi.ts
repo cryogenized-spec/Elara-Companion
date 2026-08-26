@@ -253,10 +253,7 @@ export async function readGoogleDriveFile(fileId: string, passedToken?: string):
   return { id: meta.id, name: meta.name || 'Untitled File', mimeType: meta.mimeType || 'unknown', content: '[Binary or Non-Text File Content]', webViewLink: meta.webViewLink || `https://drive.google.com/file/d/${fileId}/view` };
 }
 
-// ---------------- Calendar / Tasks ----------------
-export interface CalendarEventItem { id:string; summary:string; description?:string; start:{dateTime?:string;date?:string}; end:{dateTime?:string;date?:string}; location?:string; htmlLink?:string; }
-export async function getUpcomingCalendarEvents(maxResults = 10): Promise<{items:CalendarEventItem[]}> { const token=await requestGoogleAuth(); const res=await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(new Date().toISOString())}&maxResults=${maxResults}&singleEvents=true&orderBy=startTime`,{headers:authHeaders(token)}); if(!res.ok) throw new Error(await parseGoogleApiError(res,'Failed to fetch calendar events')); const d=await res.json(); return {items:(d.items||[]).map((e:any)=>({id:e.id,summary:e.summary||'(Untitled Event)',description:e.description,start:e.start||{},end:e.end||{},location:e.location,htmlLink:e.htmlLink}))}; }
-export async function createCalendarEvent(summary:string,startTime:string,endTime:string,description?:string,location?:string):Promise<CalendarEventItem>{const token=await requestGoogleAuth();const body:any={summary,start:{dateTime:startTime},end:{dateTime:endTime}};if(description)body.description=description;if(location)body.location=location;const res=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events',{method:'POST',headers:jsonHeaders(token),body:JSON.stringify(body)});if(!res.ok)throw new Error(await parseGoogleApiError(res,'Failed to create calendar event'));return res.json();}
+// ---------------- Tasks ----------------
 export interface TaskItem{id:string;title:string;notes?:string;status:'needsAction'|'completed';due?:string;updated?:string;}
 export async function getTaskLists(){const token=await requestGoogleAuth();const res=await fetch('https://tasks.googleapis.com/tasks/v1/users/@me/lists',{headers:authHeaders(token)});if(!res.ok)throw new Error(await parseGoogleApiError(res,'Failed to fetch task lists'));const d=await res.json();return {items:(d.items||[]).map((l:any)=>({id:l.id,title:l.title||'Tasks'}))};}
 export async function getTasks(taskListId?:string):Promise<{items:TaskItem[];listTitle?:string}>{const token=await requestGoogleAuth();let id=taskListId,title='My Tasks';if(!id){const lists=await getTaskLists();if(!lists.items.length)return {items:[],listTitle:'None'};id=lists.items[0].id;title=lists.items[0].title;}const res=await fetch(`https://tasks.googleapis.com/tasks/v1/lists/${id}/tasks?showCompleted=true&maxResults=20`,{headers:authHeaders(token)});if(!res.ok)throw new Error(await parseGoogleApiError(res,'Failed to fetch tasks'));const d=await res.json();return {items:(d.items||[]).map((t:any)=>({id:t.id,title:t.title||'(Untitled Task)',notes:t.notes,status:t.status||'needsAction',due:t.due,updated:t.updated})),listTitle:title};}
@@ -318,7 +315,6 @@ export function saveSpaceWebhooks(configs:SpaceWebhookConfig[]){try{localStorage
 export async function executeWorkspaceTool(toolName:string,args:any={}):Promise<any>{
   switch(toolName){
     case 'get_recent_emails': return listGmailMessages(args?.query||'',args?.maxResults||10);
-    case 'get_calendar_events': return getUpcomingCalendarEvents(args?.maxResults||10);
     case 'get_tasks': return getTasks(args?.taskListId);
     case 'create_google_doc': return createGoogleDoc(args?.title||'Document',args?.content||'');
     case 'create_google_sheet': return createGoogleSheet(args?.title||'Data Log',args?.headerRow);
