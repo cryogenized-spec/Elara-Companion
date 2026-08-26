@@ -1,16 +1,15 @@
-# Pass 56 — Workspace editor extraction handoff
+# Pass 56 — Workspace editor extraction
 
-This pass is intentionally NOT merged yet.
+Pass 56 is complete.
 
-## Confirmed direction
-`WorkspaceView.tsx` still owns persistence/checkpoint orchestration through direct imports from `workspaceStorage.ts` and `revisionUtils.ts`. The clean target is:
+## Architectural change
+`WorkspaceView.tsx` no longer imports `workspaceStorage.ts` or `revisionUtils.ts` directly. Its editor persistence/revision dependency now flows through:
 
 `WorkspaceView UI -> workspaceEditorService -> Workspace storage/revision infrastructure`
 
-The editor service has been staged on `refactor/pass56-workspace-editor-service` as `src/services/workspaceEditorService.ts` and exposes the existing storage/revision operations without changing their semantics.
+The service preserves the existing operation semantics while establishing a single application boundary for editor persistence mechanics.
 
-## Intended migration
-Move the following WorkspaceView responsibilities behind `workspaceEditorService`:
+## Extracted responsibilities
 - get/save workspace
 - select active artifact
 - create/delete/update artifact
@@ -18,10 +17,17 @@ Move the following WorkspaceView responsibilities behind `workspaceEditorService
 - restore revisions
 - compare revisions
 
-Leave `executeAnyWorkspaceTool` outside this pass; that belongs to the later Workspace/tool boundary work.
+`executeAnyWorkspaceTool` remains outside this pass by design; tool/background orchestration is deferred to the Workspace/background reconciliation work.
 
-## Tooling note
-The connected GitHub mutation path blocked PR creation for a branch carrying a write-capable temporary workflow. The temporary runner and trigger files were removed rather than bypassing that safety boundary. No incomplete WorkspaceView rewrite was merged.
+## Verification
+The Pass 56 transformed-tree verifier passed:
+- lint / TypeScript
+- tests
+- production build
+- memory benchmark
+- direct-import boundary check
 
-## Next action
-Continue Pass 56 from this branch or recreate a clean branch from current `main`, perform the complete-file WorkspaceView migration through a safe mechanism, run lint/tests/build/memory, inspect the diff, then merge only the verified result.
+The verifier then committed the exact source transformation and removed its temporary workflow. Final PR review showed only the intended three files changed.
+
+## Result
+`WorkspaceView` is now presentation/application interaction code rather than a direct persistence/revision implementation owner. This establishes the seam required for the following Workspace/background passes without changing editor behaviour.
