@@ -1,10 +1,11 @@
+import type { WorkspaceArtifact } from '../types';
 import type { BackgroundJobStatus } from '../lib/backgroundChatClient';
 import { publishApplicationEvent } from '../events/applicationEventBus';
 import { saveWorkspace } from '../lib/workspaceStorage';
 
 interface ReconciliationDependencies {
   saveWorkspace: typeof saveWorkspace;
-  publishArtifactChanged: (artifact: NonNullable<BackgroundJobStatus['output']>['result']['workspace']['artifacts'][number], action: 'created' | 'updated') => void;
+  publishArtifactChanged: (artifact: WorkspaceArtifact, action: 'created' | 'updated') => void;
 }
 
 const defaultDependencies: ReconciliationDependencies = {
