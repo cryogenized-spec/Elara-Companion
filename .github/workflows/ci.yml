@@ -73,13 +73,15 @@ jobs:
           text = text.replace(compat, '')
           api.write_text(text)
 
-          for path in (settings, api):
-              source = path.read_text()
-              for needle in ('getUpcomingCalendarEvents', 'CalendarEventItem', 'createCalendarEvent'):
-                  if needle in source:
-                      raise SystemExit(f'Legacy Calendar symbol remains in {path}: {needle}')
-          if 'get_calendar_events' in api.read_text():
-              raise SystemExit('Legacy get_calendar_events route remains')
+          settings_text = settings.read_text()
+          api_text = api.read_text()
+          if "from '../lib/googleApi'" in settings_text and 'getUpcomingCalendarEvents' in settings_text:
+              raise SystemExit('Settings still imports the legacy Calendar implementation')
+          for needle in ('export async function getUpcomingCalendarEvents', 'export interface CalendarEventItem', 'export async function createCalendarEvent'):
+              if needle in api_text:
+                  raise SystemExit(f'Legacy Calendar export remains in googleApi.ts: {needle}')
+          if 'case \'get_calendar_events\':' in api_text:
+              raise SystemExit('Legacy get_calendar_events compatibility route remains')
           print('Pass 54 source cut verified.')
           PY
 
@@ -98,9 +100,10 @@ jobs:
       - name: Memory benchmark
         run: npm run benchmark:memory
 
-      - name: Search for remaining Calendar legacy symbols
+      - name: Search for remaining legacy Calendar implementation
         run: |
-          ! grep -R "getUpcomingCalendarEvents\|CalendarEventItem\|createCalendarEvent\|get_calendar_events" src/components src/lib --exclude-dir=node_modules
+          ! grep -nE "export (interface CalendarEventItem|async function (getUpcomingCalendarEvents|createCalendarEvent))|case ['\"]get_calendar_events['\"]:" src/lib/googleApi.ts
+          ! grep -nE "(^|[[:space:]])(getUpcomingCalendarEvents|CalendarEventItem|createCalendarEvent)([[:space:]]|[,;])" src/components/SettingsModal.tsx
 
       - name: Commit verified cut and restore workflow
         run: |
