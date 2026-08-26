@@ -1,21 +1,28 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { googleIdentity } from '../googleWorkspaceService';
+import { googleCapabilities, googleIdentity } from '../googleWorkspaceService';
 import { createCalendarEvent, getUpcomingCalendarEvents } from '../googleCalendarService';
 
 test('calendar read adapter requests the calendar.read capability and normalizes events', async () => {
   const originalAuthorized = googleIdentity.isAuthorized;
-  const originalGranted = googleIdentity.getGrantedScopes;
+  const originalGranted = googleCapabilities.getGrantedScopes;
+  const originalIsGranted = googleCapabilities.isGranted;
+  const originalGetScopes = googleCapabilities.getScopes;
   const originalRequest = googleIdentity.requestCapabilityAuthorization;
   const originalToken = googleIdentity.getAccessToken;
   const originalFetch = globalThis.fetch;
-  const calls: string[] = [];
+  const calls: string[][] = [];
 
   googleIdentity.isAuthorized = () => false;
-  googleIdentity.getGrantedScopes = () => '';
-  googleIdentity.requestCapabilityAuthorization = async (capability) => {
-    calls.push(capability);
-    return { success: true, message: 'authorized' };
+  googleCapabilities.getGrantedScopes = () => '';
+  googleCapabilities.isGranted = () => false;
+  googleCapabilities.getScopes = (capability) => {
+    assert.equal(capability, 'calendar.read');
+    return ['calendar.read.scope'];
+  };
+  googleIdentity.requestCapabilityAuthorization = async (scopes) => {
+    calls.push(scopes);
+    return 'authorized-token';
   };
   googleIdentity.getAccessToken = () => 'test-token';
   globalThis.fetch = async (input) => {
@@ -25,12 +32,14 @@ test('calendar read adapter requests the calendar.read capability and normalizes
 
   try {
     const result = await getUpcomingCalendarEvents(5);
-    assert.deepEqual(calls, ['calendar.read']);
+    assert.deepEqual(calls, [['calendar.read.scope']]);
     assert.equal(result.items[0]?.id, 'evt1');
     assert.equal(result.items[0]?.summary, 'Test Event');
   } finally {
     googleIdentity.isAuthorized = originalAuthorized;
-    googleIdentity.getGrantedScopes = originalGranted;
+    googleCapabilities.getGrantedScopes = originalGranted;
+    googleCapabilities.isGranted = originalIsGranted;
+    googleCapabilities.getScopes = originalGetScopes;
     googleIdentity.requestCapabilityAuthorization = originalRequest;
     googleIdentity.getAccessToken = originalToken;
     globalThis.fetch = originalFetch;
@@ -39,16 +48,23 @@ test('calendar read adapter requests the calendar.read capability and normalizes
 
 test('calendar write adapter requests calendar.write capability', async () => {
   const originalAuthorized = googleIdentity.isAuthorized;
-  const originalGranted = googleIdentity.getGrantedScopes;
+  const originalGranted = googleCapabilities.getGrantedScopes;
+  const originalIsGranted = googleCapabilities.isGranted;
+  const originalGetScopes = googleCapabilities.getScopes;
   const originalRequest = googleIdentity.requestCapabilityAuthorization;
   const originalToken = googleIdentity.getAccessToken;
   const originalFetch = globalThis.fetch;
 
   googleIdentity.isAuthorized = () => false;
-  googleIdentity.getGrantedScopes = () => '';
-  googleIdentity.requestCapabilityAuthorization = async (capability) => {
+  googleCapabilities.getGrantedScopes = () => '';
+  googleCapabilities.isGranted = () => false;
+  googleCapabilities.getScopes = (capability) => {
     assert.equal(capability, 'calendar.write');
-    return { success: true, message: 'authorized' };
+    return ['calendar.write.scope'];
+  };
+  googleIdentity.requestCapabilityAuthorization = async (scopes) => {
+    assert.deepEqual(scopes, ['calendar.write.scope']);
+    return 'authorized-token';
   };
   googleIdentity.getAccessToken = () => 'test-token';
   globalThis.fetch = async (_input, init) => {
@@ -61,7 +77,9 @@ test('calendar write adapter requests calendar.write capability', async () => {
     assert.equal(result.id, 'evt2');
   } finally {
     googleIdentity.isAuthorized = originalAuthorized;
-    googleIdentity.getGrantedScopes = originalGranted;
+    googleCapabilities.getGrantedScopes = originalGranted;
+    googleCapabilities.isGranted = originalIsGranted;
+    googleCapabilities.getScopes = originalGetScopes;
     googleIdentity.requestCapabilityAuthorization = originalRequest;
     googleIdentity.getAccessToken = originalToken;
     globalThis.fetch = originalFetch;
