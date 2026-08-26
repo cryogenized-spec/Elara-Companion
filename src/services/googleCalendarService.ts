@@ -11,8 +11,11 @@ export interface CalendarEventItem {
 }
 
 async function getCalendarToken(capability: 'calendar.read' | 'calendar.write'): Promise<string> {
-  if (!googleIdentity.isAuthorized() || !googleCapabilities.isGranted(googleCapabilities.getGrantedScopes(), capability)) {
-    await googleIdentity.requestCapabilityAuthorization(capability);
+  const grantedScopes = googleCapabilities.getGrantedScopes();
+  if (!googleIdentity.isAuthorized() || !googleCapabilities.isGranted(grantedScopes, capability)) {
+    const scopes = googleCapabilities.getScopes(capability);
+    const result = await googleIdentity.requestCapabilityAuthorization(scopes, false);
+    if (!result) throw new Error('Google Calendar authorization was not granted.');
   }
   const token = googleIdentity.getAccessToken();
   if (!token) throw new Error('Google Calendar authorization is required.');
