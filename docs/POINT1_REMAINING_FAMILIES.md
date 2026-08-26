@@ -1,1 +1,0 @@
-Temporary trigger for the remaining Google family extraction. The runner removes this file and itself after the source cut.
