@@ -4,10 +4,10 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, fix/**, refactor/**, pass54-calendar-settings-cut]
+    branches: [main, fix/**, refactor/**]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -30,48 +30,3 @@ jobs:
 
       - name: Production verification
         run: npm run verify:production
-
-  pass54-cut:
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'pass54-calendar-settings-cut' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout branch head
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 2
-          persist-credentials: true
-
-      - name: Verify Calendar cut
-        run: |
-          ! grep -nE "export (interface CalendarEventItem|async function (getUpcomingCalendarEvents|createCalendarEvent))|case ['\"]get_calendar_events['\"]:" src/lib/googleApi.ts
-          ! grep -nE "(^|[[:space:]])(getUpcomingCalendarEvents|CalendarEventItem|createCalendarEvent)([[:space:]]|[,;])" src/components/SettingsModal.tsx
-          grep -n "googleCalendarContract.getUpcoming" src/components/SettingsModal.tsx
-          grep -n "calendar contract exposes canonical service operations" src/services/__tests__/googleCalendarLegacyInventory.test.ts
-
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Tests
-        run: npm test
-
-      - name: Production build
-        run: npm run build
-
-      - name: Memory benchmark
-        run: npm run benchmark:memory
-
-      - name: Restore CI and remove temporary scaffolding
-        run: |
-          git fetch origin main --depth=1
-          git checkout origin/main -- .github/workflows/ci.yml
-          rm -f .github/workflows/pass54-calendar-cut.yml docs/PASS54_CUT_TRIGGER.md
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/components/SettingsModal.tsx src/lib/googleApi.ts src/services/__tests__/googleCalendarLegacyInventory.test.ts .github/workflows/ci.yml .github/workflows/pass54-calendar-cut.yml docs/PASS54_CUT_TRIGGER.md
-          if git diff --cached --quiet; then exit 0; fi
-          git commit -m 'refactor(google): finalize legacy Calendar removal [pass54-bot]'
-          git push origin HEAD:refs/heads/pass54-calendar-settings-cut
