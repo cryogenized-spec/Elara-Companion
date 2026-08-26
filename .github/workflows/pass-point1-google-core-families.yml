@@ -57,7 +57,7 @@ jobs:
             blocks['keep']=replace_fn(blocks['keep'],fn,f"await getGoogleFamilyAccessToken('{cap}')")
           for name in blocks:
             blocks[name] = helpers + blocks[name].split('\n',1)[1]
-          # Replace imports/exports in the façade while retaining public symbols.
+          imports = """import { getTaskLists, getTasks, createTask } from '../services/googleTasksService';\nimport { createGoogleSheet, getSpreadsheetDetails, readSheetValues, appendSheetRow } from '../services/googleSheetsService';\nimport { searchContacts, listContacts } from '../services/googleContactsService';\nimport { createGoogleKeepNote, listGoogleKeepNotes, getGoogleKeepNote, deleteGoogleKeepNote } from '../services/googleKeepService';\n\n"""
           exports = {
             'tasks': "export { getTaskLists, getTasks, createTask } from '../services/googleTasksService';\nexport type { TaskItem } from '../services/googleTasksService';\n\n",
             'sheets': "export { createGoogleSheet, getSpreadsheetDetails, readSheetValues, appendSheetRow } from '../services/googleSheetsService';\nexport type { SheetMetadata } from '../services/googleSheetsService';\n\n",
@@ -71,7 +71,7 @@ jobs:
             'keep':'src/services/googleKeepService.ts',
           }
           for name,p in files.items(): Path(p).write_text(blocks[name])
-          additions = ''.join(exports.values())
+          additions = imports + ''.join(exports.values())
           start = min(v[0] for v in ranges.values())
           end = max(v[1] for v in ranges.values())
           text = text[:start] + additions + text[end:]
@@ -85,7 +85,7 @@ jobs:
           git add src/lib/googleApi.ts src/services/googleTasksService.ts src/services/googleSheetsService.ts src/services/googleContactsService.ts src/services/googleKeepService.ts
           git commit -m 'refactor(google): extract Tasks Sheets Contacts Keep providers [point1]'
           git push origin HEAD:$BRANCH
-          rm -f .github/workflows/pass-point1-google-docs-drive.yml .github/workflows/pass-point1-google-core-families.yml
-          git add -u .github/workflows/pass-point1-google-docs-drive.yml .github/workflows/pass-point1-google-core-families.yml
+          rm -f .github/workflows/pass-point1-google-docs-drive.yml .github/workflows/pass-point1-google-core-families.yml docs/POINT1_REMAINING_FAMILIES.md
+          git add -u .github/workflows/pass-point1-google-docs-drive.yml .github/workflows/pass-point1-google-core-families.yml docs/POINT1_REMAINING_FAMILIES.md
           git commit -m 'chore(point1): remove temporary Google family runners' || true
           git push origin HEAD:$BRANCH
