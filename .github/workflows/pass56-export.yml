@@ -29,7 +29,7 @@ jobs:
           old_revision = "import { compareRevisions, createCheckpoint, restoreRevision } from '../lib/revisionUtils';"
           if old_storage not in text or old_revision not in text:
               raise SystemExit('Expected import surface not found')
-          text = text.replace(old_storage, "import { workspaceEditorService } from '../services/workspaceEditorService';")
+          text = text.replace(old_storage, "import { workspaceEditorService } from '../services/workspaceEditorService';\nconst { getWorkspace, saveWorkspace, selectArtifact: setActiveArtifact, createArtifact, deleteArtifact, updateArtifact, checkpoint: createCheckpoint, restoreRevision, compareRevisions } = workspaceEditorService;")
           text = text.replace(old_revision, '')
           p.write_text(text)
           PY
