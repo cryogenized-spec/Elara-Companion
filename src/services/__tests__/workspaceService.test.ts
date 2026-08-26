@@ -8,12 +8,8 @@ test('workspace service exposes application-shaped artifact mutation commands', 
   assert.equal(typeof workspaceService.updateArtifactById, 'function');
 });
 
-test('workspace service mutation commands do not require callers to provide a Workspace snapshot', () => {
-  const selectSource = workspaceService.selectArtifact.toString();
-  const removeSource = workspaceService.removeArtifact.toString();
-  const updateSource = workspaceService.updateArtifactById.toString();
-
-  assert.doesNotMatch(selectSource, /workspaceService\.getWorkspace\(\)/);
-  assert.doesNotMatch(removeSource, /deleteArtifact\(current,/);
-  assert.doesNotMatch(updateSource, /updateArtifact\(getWorkspace\(\),/);
+test('workspace commands own workspace lookup internally', () => {
+  assert.equal(workspaceService.selectArtifact.length, 1);
+  assert.equal(workspaceService.removeArtifact.length, 1);
+  assert.equal(workspaceService.updateArtifactById.length, 2);
 });
