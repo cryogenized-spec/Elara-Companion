@@ -7,8 +7,8 @@ const workspace = {
   name: 'Workspace',
   activeArtifactId: 'artifact-1',
   artifacts: [
-    { id: 'artifact-1', name: 'Created', type: 'text', content: 'created' },
-    { id: 'artifact-2', name: 'Updated', type: 'text', content: 'updated' },
+    { id: 'artifact-1', name: 'Created', type: 'text', content: 'created', createdAt: 1, updatedAt: 1 },
+    { id: 'artifact-2', name: 'Updated', type: 'text', content: 'updated', createdAt: 1, updatedAt: 2 },
   ],
 };
 
