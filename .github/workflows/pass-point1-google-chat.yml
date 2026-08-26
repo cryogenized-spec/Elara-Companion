@@ -1,0 +1,57 @@
+name: Point 1 Google Chat Extraction
+on:
+  push:
+    branches: [refactor/point1-google-docs-drive]
+permissions:
+  contents: write
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+      - name: Extract Google Chat provider
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path('src/lib/googleApi.ts')
+          text = path.read_text()
+          start_marker = '// ---------------- Google Chat ----------------'
+          end_marker = '// Legacy compatibility exports.'
+          start = text.index(start_marker)
+          end = text.index(end_marker)
+          block = text[start:end].strip() + '\n'
+          helper = """import { googleCapabilities, googleIdentity } from './googleWorkspaceService';\nimport type { GoogleCapability } from './googleWorkspaceService';\n\nasync function getGoogleChatAccessToken(capability: GoogleCapability): Promise<string> {\n  const token = googleIdentity.getAccessToken();\n  if (token && googleCapabilities.isGranted(googleCapabilities.getGrantedScopes(), capability)) return token;\n  return googleIdentity.requestCapabilityAuthorization(googleCapabilities.getScopes(capability), false);\n}\n\nasync function parseGoogleApiError(res: Response, prefix: string): Promise<string> {\n  const raw = await res.text().catch(() => '');\n  try {\n    const json = JSON.parse(raw);\n    return `${prefix}: ${json?.error?.message || json?.error || `HTTP ${res.status}`}`;\n  } catch {\n    return `${prefix}: ${raw || `HTTP ${res.status}`}`;\n  }\n}\n\nfunction authHeaders(token: string) { return { Authorization: `Bearer ${token}` }; }\nfunction jsonHeaders(token: string) { return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }; }\n\n"""
+          def replace_fn(fn, cap):
+            nonlocal block
+            pattern = rf'(export async function {re.escape(fn)}\\b[\\s\\S]*?)(?=\\nexport |\\nconst LOCAL_WEBHOOKS_KEY|\\Z)'
+            m = re.search(pattern, block)
+            if not m: raise SystemExit(f'missing function: {fn}')
+            block = block[:m.start(1)] + m.group(1).replace('await requestGoogleAuth()', f"await getGoogleChatAccessToken('{cap}')") + block[m.end(1):]
+          replace_fn('listChatSpaces','chat.read')
+          replace_fn('createChatSpace','chat.manage')
+          replace_fn('listChatMessages','chat.read')
+          replace_fn('sendChatMessage','chat.send')
+          replace_fn('sendChatCardMessage','chat.send')
+          service = helper + block.replace(start_marker + '\n','')
+          Path('src/services/googleChatService.ts').write_text(service)
+          facade_imports = """import { listChatSpaces, createChatSpace, listChatMessages, sendChatMessage, sendChatCardMessage, postChatWebhook, loadSpaceWebhooks, saveSpaceWebhooks, buildTaskApprovalCard, buildDraftPreviewCard, buildScheduleSweepCard, buildSystemAlertCard } from '../services/googleChatService';\nexport type { ChatSpaceMember, ChatSpace, ChatMessageResult, SpaceWebhookConfig } from '../services/googleChatService';\n\n"""
+          path.write_text(text[:start] + facade_imports + text[end:])
+          PY
+          npm install --no-audit --no-fund
+          npm run lint
+          npx tsc --noEmit
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/lib/googleApi.ts src/services/googleChatService.ts
+          git commit -m 'refactor(google): extract Google Chat provider service [point1]'
+          git push origin HEAD:$BRANCH
+          rm -f .github/workflows/pass-point1-google-chat.yml
+          git add -u .github/workflows/pass-point1-google-chat.yml
+          git commit -m 'chore(point1): remove temporary Google Chat runner' || true
+          git push origin HEAD:$BRANCH
