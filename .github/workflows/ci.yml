@@ -4,10 +4,10 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, fix/**, refactor/**, pass54-calendar-settings-cut]
+    branches: [main, fix/**, refactor/**]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -30,89 +30,3 @@ jobs:
 
       - name: Production verification
         run: npm run verify:production
-
-  pass54-cut:
-    if: ${{ !contains(github.event.head_commit.message, '[pass54-bot]') }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: true
-          fetch-depth: 2
-
-      - name: Apply Calendar migration and deletion
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          settings = Path('src/components/SettingsModal.tsx')
-          text = settings.read_text()
-          text = text.replace("import { loadRateLimits } from '../lib/storage';\n", "import { loadRateLimits } from '../lib/storage';\nimport { googleCalendarContract } from '../contracts/implementations';\nimport type { GoogleCalendarEvent } from '../contracts';\n")
-          text = text.replace('  getUpcomingCalendarEvents,\n', '')
-          text = text.replace('  CalendarEventItem,\n', '')
-          text = text.replace('CalendarEventItem[]', 'GoogleCalendarEvent[]')
-          text = text.replace('await getUpcomingCalendarEvents(', 'await googleCalendarContract.getUpcoming(')
-          settings.write_text(text)
-
-          api = Path('src/lib/googleApi.ts')
-          text = api.read_text()
-          pattern = re.compile(
-              r"// ---------------- Calendar / Tasks ----------------\n"
-              r"export interface CalendarEventItem \{.*?\n"
-              r"export async function createCalendarEvent\(.*?\n"
-              r"export interface TaskItem",
-              re.S,
-          )
-          text, count = pattern.subn('// ---------------- Tasks ----------------\nexport interface TaskItem', text)
-          if count != 1:
-              raise SystemExit(f'Expected one Calendar block, found {count}')
-          compat = "    case 'get_calendar_events': return getUpcomingCalendarEvents(args?.maxResults||10);\n"
-          if text.count(compat) != 1:
-              raise SystemExit(f'Expected one Calendar compatibility route, found {text.count(compat)}')
-          text = text.replace(compat, '')
-          api.write_text(text)
-
-          settings_text = settings.read_text()
-          api_text = api.read_text()
-          if "from '../lib/googleApi'" in settings_text and 'getUpcomingCalendarEvents' in settings_text:
-              raise SystemExit('Settings still imports the legacy Calendar implementation')
-          for needle in ('export async function getUpcomingCalendarEvents', 'export interface CalendarEventItem', 'export async function createCalendarEvent'):
-              if needle in api_text:
-                  raise SystemExit(f'Legacy Calendar export remains in googleApi.ts: {needle}')
-          if 'case \'get_calendar_events\':' in api_text:
-              raise SystemExit('Legacy get_calendar_events compatibility route remains')
-          print('Pass 54 source cut verified.')
-          PY
-
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Tests
-        run: npm test
-
-      - name: Production build
-        run: npm run build
-
-      - name: Memory benchmark
-        run: npm run benchmark:memory
-
-      - name: Search for remaining legacy Calendar implementation
-        run: |
-          ! grep -nE "export (interface CalendarEventItem|async function (getUpcomingCalendarEvents|createCalendarEvent))|case ['\"]get_calendar_events['\"]:" src/lib/googleApi.ts
-          ! grep -nE "(^|[[:space:]])(getUpcomingCalendarEvents|CalendarEventItem|createCalendarEvent)([[:space:]]|[,;])" src/components/SettingsModal.tsx
-
-      - name: Commit verified cut and restore workflow
-        run: |
-          git fetch origin main --depth=1
-          git checkout origin/main -- .github/workflows/ci.yml
-          rm -f .github/workflows/pass54-calendar-cut.yml docs/PASS54_CUT_TRIGGER.md
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/components/SettingsModal.tsx src/lib/googleApi.ts .github/workflows/ci.yml .github/workflows/pass54-calendar-cut.yml docs/PASS54_CUT_TRIGGER.md
-          git commit -m 'refactor(google): remove legacy Calendar wiring [pass54-bot]'
-          git push origin HEAD:${GITHUB_REF_NAME}

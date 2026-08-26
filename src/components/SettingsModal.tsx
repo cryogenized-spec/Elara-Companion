@@ -57,7 +57,6 @@ import {
   Clock,
 } from 'lucide-react';
 import {
-  getUpcomingCalendarEvents,
   getTasks,
   requestGoogleAuth,
   isGoogleConnected,
@@ -89,7 +88,6 @@ import {
   buildSystemAlertCard,
   loadSpaceWebhooks,
   saveSpaceWebhooks,
-  CalendarEventItem,
   TaskItem,
   ContactPerson,
   KeepNoteItem,
@@ -113,6 +111,8 @@ interface SettingsModalProps {
 }
 
 import { loadRateLimits } from '../lib/storage';
+import { googleCalendarContract } from '../contracts/implementations';
+import type { GoogleCalendarEvent } from '../contracts';
 import { VoiceChatSettingsPanel } from './VoiceChatSettingsPanel';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -178,7 +178,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // Workspace Sync State
   const [isGoogleAuthed, setIsGoogleAuthed] = useState(isGoogleConnected());
   const [isCalendarSyncing, setIsCalendarSyncing] = useState(false);
-  const [calendarSyncResult, setCalendarSyncResult] = useState<{ count: number; timestamp: string; events: CalendarEventItem[] } | null>(null);
+  const [calendarSyncResult, setCalendarSyncResult] = useState<{ count: number; timestamp: string; events: GoogleCalendarEvent[] } | null>(null);
   const [calendarSyncError, setCalendarSyncError] = useState<string | null>(null);
 
   const [isTasksSyncing, setIsTasksSyncing] = useState(false);
@@ -310,7 +310,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setIsCalendarSyncing(true);
     setCalendarSyncError(null);
     try {
-      const data = await getUpcomingCalendarEvents(15);
+      const data = await googleCalendarContract.getUpcoming(15);
       setCalendarSyncResult({
         count: data.items.length,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -686,7 +686,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       } else if (testCardType === 'draft_preview') {
         cardPayload = buildDraftPreviewCard('Weekly Briefing Draft', 'Draft email prepared for team review with action item breakdown.', 'https://mail.google.com', 'gmail');
       } else if (testCardType === 'schedule_sweep') {
-        const events = await getUpcomingCalendarEvents(5);
+        const events = await googleCalendarContract.getUpcoming(5);
         cardPayload = buildScheduleSweepCard(
           events.items.map((e) => ({
             summary: e.summary,
