@@ -12,6 +12,8 @@ Remove the separate Calendar REST implementation from the Cloudflare Worker with
 
 `background-runtime/src/googleTools.ts` now delegates `list_google_calendar_events` to `getUpcomingCalendarEventsWithToken()` and no longer contains a direct Calendar REST URL or a second Calendar implementation.
 
+The first verification run caught two strict-TypeScript `Response.json()` payloads in the shared infrastructure and they were corrected with explicit external-payload typing. No architectural weakening was required.
+
 ## Dependency direction
 
 Browser/UI:
@@ -33,6 +35,10 @@ The Worker does not import browser OAuth state, React state, or `googleWorkspace
 - explicit-token writes
 - no network call for invalid ranges
 - the Worker contains no direct Calendar REST endpoint
+
+## Verification state
+
+The repository's old `.github/workflows/pass46-verification.yml` also fired on this branch after the typing fix but reported a failure with zero jobs, so that result is treated as stale/misconfigured workflow plumbing rather than a code failure. The current PR remains mergeable, but the exact corrected head must still receive a meaningful CI/verifier result before merge.
 
 ## Remaining Calendar legacy work
 
