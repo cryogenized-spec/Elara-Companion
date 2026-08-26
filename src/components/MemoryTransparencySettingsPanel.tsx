@@ -1,7 +1,7 @@
 import React from 'react';
 import { AlertTriangle, Archive, Clock3, GitBranch, Link2, Search, ShieldCheck } from 'lucide-react';
 import type { MemoryItem, MemoryResolution, MemoryScratchpadState, MemoryState } from '../types';
-import { getDbMemoryState } from '../lib/db';
+import { loadMemoryTransparencyState } from '../services/memoryService';
 
 export const MEMORY_TRANSPARENCY_READ_OPTIONS = Object.freeze({
   runMaintenance: false,
@@ -104,7 +104,7 @@ export const MemoryTransparencySettingsPanel: React.FC = () => {
   const refresh = React.useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const next = await getDbMemoryState(MEMORY_TRANSPARENCY_READ_OPTIONS);
+      const next = await loadMemoryTransparencyState(MEMORY_TRANSPARENCY_READ_OPTIONS);
       setState(next);
       setSelectedId((current) => current && next.memories.some((memory) => memory.id === current) ? current : next.memories[0]?.id || null);
     } catch (cause) {
