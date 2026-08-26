@@ -1,6 +1,5 @@
 import type { Workspace } from '../types';
-import { publishApplicationEvent } from '../events/applicationEventBus';
-import { getWorkspace, saveWorkspace } from './workspaceStorage';
+import { getWorkspace } from './workspaceStorage';
 
 export interface BackgroundRuntimeConfig {
   baseUrl: string;
@@ -160,31 +159,8 @@ export async function createBackgroundChatJob(request: BackgroundChatJobRequest)
   return { id: data.id };
 }
 
-function reconcileBackgroundResult(status: BackgroundJobStatus) {
-  const result = status.output?.result;
-  if (!result?.workspace) return;
-  saveWorkspace(result.workspace);
-  for (const artifactId of result.createdArtifactIds || []) {
-    const artifact = result.workspace.artifacts.find((item) => item.id === artifactId);
-    if (artifact) {
-      publishApplicationEvent({
-        type: 'artifact.changed',
-        payload: { artifact, action: 'created' },
-      });
-    }
-  }
-}
-
 export async function getBackgroundChatJob(id: string): Promise<BackgroundJobStatus> {
-  const status = await runtimeFetch(`/jobs/${encodeURIComponent(id)}`, { method: 'GET' }) as BackgroundJobStatus;
-  if (['complete', 'completed'].includes(status.status)) {
-    reconcileBackgroundResult(status);
-    publishApplicationEvent({
-      type: 'background.job.completed',
-      payload: { jobId: id, status: status.status },
-    });
-  }
-  return status;
+  return await runtimeFetch(`/jobs/${encodeURIComponent(id)}`, { method: 'GET' }) as BackgroundJobStatus;
 }
 
 export async function waitForBackgroundChatJob(
