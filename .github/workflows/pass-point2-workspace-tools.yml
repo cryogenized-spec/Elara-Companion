@@ -1,0 +1,55 @@
+name: Point 2 Workspace Tools
+on:
+  push:
+    branches: [refactor/point2-workspace-tools]
+permissions:
+  contents: write
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+      - name: Replace Workspace tool dispatcher
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          cat > background-runtime/src/workspaceTools.ts <<'EOF'
+          import { createArtifact, generateCanvas, listArtifacts, normalizeWorkspace, readArtifact, renameArtifact, updateArtifact } from './workspaceToolOperations';
+          import { durableWorkspaceTools } from './workspaceToolDefinitions';
+          import type { DurableWorkspace, DurableWorkspaceToolResult } from './workspaceToolTypes';
+
+          export type { DurableWorkspace, DurableWorkspaceToolResult } from './workspaceToolTypes';
+          export { durableWorkspaceTools } from './workspaceToolDefinitions';
+
+          export function executeDurableWorkspaceTool(
+            workspaceInput: Partial<DurableWorkspace> | undefined,
+            toolName: string,
+            args: any,
+          ): DurableWorkspaceToolResult {
+            const workspace = normalizeWorkspace(workspaceInput);
+            const safeArgs = args && typeof args === 'object' ? args : {};
+            switch (toolName) {
+              case 'create_artifact': return createArtifact(workspace, safeArgs);
+              case 'read_artifact': return readArtifact(workspace, safeArgs);
+              case 'update_artifact': return updateArtifact(workspace, safeArgs);
+              case 'list_artifacts': return listArtifacts(workspace, safeArgs);
+              case 'rename_artifact': return renameArtifact(workspace, safeArgs);
+              case 'generate_canvas': return generateCanvas(workspace, safeArgs);
+              default: return { result: { success: false, error: `Unsupported durable tool: ${toolName}` }, updatedWorkspace: workspace };
+            }
+          }
+          EOF
+          npm --prefix background-runtime install --no-audit --no-fund
+          npm --prefix background-runtime run typecheck
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add background-runtime/src/workspaceTools.ts
+          git commit -m 'refactor(tools): reduce Workspace tool monolith to dispatcher [point2]'
+          git push origin HEAD:$BRANCH
+          rm -f .github/workflows/pass-point2-workspace-tools.yml
+          git add -u .github/workflows/pass-point2-workspace-tools.yml
+          git commit -m 'chore(point2): remove temporary Workspace runner' || true
+          git push origin HEAD:$BRANCH
