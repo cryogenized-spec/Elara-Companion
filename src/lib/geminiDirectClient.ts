@@ -30,12 +30,14 @@ export interface DirectStreamParams {
   thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
   workspace?: Workspace;
   googleToken?: string;
+  /** Normal Chat keeps tool execution enabled; specialised runtime callers can explicitly disable it. */
+  enableTools?: boolean;
   onChunk: (chunk: { text?: string; thoughtText?: string; thoughtType?: 'summary'; finishReason?: string; safetyRatings?: any; toolCall?: any; workspace?: Workspace; artifactIds?: string[] }) => void;
   signal?: AbortSignal;
 }
 
 export async function runDirectGeminiStream(params: DirectStreamParams): Promise<void> {
-  const { apiKey, model, systemPrompt, history = [], message, image, temperature, maxOutputTokens, topP, topK, thinkingBudget, thinkingLevel, workspace, googleToken, onChunk, signal } = params;
+  const { apiKey, model, systemPrompt, history = [], message, image, temperature, maxOutputTokens, topP, topK, thinkingBudget, thinkingLevel, workspace, googleToken, enableTools = true, onChunk, signal } = params;
   if (!apiKey || !apiKey.trim()) throw new Error('Please enter your Gemini API Key in Settings (Model & API tab) to chat on GitHub Pages.');
 
   const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
@@ -74,13 +76,14 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
               topK,
               thinkingBudget,
               thinkingLevel,
+              enableTools,
             }),
             contents,
             signal,
             onChunk: (chunk) => onChunk(chunk),
           });
 
-          const functionCalls = turn.functionCalls;
+          const functionCalls = enableTools ? turn.functionCalls : [];
           const modelParts = turn.modelParts;
 
           if (functionCalls.length === 0 || signal?.aborted) break;
@@ -191,30 +194,7 @@ export async function runDirectMemoryExtraction(apiKey: string, userMessage: str
     const formattedExisting = currentMemories?.length
       ? currentMemories.slice(0, 40).map((m) => `[ID: ${m.id}] [Resolution: ${m.resolution || 'contextual'}] [Kind: ${m.kind || 'context'}] [Lifecycle: ${m.lifecycle || 'persistent'}] [Category: ${m.category}] [State: ${m.state || 'active'}] [Confidence: ${m.confidence}] [Importance: ${m.importance}] \"${m.content}\"`).join('\n')
       : 'No existing memories recorded yet.';
-    const prompt = `Using the system/persona above, maintain Elara's memory as a quiet stream of small, useful observations.
-
-The first job here is NOT to decide what becomes permanent memory. Instead, notice potentially useful details revealed by the interaction and capture them as atomic observations that can be evaluated, reinforced, contradicted, promoted, or allowed to become stale later.
-
-Good observations include small facts about the user's circumstances, current activities, projects, plans, preferences, routines, interests, relationships, purchases, places, worries, decisions, or one-off events that could become relevant in a later conversation. A detail does not need to be important today to be worth recording. The point is to preserve useful dots and let later memory passes decide which dots form durable patterns.
-
-Write notes as natural, human-readable observations in Elara's own voice, not database labels and not robotic telemetry. Prefer a concise complete sentence that records the meaning rather than merely repeating a quote.
-
-Do not invent facts. Do not infer sensitive traits from weak evidence. Do not diagnose, speculate about, or permanently assign identities, beliefs, politics, religion, health, sexuality, ethnicity, or other sensitive traits merely from implication. Do not record credentials, secrets, passwords, API keys, financial credentials, or other authentication material. Do not turn a fleeting emotional statement into a stable personality trait.
-
-CREATE an observation when a detail is reasonably grounded in what the user actually said or did. UPDATE an existing note when the interaction clearly provides a newer or more precise version of the same observation. Prefer NO_ACTION when there is genuinely nothing useful to preserve.
-
-For this pass, newly created observations MUST use resolution=observation and state=active. Keep their lifecycle contextual or working as appropriate; do not promote observations directly to core or persistent memory. Use low or normal importance unless the user explicitly indicates that the detail matters more. Confidence should reflect the evidence actually present in the interaction.
-
-Return ONLY valid JSON using this schema: {\"actions\":[{\"type\":\"CREATE\"|\"UPDATE\"|\"NO_ACTION\",\"targetId\":\"existing ID when updating\",\"memory\":{\"content\":\"natural-language observation in Elara's voice\",\"kind\":\"fact|preference|observation|episode|project|relationship|plan|working|context\",\"lifecycle\":\"working|contextual|persistent|core\",\"source\":\"user|elara|conversation|artifact|system|imported\",\"category\":\"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other\",\"importance\":\"core|important|normal|low\",\"confidence\":\"certain|likely|uncertain\",\"isPrivate\":true,\"tags\":[\"string\"],\"eventDate\":\"optional YYYY-MM-DD\",\"expiresAt\":\"optional ISO timestamp\",\"sourceArtifactId\":\"optional artifact id\",\"relatedMemoryIds\":[\"optional ids\"]},\"reason\":\"brief reason\"}]}.
-
-RECENT INTERACTION:
-User: \"${userMessage.slice(0, 1400)}\"
-Elara: \"${assistantResponse.slice(0, 2200)}\"
-
-CURRENT NOTEBOOK:
-${formattedExisting}
-
-USER NAME: ${userName || ctx.userName}`;
+    const prompt = `Using the system/persona above, maintain Elara's memory as a quiet stream of small, useful observations.\n\nThe first job here is NOT to decide what becomes permanent memory. Instead, notice potentially useful details revealed by the interaction and capture them as atomic observations that can be evaluated, reinforced, contradicted, promoted, or allowed to become stale later.\n\nGood observations include small facts about the user's circumstances, current activities, projects, plans, preferences, routines, interests, relationships, purchases, places, worries, decisions, or one-off events that could become relevant in a later conversation. A detail does not need to be important today to be worth recording. The point is to preserve useful dots and let later memory passes decide which dots form durable patterns.\n\nWrite notes as natural, human-readable observations in Elara's own voice, not database labels and not robotic telemetry. Prefer a concise complete sentence that records the meaning rather than merely repeating a quote.\n\nDo not invent facts. Do not infer sensitive traits from weak evidence. Do not diagnose, speculate about, or permanently assign identities, beliefs, politics, religion, health, sexuality, ethnicity, or other sensitive traits merely from implication. Do not record credentials, secrets, passwords, API keys, financial credentials, or other authentication material. Do not turn a fleeting emotional statement into a stable personality trait.\n\nCREATE an observation when a detail is reasonably grounded in what the user actually said or did. UPDATE an existing note when the interaction clearly provides a newer or more precise version of the same observation. Prefer NO_ACTION when there is genuinely nothing useful to preserve.\n\nFor this pass, newly created observations MUST use resolution=observation and state=active. Keep their lifecycle contextual or working as appropriate; do not promote observations directly to core or persistent memory. Use low or normal importance unless the user explicitly indicates that the detail matters more. Confidence should reflect the evidence actually present in the interaction.\n\nReturn ONLY valid JSON using this schema: {\"actions\":[{\"type\":\"CREATE\"|\"UPDATE\"|\"NO_ACTION\",\"targetId\":\"existing ID when updating\",\"memory\":{\"content\":\"natural-language observation in Elara's voice\",\"kind\":\"fact|preference|observation|episode|project|relationship|plan|working|context\",\"lifecycle\":\"working|contextual|persistent|core\",\"source\":\"user|elara|conversation|artifact|system|imported\",\"category\":\"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other\",\"importance\":\"core|important|normal|low\",\"confidence\":\"certain|likely|uncertain\",\"isPrivate\":true,\"tags\":[\"string\"],\"eventDate\":\"optional YYYY-MM-DD\",\"expiresAt\":\"optional ISO timestamp\",\"sourceArtifactId\":\"optional artifact id\",\"relatedMemoryIds\":[\"optional ids\"]},\"reason\":\"brief reason\"}]} .\n\nRECENT INTERACTION:\nUser: \"${userMessage.slice(0, 1400)}\"\nElara: \"${assistantResponse.slice(0, 2200)}\"\n\nCURRENT NOTEBOOK:\n${formattedExisting}\n\nUSER NAME: ${userName || ctx.userName}`;
     const res = await ai.models.generateContent({
       model: normalizeModel(ctx.model),
       contents: [{ role: 'user', parts: [{ text: `${ctx.systemPrompt}\n\n${prompt}` }] }],
