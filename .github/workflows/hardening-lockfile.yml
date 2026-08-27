@@ -1,4 +1,4 @@
-name: Hardening - npm lockfile
+name: Hardening - npm lockfiles
 
 on:
   push:
@@ -20,17 +20,22 @@ jobs:
         with:
           node-version: 24
 
-      - name: Generate authoritative npm lockfile
+      - name: Generate root npm lockfile
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 
-      - name: Commit lockfile when changed or untracked
+      - name: Generate background runtime npm lockfile
+        run: npm --prefix background-runtime install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Commit lockfiles when changed or untracked
         run: |
-          if test -f package-lock.json && git ls-files --error-unmatch package-lock.json >/dev/null 2>&1 && git diff --quiet -- package-lock.json; then
-            echo 'package-lock.json is tracked and matches package.json.'
+          if test -f package-lock.json && test -f background-runtime/package-lock.json && \
+             git ls-files --error-unmatch package-lock.json background-runtime/package-lock.json >/dev/null 2>&1 && \
+             git diff --quiet -- package-lock.json background-runtime/package-lock.json; then
+            echo 'Both npm lockfiles are tracked and match their manifests.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package-lock.json
-          git commit -m 'chore: add authoritative npm lockfile'
+          git add package-lock.json background-runtime/package-lock.json
+          git commit -m 'chore: add authoritative npm lockfiles'
           git push
