@@ -17,7 +17,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci --no-audit --no-fund
 
       - name: Install Wrangler
         run: npm install --global wrangler@latest
@@ -36,4 +36,4 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: wrangler deploy --config background-runtime/wrangler.google-auth.toml
+        run: npx wrangler deploy --config background-runtime/wrangler.google-auth.toml
