@@ -1,7 +1,9 @@
 import { googleCapabilities, googleIdentity } from './googleWorkspaceService';
 import type { GoogleCapability } from './googleWorkspaceService';
 
-async function getGoogleGmailAccessToken(capability: GoogleCapability): Promise<string> {
+async function getGoogleGmailAccessToken(capability: GoogleCapability, explicitToken?: string): Promise<string> {
+  const provided = explicitToken?.trim();
+  if (provided) return provided;
   const token = googleIdentity.getAccessToken();
   if (token && googleCapabilities.isGranted(googleCapabilities.getGrantedScopes(), capability)) return token;
   return googleIdentity.requestCapabilityAuthorization(googleCapabilities.getScopes(capability), false);
@@ -30,8 +32,8 @@ function encodeBase64Url(value: string): string {
 export interface GmailMessageSummary { id: string; threadId: string; from: string; to: string; subject: string; date: string; snippet: string; isUnread: boolean; labels: string[]; }
 export interface GmailMessageFull extends GmailMessageSummary { bodyText: string; bodyHtml?: string; }
 
-export async function listGmailMessages(query = '', maxResults = 10): Promise<{ messages: GmailMessageSummary[] }> {
-  const token = await getGoogleGmailAccessToken('gmail.read');
+export async function listGmailMessages(query = '', maxResults = 10, explicitToken?: string): Promise<{ messages: GmailMessageSummary[] }> {
+  const token = await getGoogleGmailAccessToken('gmail.read', explicitToken);
   let url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${maxResults}`;
   if (query.trim()) url += `&q=${encodeURIComponent(query.trim())}`;
   const res = await fetch(url, { headers: authHeaders(token) });
@@ -51,8 +53,8 @@ export async function listGmailMessages(query = '', maxResults = 10): Promise<{ 
   return { messages: rows.filter(Boolean) as GmailMessageSummary[] };
 }
 
-export async function getGmailMessageDetails(messageId: string): Promise<GmailMessageFull> {
-  const token = await getGoogleGmailAccessToken('gmail.read');
+export async function getGmailMessageDetails(messageId: string, explicitToken?: string): Promise<GmailMessageFull> {
+  const token = await getGoogleGmailAccessToken('gmail.read', explicitToken);
   const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`, { headers: authHeaders(token) });
   if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to fetch email details'));
   const data = await res.json();
@@ -66,8 +68,8 @@ export async function getGmailMessageDetails(messageId: string): Promise<GmailMe
   return { id: data.id, threadId: data.threadId, from: header('From') || 'Unknown Sender', to: header('To') || 'Me', subject: header('Subject') || '(No Subject)', date: header('Date') || '', snippet: data.snippet || '', isUnread: labels.includes('UNREAD'), labels, bodyText };
 }
 
-export async function createGmailDraft(to: string, subject: string, bodyText: string): Promise<{ draftId: string; messageId: string }> {
-  const token = await getGoogleGmailAccessToken('gmail.compose');
+export async function createGmailDraft(to: string, subject: string, bodyText: string, explicitToken?: string): Promise<{ draftId: string; messageId: string }> {
+  const token = await getGoogleGmailAccessToken('gmail.compose', explicitToken);
   const raw = encodeBase64Url([`To: ${to}`, `Subject: ${subject}`, 'MIME-Version: 1.0', 'Content-Type: text/plain; charset=UTF-8', '', bodyText].join('\r\n'));
   const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', { method: 'POST', headers: jsonHeaders(token), body: JSON.stringify({ message: { raw } }) });
   if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to create Gmail draft'));
@@ -75,8 +77,8 @@ export async function createGmailDraft(to: string, subject: string, bodyText: st
   return { draftId: data.id, messageId: data.message?.id };
 }
 
-export async function sendGmailMessage(to: string, subject: string, bodyText: string, inReplyTo?: string, threadId?: string): Promise<{ messageId: string; threadId: string }> {
-  const token = await getGoogleGmailAccessToken('gmail.send');
+export async function sendGmailMessage(to: string, subject: string, bodyText: string, inReplyTo?: string, threadId?: string, explicitToken?: string): Promise<{ messageId: string; threadId: string }> {
+  const token = await getGoogleGmailAccessToken('gmail.send', explicitToken);
   const headers = [`To: ${to}`, `Subject: ${subject}`, 'MIME-Version: 1.0', 'Content-Type: text/plain; charset=UTF-8'];
   if (inReplyTo) { headers.push(`In-Reply-To: ${inReplyTo}`, `References: ${inReplyTo}`); }
   headers.push('', bodyText);
