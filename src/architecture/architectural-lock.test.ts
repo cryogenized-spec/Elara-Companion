@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,10 +52,18 @@ test('UI Workspace consumers use the application Workspace boundary', async () =
   assert.deepEqual(offenders, []);
 });
 
-test('legacy Keep path contains no implementation', async () => {
-  const source = await readText('src/legacy/googleKeepArchive.ts');
-  assert.doesNotMatch(source, /localStorage\.setItem|localStorage\.getItem|LOCAL_REFERENCE_ARCHIVE_KEY|LOCAL_KEEP_ARCHIVE_KEY/);
-  assert.match(source, /services\/referenceArchiveService/);
+test('deleted legacy Keep implementation stays deleted', async () => {
+  assert.equal(existsSync(join(root, 'src/legacy/googleKeepArchive.ts')), false);
+});
+
+test('production source contains no deleted legacy Keep import', async () => {
+  const files = await collectSourceFiles('src');
+  const offenders: string[] = [];
+  for (const file of files) {
+    const source = await readText(file);
+    if (source.includes('legacy/googleKeepArchive')) offenders.push(file);
+  }
+  assert.deepEqual(offenders, []);
 });
 
 test('canonical reference archive owns historical Keep storage key deliberately', async () => {
@@ -91,6 +100,15 @@ test('Workspace editor delegates application mutations to the Workspace service'
   assert.match(source, /deleteArtifact: workspaceService\.deleteArtifact/);
   assert.match(source, /updateArtifact: workspaceService\.updateArtifact/);
   assert.doesNotMatch(source, /from ['\"]\.\.\/lib\/workspaceStorage['\"]/);
+});
+
+test('Workspace tools use canonical Google and reference-archive services directly', async () => {
+  const source = await readText('src/lib/workspaceTools.ts');
+  assert.doesNotMatch(source, /from ['\"]\.\/googleApi['\"]/);
+  assert.doesNotMatch(source, /legacy\/googleKeepArchive/);
+  assert.match(source, /services\/googleDocsDriveService/);
+  assert.match(source, /services\/googleWorkspaceService/);
+  assert.match(source, /services\/referenceArchiveService/);
 });
 
 test('Background terminal reconciliation is idempotent per durable job id', async () => {
