@@ -63,7 +63,22 @@ test('Settings UI uses application-owned persistence and capability boundaries',
   assert.match(source, /settingsPersistence\.savePersonaSnapshots/);
   assert.match(source, /getSettingsRateLimits/);
   assert.match(source, /getUpcomingCalendarEvents/);
-  const googleImport = source.match(/import \{[\s\S]*?\} from ['\"]\.\.\/services\/settingsGoogleService['\"]/)
+  const googleImport = source.match(/import \{[\s\S]*?\} from ['\"]\.\.\/services\/settingsGoogleService['\"]/) ;
   assert.ok(googleImport, 'SettingsModal must import settingsGoogleService through the canonical boundary');
   assert.doesNotMatch(googleImport[0], /searchKeepNotes|createKeepNote|updateKeepNote|getKeepNote|deleteKeepNote|listKeepNotes/);
+});
+
+test('Workspace background reconciliation uses the application persistence boundary', async () => {
+  const source = await readText('src/services/workspaceBackgroundService.ts');
+  assert.match(source, /services\/workspacePersistenceService/);
+  assert.doesNotMatch(source, /from ['\"]\.\.\/lib\/workspaceStorage['\"]/);
+});
+
+test('Workspace editor delegates application mutations to the Workspace service', async () => {
+  const source = await readText('src/services/workspaceEditorService.ts');
+  assert.match(source, /services\/workspaceService/);
+  assert.match(source, /createArtifact: workspaceService\.createArtifact/);
+  assert.match(source, /deleteArtifact: workspaceService\.deleteArtifact/);
+  assert.match(source, /updateArtifact: workspaceService\.updateArtifact/);
+  assert.doesNotMatch(source, /from ['\"]\.\.\/lib\/workspaceStorage['\"]/);
 });
