@@ -1,0 +1,108 @@
+name: Apply Settings boundary migration
+
+on:
+  push:
+    branches:
+      - refactor/pass64-google-facade-inversion
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-python@v6
+      - name: Apply guarded Settings extraction
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          settings = Path('src/components/SettingsModal.tsx')
+          source = settings.read_text()
+
+          required = [
+              "import { getDbSnapshots, setDbSnapshots } from '../lib/db';",
+              "import { loadRateLimits } from '../lib/storage';",
+              "import { googleCalendarContract } from '../contracts/implementations';",
+              "  searchKeepNotes,\n  createKeepNote,\n  updateKeepNote,\n  getKeepNote,\n  deleteKeepNote,\n  listKeepNotes,",
+              '    getDbSnapshots().then(setSnapshots);',
+              '    await setDbSnapshots(updated);',
+              '      const data = await googleCalendarContract.getUpcoming(15);',
+              '      setRateLimits(loadRateLimits());',
+          ]
+          for needle in required:
+              if needle not in source:
+                  raise SystemExit(f'Expected Settings pattern missing: {needle!r}')
+
+          source = source.replace(
+              "import { getDbSnapshots, setDbSnapshots } from '../lib/db';",
+              "import { settingsPersistence } from '../services/settingsPersistenceService';",
+              1,
+          )
+          source = source.replace(
+              "import { loadRateLimits } from '../lib/storage';",
+              "import { getSettingsRateLimits } from '../services/settingsDiagnosticsService';",
+              1,
+          )
+          source = source.replace(
+              "import { googleCalendarContract } from '../contracts/implementations';",
+              "import { getUpcomingCalendarEvents } from '../services/settingsCalendarService';",
+              1,
+          )
+          source = source.replace('    getDbSnapshots().then(setSnapshots);', '    settingsPersistence.loadPersonaSnapshots().then(setSnapshots);', 1)
+          source = source.replace('    await setDbSnapshots(updated);', '    await settingsPersistence.savePersonaSnapshots(updated);')
+          source = source.replace('      const data = await googleCalendarContract.getUpcoming(15);', '      const data = await getUpcomingCalendarEvents(15);', 1)
+          source = source.replace('      setRateLimits(loadRateLimits());', '      setRateLimits(getSettingsRateLimits());', 1)
+
+          keep_block = "  searchKeepNotes,\n  createKeepNote,\n  updateKeepNote,\n  getKeepNote,\n  deleteKeepNote,\n  listKeepNotes,\n"
+          source = source.replace(keep_block, '')
+          marker = "} from '../services/settingsGoogleService';\n"
+          source = source.replace(
+              marker,
+              marker + "import {\n  searchReferenceNotes as searchKeepNotes,\n  createReferenceNote as createKeepNote,\n  updateReferenceNote as updateKeepNote,\n  getReferenceNote as getKeepNote,\n  deleteReferenceNote as deleteKeepNote,\n  listReferenceNotes as listKeepNotes,\n} from '../services/referenceArchiveService';\n",
+              1,
+          )
+
+          settings.write_text(source)
+
+          Path('src/services/settingsDiagnosticsService.ts').write_text("""import { loadRateLimits } from '../lib/storage';\n\n/** Settings-owned diagnostics boundary. Low-level rate-limit storage remains hidden from UI. */\nexport function getSettingsRateLimits(): { date: string; counts: Record<string, number> } {\n  return loadRateLimits();\n}\n""")
+
+          Path('src/services/settingsCalendarService.ts').write_text("""import { googleCalendarContract } from '../contracts/implementations';\n\nexport const getUpcomingCalendarEvents = (maxResults?: number) =>\n  googleCalendarContract.getUpcoming(maxResults);\n""")
+
+          lock = Path('src/architecture/architectural-lock.test.ts')
+          lock_source = lock.read_text()
+          extra = """
+
+test('Settings UI uses application-owned persistence and settings capability boundaries', async () => {
+  const source = await readText('src/components/SettingsModal.tsx');
+  assert.doesNotMatch(source, /from ['\"]\.\.\/lib\/db['\"]/);
+  assert.doesNotMatch(source, /from ['\"]\.\.\/lib\/storage['\"]/);
+  assert.doesNotMatch(source, /from ['\"]\.\.\/contracts\/implementations['\"]/);
+  assert.doesNotMatch(source, /from ['\"]\.\.\/services\/settingsGoogleService['\"][\\s\\S]*searchKeepNotes/);
+  assert.match(source, /settingsPersistence\.loadPersonaSnapshots/);
+  assert.match(source, /settingsPersistence\.savePersonaSnapshots/);
+  assert.match(source, /getSettingsRateLimits/);
+  assert.match(source, /getUpcomingCalendarEvents/);
+});
+"""
+          if 'Settings UI uses application-owned persistence and settings capability boundaries' not in lock_source:
+              lock.write_text(lock_source + extra)
+          
+          # Archive this one-shot migration workflow after applying it.
+          workflow = Path('.github/workflows/apply-settings-boundary.yml')
+          workflow.write_text("""name: Apply Settings boundary migration (archived)\n\n# One-shot migration retained only as an audit record.\n\non:\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\njobs:\n  archived:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo 'Settings boundary migration already applied.'\n""")
+          PY
+          
+          npm install --no-audit --no-fund
+          npm run verify:production
+          git config user.name 'Elara Architecture Bot'
+          git config user.email 'architecture@users.noreply.github.com'
+          git add src/components/SettingsModal.tsx src/services/settingsDiagnosticsService.ts src/services/settingsCalendarService.ts src/architecture/architectural-lock.test.ts .github/workflows/apply-settings-boundary.yml
+          git diff --cached --check
+          git commit -m 'refactor(settings): complete application boundary extraction'
+          git push
