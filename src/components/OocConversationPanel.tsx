@@ -1,49 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { GoogleGenAI } from '@google/genai';
 import { MessageCircle, RefreshCw, Send, X } from 'lucide-react';
-import { getDbConversations, getDbSettings } from '../lib/db';
-import { buildConversationContents, buildRuntimeConfig } from '../lib/chatRuntime';
-import { buildSystemPayload, loadActiveScratchpad, loadUserProfileNotes } from '../lib/contextManager';
-import { DEFAULT_PERSONA_PROTOCOL, DEFAULT_INTIMACY_MODULE, DEFAULT_RUNTIME_RULES } from '../constants/defaultPrompt';
-import type { Conversation, ElaraSettings } from '../types';
-
-interface OocMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: number;
-}
-
-const STORAGE_KEY = 'elara_ooc_threads_v1';
-
-function loadThreads(): Record<string, OocMessage[]> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveThreads(threads: Record<string, OocMessage[]>): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(threads));
-  } catch {
-    // Best effort persistence.
-  }
-}
-
-function appendThreadMessage(parentConversationId: string, message: OocMessage): OocMessage[] {
-  const threads = loadThreads();
-  const next = [...(threads[parentConversationId] || []), message];
-  threads[parentConversationId] = next;
-  saveThreads(threads);
-  return next;
-}
-
-function buildOocSystemFrame(roleplayContext: string): string {
-  return `\n\n[OOC CONVERSATION MODE]\nRemain Elara exactly as defined by the governing system and persona instructions. OOC changes only the framing of the discussion; it does not change Elara's identity, values, voice, or relationship with the user.\n\nDiscuss the shared roleplay from a reflective, meta-level perspective. You may analyse character motivations, continuity, pacing, scene choices, consequences, worldbuilding, and the user's fictional character's actions. Treat Elara's fictional actions as hers and the user's fictional actions as belonging to the user's character. Do not switch into generic assistant language or claim to become an external narrator.\n\nThis pass is discussion-only. Do not use tools, create or modify artifacts, access Google services, alter application state, or perform external actions from OOC. When an action should actually be performed, discuss it here and leave the handoff to the main Elara agent for the next pass.\n\n[ROLEPLAY CONTEXT]\n${roleplayContext || 'No roleplay messages exist yet.'}\n`;
-}
+import {
+  appendOocMessage,
+  loadOocConversations,
+  loadOocSettings,
+  loadOocThreads,
+  streamOocResponse,
+  type OocMessage,
+} from '../services/oocConversationService';
+import type { Conversation } from '../types';
 
 export const OocConversationPanel: React.FC = () => {
   const [open, setOpen] = useState(false);
@@ -55,7 +20,7 @@ export const OocConversationPanel: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const refreshConversations = async () => {
-    const loaded = await getDbConversations();
+    const loaded = await loadOocConversations();
     setConversations(loaded);
     if (!parentConversationId && loaded.length > 0) {
       setParentConversationId(loaded[0].id);
@@ -67,7 +32,7 @@ export const OocConversationPanel: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const threads = loadThreads();
+    const threads = loadOocThreads();
     setMessages(parentConversationId ? (threads[parentConversationId] || []) : []);
   }, [parentConversationId]);
 
@@ -77,7 +42,7 @@ export const OocConversationPanel: React.FC = () => {
   );
 
   const persistAndSet = (message: OocMessage) => {
-    const next = appendThreadMessage(parentConversationId, message);
+    const next = appendOocMessage(parentConversationId, message);
     setMessages(next);
   };
 
@@ -97,7 +62,7 @@ export const OocConversationPanel: React.FC = () => {
     setBusy(true);
 
     try {
-      const settings: ElaraSettings = await getDbSettings();
+      const settings = await loadOocSettings();
       if (!settings.apiKey?.trim()) {
         throw new Error('Add your Gemini API key in Settings before using OOC chat on GitHub Pages.');
       }
@@ -107,53 +72,22 @@ export const OocConversationPanel: React.FC = () => {
         .map((message) => `${message.role === 'user' ? 'USER' : 'ELARA'}: ${message.content}`)
         .join('\n\n');
 
-      const baseSystemInstruction = settings.systemPrompt.replaceAll('[[user]]', settings.userName || 'User');
-      const systemPrompt = buildSystemPayload({
-        baseSystemInstruction: `${baseSystemInstruction}${buildOocSystemFrame(roleplayContext)}`,
-        personaProtocol: settings.personaProtocol || DEFAULT_PERSONA_PROTOCOL,
-        intimacyModule: settings.intimacyModule || DEFAULT_INTIMACY_MODULE,
-        runtimeRules: settings.runtimeRules || DEFAULT_RUNTIME_RULES,
-        adultFictionEnabled: settings.adultFictionEnabled,
-        adultFictionModule: settings.adultFictionModule,
-        activeModelId: settings.model || 'gemini-3.7-flash',
-        uiSettingsSummary: `Theme: ${settings.theme}, User: ${settings.userName || 'User'}, Timezone: ${settings.timezone}`,
-        userProfileNotes: loadUserProfileNotes(),
-        activeScratchpad: loadActiveScratchpad(),
-      });
-
-      const history = messages.slice(-20).map((message) => ({ role: message.role, content: message.content }));
-      const ai = new GoogleGenAI({ apiKey: settings.apiKey.trim() });
-      const config = buildRuntimeConfig({
-        model: settings.model || 'gemini-3.7-flash',
-        systemPrompt,
-        temperature: settings.temperature,
-        maxOutputTokens: settings.maxOutputTokens,
-        topP: settings.topP,
-        topK: settings.topK,
-        thinkingBudget: settings.thinkingBudget,
-      });
-
-      // OOC is intentionally discussion-only in Pass 4: remove the agent tool surface.
-      delete config.tools;
-
-      const stream = await ai.models.generateContentStream({
-        model: settings.model || 'gemini-3.7-flash',
-        contents: buildConversationContents(history, text),
-        config,
-      });
-
+      const history = messages.slice(-20);
       let responseText = '';
-      for await (const chunk of stream) {
-        for (const part of chunk.candidates?.[0]?.content?.parts || []) {
-          if ((part as any).thought) continue;
-          if (part.text) responseText += part.text;
-        }
-      }
+      await streamOocResponse({
+        settings,
+        roleplayContext,
+        history,
+        message: text,
+        onComplete: (content) => {
+          responseText = content;
+        },
+      });
 
       persistAndSet({
         id: `ooc_${Date.now()}_a`,
         role: 'assistant',
-        content: responseText.trim() || 'I have nothing further to add on that point just yet.',
+        content: responseText,
         timestamp: Date.now(),
       });
     } catch (err) {
