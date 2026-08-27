@@ -1,1 +1,0 @@
-CI verification marker for completed Settings and Workspace rehabilitation passes. This file has no runtime effect.
