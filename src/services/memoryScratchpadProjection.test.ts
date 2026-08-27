@@ -10,7 +10,7 @@ function memory(id: string, importance: MemoryItem['importance'], content: strin
     content,
     kind: 'observation',
     lifecycle: 'persistent',
-    source: 'test',
+    source: 'system',
     confidence: 'certain',
     importance,
     isPrivate: true,
