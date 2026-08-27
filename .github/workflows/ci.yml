@@ -7,99 +7,6 @@ on:
     branches: [main, fix/**, refactor/**]
 
 permissions:
-  contents: write
-
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - name: One-shot Settings boundary migration
-        if: github.ref == 'refs/heads/refactor/pass64-google-facade-inversion'
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          settings = Path('src/components/SettingsModal.tsx')
-          source = settings.read_text()
-
-          replacements = [
-              ("import { getDbSnapshots, setDbSnapshots } from '../lib/db';", "import { settingsPersistence } from '../services/settingsPersistenceService';"),
-              ("import { loadRateLimits } from '../lib/storage';", "import { getSettingsRateLimits } from '../services/settingsDiagnosticsService';"),
-              ("import { googleCalendarContract } from '../contracts/implementations';", "import { getUpcomingCalendarEvents } from '../services/settingsCalendarService';"),
-              ('    getDbSnapshots().then(setSnapshots);', '    settingsPersistence.loadPersonaSnapshots().then(setSnapshots);'),
-              ('    await setDbSnapshots(updated);', '    await settingsPersistence.savePersonaSnapshots(updated);'),
-              ('      const data = await googleCalendarContract.getUpcoming(15);', '      const data = await getUpcomingCalendarEvents(15);'),
-              ('      const data = await googleCalendarContract.getUpcoming(5);', '      const data = await getUpcomingCalendarEvents(5);'),
-              ('      setRateLimits(loadRateLimits());', '      setRateLimits(getSettingsRateLimits());'),
-              ('  searchKeepNotes,\n', ''),
-              ('  createKeepNote,\n', ''),
-              ('  updateKeepNote,\n', ''),
-              ('  getKeepNote,\n', ''),
-              ('  deleteKeepNote,\n', ''),
-              ('  listKeepNotes,\n', ''),
-              ('  KeepNoteItem,\n', ''),
-          ]
-
-          changed = False
-          for old, new in replacements:
-              if old in source:
-                  source = source.replace(old, new, 1)
-                  changed = True
-
-          marker = "} from '../services/settingsGoogleService';\n"
-          archive_import = """} from '../services/settingsGoogleService';\nimport {\n  searchReferenceNotes as searchKeepNotes,\n  createReferenceNote as createKeepNote,\n  updateReferenceNote as updateKeepNote,\n  getReferenceNote as getKeepNote,\n  deleteReferenceNote as deleteKeepNote,\n  listReferenceNotes as listKeepNotes,\n} from '../services/referenceArchiveService';\nimport type { ReferenceNoteItem as KeepNoteItem } from '../services/referenceArchiveService';\n"""
-          if "from '../services/referenceArchiveService';" not in source:
-              if marker not in source:
-                  raise SystemExit('Settings Google import marker not found; refusing partial migration.')
-              source = source.replace(marker, archive_import, 1)
-              changed = True
-
-          settings.write_text(source)
-          print('Settings boundary migration applied.' if changed else 'Settings boundary migration already applied.')
-
-          lock = Path('src/architecture/architectural-lock.test.ts')
-          lock_source = lock.read_text()
-          old_lock = "  assert.doesNotMatch(source, /searchKeepNotes|createKeepNote|updateKeepNote|getKeepNote|deleteKeepNote|listKeepNotes/);"
-          new_lock = """  const googleImport = source.match(/import \\{[\\s\\S]*?\\} from ['\\\"]\\.\\.\\/services\\/settingsGoogleService['\\\"]/)\n  assert.ok(googleImport, 'SettingsModal must import settingsGoogleService capabilities through the canonical boundary');\n  assert.doesNotMatch(googleImport[0], /searchKeepNotes|createKeepNote|updateKeepNote|getKeepNote|deleteKeepNote|listKeepNotes/);"""
-          if old_lock in lock_source:
-              lock_source = lock_source.replace(old_lock, new_lock, 1)
-              lock.write_text(lock_source)
-              print('Updated Settings architectural lock test.')
-
-          # Remove the one-shot migration mechanism itself after this transaction.
-          workflow = Path('.github/workflows/ci.yml')
-          read_only_ci = """name: CI\n\non:\n  pull_request:\n    branches: [main]\n  push:\n    branches: [main, fix/**, refactor/**]\n\npermissions:\n  contents: read\n\nconcurrency:\n  group: ci-${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true\n\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v6\n\n      - name: Setup Node\n        uses: actions/setup-node@v6\n        with:\n          node-version: 24\n\n      - name: Install dependencies\n        run: npm install --no-audit --no-fund\n\n      - name: Production verification\n        run: npm run verify:production\n"""
-
-          npm install --no-audit --no-fund
-          npm run verify:production
-          npm test
-
-          git config user.name 'Elara Architecture Bot'
-          git config user.email 'architecture@users.noreply.github.com'
-          printf '%s' "$READ_ONLY_CI" > /tmp/unused 2>/dev/null || true
-          cat > .github/workflows/ci.yml <<'EOF'
-name: CI
-
-on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main, fix/**, refactor/**]
-
-permissions:
   contents: read
 
 concurrency:
@@ -117,18 +24,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 24
-
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-
-      - name: Production verification
-        run: npm run verify:production
-EOF
-
-          git add src/components/SettingsModal.tsx src/architecture/architectural-lock.test.ts .github/workflows/ci.yml
-          git diff --cached --check
-          git commit -m 'refactor(settings): complete application boundary extraction'
-          git push
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
