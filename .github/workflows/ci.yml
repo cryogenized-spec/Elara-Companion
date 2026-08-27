@@ -7,7 +7,7 @@ on:
     branches: [main, fix/**, refactor/**]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -21,86 +21,6 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
-      - name: One-shot Settings boundary migration
-        if: github.event_name == 'pull_request' && github.head_ref == 'refactor/pass64-google-facade-inversion'
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          settings = Path('src/components/SettingsModal.tsx')
-          source = settings.read_text()
-          required = [
-              "import { getDbSnapshots, setDbSnapshots } from '../lib/db';",
-              "import { loadRateLimits } from '../lib/storage';",
-              "import { googleCalendarContract } from '../contracts/implementations';",
-              "  searchKeepNotes,\n  createKeepNote,\n  updateKeepNote,\n  getKeepNote,\n  deleteKeepNote,\n  listKeepNotes,",
-              '    getDbSnapshots().then(setSnapshots);',
-              '    await setDbSnapshots(updated);',
-              '      const data = await googleCalendarContract.getUpcoming(15);',
-              '      setRateLimits(loadRateLimits());',
-          ]
-          if not all(needle in source for needle in required):
-              print('Settings migration already applied or source shape changed; leaving source untouched.')
-          else:
-              source = source.replace("import { getDbSnapshots, setDbSnapshots } from '../lib/db';", "import { settingsPersistence } from '../services/settingsPersistenceService';", 1)
-              source = source.replace("import { loadRateLimits } from '../lib/storage';", "import { getSettingsRateLimits } from '../services/settingsDiagnosticsService';", 1)
-              source = source.replace("import { googleCalendarContract } from '../contracts/implementations';", "import { getUpcomingCalendarEvents } from '../services/settingsCalendarService';", 1)
-              source = source.replace('    getDbSnapshots().then(setSnapshots);', '    settingsPersistence.loadPersonaSnapshots().then(setSnapshots);', 1)
-              source = source.replace('    await setDbSnapshots(updated);', '    await settingsPersistence.savePersonaSnapshots(updated);')
-              source = source.replace('      const data = await googleCalendarContract.getUpcoming(15);', '      const data = await getUpcomingCalendarEvents(15);', 1)
-              source = source.replace('      setRateLimits(loadRateLimits());', '      setRateLimits(getSettingsRateLimits());', 1)
-
-              keep_block = "  searchKeepNotes,\n  createKeepNote,\n  updateKeepNote,\n  getKeepNote,\n  deleteKeepNote,\n  listKeepNotes,\n"
-              source = source.replace(keep_block, '')
-              marker = "} from '../services/settingsGoogleService';\n"
-              if marker not in source:
-                  raise SystemExit('settingsGoogleService import marker not found')
-              source = source.replace(marker, marker + "import {\n  searchReferenceNotes as searchKeepNotes,\n  createReferenceNote as createKeepNote,\n  updateReferenceNote as updateKeepNote,\n  getReferenceNote as getKeepNote,\n  deleteReferenceNote as deleteKeepNote,\n  listReferenceNotes as listKeepNotes,\n} from '../services/referenceArchiveService';\n", 1)
-              settings.write_text(source)
-
-          Path('src/services/settingsDiagnosticsService.ts').write_text("""import { loadRateLimits } from '../lib/storage';\n\n/** Settings-owned diagnostics boundary. Low-level rate-limit storage remains hidden from UI. */\nexport function getSettingsRateLimits(): { date: string; counts: Record<string, number> } {\n  return loadRateLimits();\n}\n""")
-          Path('src/services/settingsCalendarService.ts').write_text("""import { googleCalendarContract } from '../contracts/implementations';\n\nexport const getUpcomingCalendarEvents = (maxResults?: number) =>\n  googleCalendarContract.getUpcoming(maxResults);\n""")
-
-          lock = Path('src/architecture/architectural-lock.test.ts')
-          lock_source = lock.read_text()
-          marker = "test('Settings UI uses application-owned persistence and settings capability boundaries'"
-          if marker not in lock_source:
-              lock.write_text(lock_source + """
-
-test('Settings UI uses application-owned persistence and settings capability boundaries', async () => {
-  const source = await readText('src/components/SettingsModal.tsx');
-  assert.doesNotMatch(source, /from ['\"]\.\.\/lib\/db['\"]/);
-  assert.doesNotMatch(source, /from ['\"]\.\.\/lib\/storage['\"]/);
-  assert.doesNotMatch(source, /from ['\"]\.\.\/contracts\/implementations['\"]/);
-  assert.doesNotMatch(source, /from ['\"]\.\.\/services\/settingsGoogleService['\"][\\s\\S]*searchKeepNotes/);
-  assert.match(source, /settingsPersistence\\.loadPersonaSnapshots/);
-  assert.match(source, /settingsPersistence\\.savePersonaSnapshots/);
-  assert.match(source, /getSettingsRateLimits/);
-  assert.match(source, /getUpcomingCalendarEvents/);
-});
-""")
-          PY
-
-          npm install --no-audit --no-fund
-          npm run verify:production
-          npm test
-          git config user.name 'Elara Architecture Bot'
-          git config user.email 'architecture@users.noreply.github.com'
-          git add src/components/SettingsModal.tsx src/services/settingsDiagnosticsService.ts src/services/settingsCalendarService.ts src/architecture/architectural-lock.test.ts .github/workflows/ci.yml .github/workflows/apply-settings-boundary.yml
-          # Restore CI to read-only after the one-shot migration and archive the migration workflow.
-          git checkout -- .github/workflows/ci.yml
-          printf '%s\n' "name: Apply Settings boundary migration (archived)" "" "# One-shot migration retained only as an audit record." "" "on:" "  workflow_dispatch:" "" "permissions:" "  contents: read" "" "jobs:" "  archived:" "    runs-on: ubuntu-latest" "    steps:" "      - run: echo 'Settings boundary migration already applied.'" > .github/workflows/apply-settings-boundary.yml
-          git add .github/workflows/ci.yml .github/workflows/apply-settings-boundary.yml
-          git diff --cached --check
-          git commit -m 'refactor(settings): complete application boundary extraction'
-          git push
-
-      - name: Setup Node (post-migration)
         uses: actions/setup-node@v6
         with:
           node-version: 24
