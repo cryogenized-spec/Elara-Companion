@@ -34,7 +34,6 @@ export async function loadMemoryTransparencyState(
 export async function saveMemoryState(state: MemoryScratchpadState, conversationId?: string): Promise<void> {
   currentMemoryState = state;
   await setDbMemoryState(state);
-  persistMemoryScratchpad(state.memories);
   publishApplicationEvent({
     type: 'memory.changed',
     payload: { conversationId, state, reason: 'save' },
@@ -46,6 +45,7 @@ export function getLoadedMemoryState(): MemoryScratchpadState | null {
   return currentMemoryState;
 }
 
+/** Applies domain memory actions and updates the derived compatibility projection once. */
 export function reduceMemoryActions(
   state: MemoryScratchpadState,
   actions: MemoryAction[],
