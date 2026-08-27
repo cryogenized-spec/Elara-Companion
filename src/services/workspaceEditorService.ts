@@ -8,9 +8,8 @@ export const workspaceEditorService = {
   saveWorkspace: workspacePersistenceService.saveWorkspace,
   selectArtifact: workspaceService.selectArtifact,
   createArtifact: workspaceService.createArtifact,
-  deleteArtifact: workspaceService.removeArtifact,
-  updateArtifact: (workspace: Workspace, artifactId: string, updates: Partial<WorkspaceArtifact>): Workspace =>
-    workspaceService.updateArtifactById(artifactId, updates) ? workspaceService.getWorkspace() : workspace,
+  deleteArtifact: workspaceService.deleteArtifact,
+  updateArtifact: workspaceService.updateArtifact,
   checkpoint: createCheckpoint,
   restoreRevision,
   compareRevisions,
