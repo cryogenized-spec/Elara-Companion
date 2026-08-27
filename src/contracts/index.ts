@@ -167,7 +167,6 @@ export interface GeminiRuntimeRequest {
   thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
   workspace?: Workspace;
   googleToken?: string;
-  /** Normal Chat enables tools by default; specialised execution contexts can explicitly disable them. */
   enableTools?: boolean;
   onChunk: (chunk: GeminiStreamChunk) => void;
   signal?: AbortSignal;
@@ -195,3 +194,5 @@ export interface AssistantStreamUpdate {
   patch: Partial<Message>;
   chunk?: GeminiStreamChunk;
 }
+
+export * from './googleHub';
