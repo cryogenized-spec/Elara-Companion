@@ -2,6 +2,7 @@ import type { MemoryAction, MemoryScratchpadState } from '../types';
 import { publishApplicationEvent } from '../events/applicationEventBus';
 import { getDbMemoryState, registerMemoryStateListener, setDbMemoryState } from '../lib/db';
 import { applyMemoryActions } from '../lib/memoryProcessor';
+import { persistMemoryScratchpad } from './memoryScratchpadProjection';
 
 let currentMemoryState: MemoryScratchpadState | null = null;
 
@@ -33,6 +34,7 @@ export async function loadMemoryTransparencyState(
 export async function saveMemoryState(state: MemoryScratchpadState, conversationId?: string): Promise<void> {
   currentMemoryState = state;
   await setDbMemoryState(state);
+  persistMemoryScratchpad(state.memories);
   publishApplicationEvent({
     type: 'memory.changed',
     payload: { conversationId, state, reason: 'save' },
@@ -49,5 +51,7 @@ export function reduceMemoryActions(
   actions: MemoryAction[],
   conversationId?: string,
 ): MemoryScratchpadState {
-  return applyMemoryActions(state, actions, conversationId);
+  const nextState = applyMemoryActions(state, actions, conversationId);
+  persistMemoryScratchpad(nextState.memories);
+  return nextState;
 }
