@@ -3,6 +3,7 @@ import { publishApplicationEvent } from '../events/applicationEventBus';
 import { getDbMemoryState, registerMemoryStateListener, setDbMemoryState } from '../lib/db';
 import { applyMemoryActions } from '../lib/memoryProcessor';
 import { persistMemoryScratchpad } from './memoryScratchpadProjection';
+import { recordLiveMemoryActivity } from '../lib/thinkingLiveRuntime';
 
 let currentMemoryState: MemoryScratchpadState | null = null;
 
@@ -45,7 +46,7 @@ export function getLoadedMemoryState(): MemoryScratchpadState | null {
   return currentMemoryState;
 }
 
-/** Applies domain memory actions and updates the derived compatibility projection once. */
+/** Applies domain memory actions and coordinates the derived projection and live activity side effects. */
 export function reduceMemoryActions(
   state: MemoryScratchpadState,
   actions: MemoryAction[],
@@ -53,5 +54,13 @@ export function reduceMemoryActions(
 ): MemoryScratchpadState {
   const nextState = applyMemoryActions(state, actions, conversationId);
   persistMemoryScratchpad(nextState.memories);
+
+  if (typeof window !== 'undefined') {
+    for (const action of actions) {
+      if (!action || action.type === 'NO_ACTION') continue;
+      recordLiveMemoryActivity(action, action.reason);
+    }
+  }
+
   return nextState;
 }
