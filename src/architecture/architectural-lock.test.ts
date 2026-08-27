@@ -82,3 +82,11 @@ test('Workspace editor delegates application mutations to the Workspace service'
   assert.match(source, /updateArtifact: workspaceService\.updateArtifact/);
   assert.doesNotMatch(source, /from ['\"]\.\.\/lib\/workspaceStorage['\"]/);
 });
+
+test('Background terminal reconciliation is idempotent per durable job id', async () => {
+  const source = await readText('src/services/backgroundApplicationService.ts');
+  assert.match(source, /const reconciledJobIds = new Set<string>\(\);/);
+  assert.match(source, /if \(reconciledJobIds\.has\(status\.id\)\) return status;/);
+  assert.match(source, /reconciledJobIds\.add\(status\.id\);/);
+  assert.match(source, /reconcileBackgroundWorkspaceResult\(status\);/);
+});
