@@ -1,6 +1,5 @@
 import { MemoryAction, MemoryItem, MemoryLink, MemoryScratchpadState } from '../types';
 import { consolidateMemories } from './memoryConsolidation';
-import { recordLiveMemoryActivity } from './thinkingLiveRuntime';
 
 function normalizeMemoryLinks(links: MemoryLink[] | undefined, conversationId?: string, sourceArtifactId?: string): MemoryLink[] | undefined {
   const next: MemoryLink[] = [];
@@ -19,7 +18,7 @@ function deriveInitialResolution(kind?: MemoryItem['kind'], lifecycle?: MemoryIt
   return 'contextual';
 }
 
-/** Pure memory-state transition engine. Persistence and derived projections belong to the Memory application service. */
+/** Pure memory-state transition engine. Persistence, projections, and runtime activity belong to the Memory application service. */
 export function applyMemoryActions(state: MemoryScratchpadState, actions: MemoryAction[], conversationId?: string): MemoryScratchpadState {
   if (!actions || actions.length === 0) {
     const consolidated = consolidateMemories(state.memories);
@@ -89,10 +88,6 @@ export function applyMemoryActions(state: MemoryScratchpadState, actions: Memory
         supersedesMemoryId: action.memory.supersedesMemoryId, supersededByMemoryId: action.memory.supersededByMemoryId, conflictMemoryIds: action.memory.conflictMemoryIds || [],
       });
       stateModified = true;
-    }
-
-    if (typeof window !== 'undefined' && String(action.type) !== 'NO_ACTION') {
-      recordLiveMemoryActivity(action, action.reason);
     }
   }
   const consolidated = consolidateMemories(currentMemories);
