@@ -9,7 +9,13 @@ export default defineConfig(({ mode }) => {
   const hmrEnabled = env.DISABLE_HMR !== 'true';
 
   const lazyPanelRewrites: Record<string, string> = {
-    "./components/CanvasPanel": "./components/LazyCanvasPanel",
+    "./components/CanvasPanel": "./components/lazyPanels",
+    "./components/WorkspaceView": "./components/lazyPanels",
+    "./components/SettingsModal": "./components/lazyPanels",
+    "./components/WorldModal": "./components/lazyPanels",
+    "./components/ThoughtLogModal": "./components/lazyPanels",
+    "./components/PortraitViewerModal": "./components/lazyPanels",
+    "./components/CameraModal": "./components/lazyPanels",
   };
 
   return {
