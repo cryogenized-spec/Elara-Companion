@@ -4,10 +4,16 @@
   "version": "3.0.0",
   "packageManager": "npm@11.17.0",
   "type": "module",
+  "allowScripts": {
+    "@google/genai@2.19.0": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true,
+    "protobufjs@7.6.5": true
+  },
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start": "node dist/server.cjs",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/server.mjs",
+    "start": "node dist/server.mjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lockbox:validate": "node scripts/lockbox-validate.mjs",
@@ -36,8 +42,8 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "react-markdown": "^10.1.0",
-    "remark-breaks": "^4.0.0",
-    "remark-gfm": "^4.0.1",
+    "remark-breaks": "^4.0.1",
+    "remark-gfm": "^4.0.0",
     "tailwindcss": "^4.1.14",
     "vite": "^6.2.3",
     "vite-plugin-pwa": "^1.3.0"
