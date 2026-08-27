@@ -10,7 +10,7 @@ import {
   readGoogleDriveFile,
 } from '../services/googleDocsDriveService';
 import { googleIdentity } from '../services/googleWorkspaceService';
-import { createKeepNote, getKeepNote, updateKeepNote } from '../services/referenceArchiveService';
+import { createReferenceNote, getReferenceNote, updateReferenceNote } from '../services/referenceArchiveService';
 
 export const workspaceToolDeclarations = [
   // ==========================================
@@ -223,12 +223,12 @@ export const workspaceToolDeclarations = [
   },
 
   // ==========================================
-  // 4. QUICK REFERENCE ARCHIVE TOOLS (Legacy Keep)
+  // 4. QUICK REFERENCE ARCHIVE TOOLS
   // ==========================================
   {
     name: 'create_keep_note',
     description:
-      'Create a quick reference note in the user\'s local reference archive (with optional Google Docs mirror). Note: This does not synchronize with the official Google Keep product.',
+      'Create a quick reference note in the user\'s local reference archive. This is historical Keep-compatible tooling backed by the canonical local Reference Archive.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -671,7 +671,7 @@ export function executeWorkspaceOperation(
 }
 
 /**
- * Asynchronous executor for Google Docs, Google Drive, and Keep operations.
+ * Asynchronous executor for Google Docs, Google Drive, and reference archive operations.
  */
 export async function executeGoogleOperation(
   toolName: string,
@@ -690,9 +690,6 @@ export async function executeGoogleOperation(
 
   try {
     switch (toolName) {
-      // ----------------------------------------
-      // Google Docs Tools
-      // ----------------------------------------
       case 'create_google_doc': {
         const title = typeof safeArgs.title === 'string' ? safeArgs.title.trim() : 'Elara Document';
         const content = typeof safeArgs.content === 'string' ? safeArgs.content : String(safeArgs.content || '');
@@ -703,7 +700,6 @@ export async function executeGoogleOperation(
         let updatedWs = currentWs;
         let modifiedId: string | undefined;
 
-        // If targetArtifactId specified, associate external Google Doc ID & URL with local WorkspaceArtifact
         if (targetArtifactId) {
           const idx = updatedWs.artifacts.findIndex((a) => a.id === targetArtifactId);
           if (idx !== -1) {
@@ -790,9 +786,6 @@ export async function executeGoogleOperation(
         };
       }
 
-      // ----------------------------------------
-      // Google Drive Tools
-      // ----------------------------------------
       case 'list_google_drive_files': {
         const pageSize = typeof safeArgs.pageSize === 'number' && safeArgs.pageSize > 0 ? safeArgs.pageSize : 10;
         const query = typeof safeArgs.query === 'string' ? safeArgs.query.trim() : '';
@@ -857,15 +850,12 @@ export async function executeGoogleOperation(
         };
       }
 
-      // ----------------------------------------
-      // Google Keep / Archive Notes Tools
-      // ----------------------------------------
       case 'create_keep_note': {
         const title = typeof safeArgs.title === 'string' ? safeArgs.title.trim() : 'Untitled Note';
         const content = typeof safeArgs.content === 'string' ? safeArgs.content : '';
         const tags = Array.isArray(safeArgs.tags) ? safeArgs.tags.map(String) : [];
 
-        const note = await createKeepNote(title, content, tags);
+        const note = await createReferenceNote(title, content, tags);
         return {
           result: {
             success: true,
@@ -874,7 +864,7 @@ export async function executeGoogleOperation(
             title: note.title,
             tags: note.tags,
             url: note.url,
-            message: 'Quick note saved to Keep archive' + (note.url ? ' and mirrored to Google Docs.' : '.'),
+            message: 'Quick note saved to the local reference archive.',
           },
           updatedWorkspace: currentWs,
         };
@@ -889,10 +879,10 @@ export async function executeGoogleOperation(
           };
         }
 
-        const note = await getKeepNote(noteId);
+        const note = await getReferenceNote(noteId);
         if (!note) {
           return {
-            result: { success: false, provider: 'google_keep', error: `Note not found in Keep archive for ID/title: "${noteId}".` },
+            result: { success: false, provider: 'google_keep', error: `Note not found in reference archive for ID/title: "${noteId}".` },
             updatedWorkspace: currentWs,
           };
         }
@@ -921,7 +911,7 @@ export async function executeGoogleOperation(
         if (typeof safeArgs.content === 'string') updates.content = safeArgs.content;
         if (Array.isArray(safeArgs.tags)) updates.tags = safeArgs.tags.map(String);
 
-        const updatedNote = await updateKeepNote(noteId, updates);
+        const updatedNote = await updateReferenceNote(noteId, updates);
         if (!updatedNote) {
           return {
             result: { success: false, provider: 'google_keep', error: `Note not found with ID "${noteId}".` },
@@ -939,9 +929,6 @@ export async function executeGoogleOperation(
         };
       }
 
-      // ----------------------------------------
-      // Synchronization Tools
-      // ----------------------------------------
       case 'link_google_doc': {
         const artifactId = typeof safeArgs.artifactId === 'string' ? safeArgs.artifactId.trim() : '';
         let documentId = typeof safeArgs.documentId === 'string' ? safeArgs.documentId.trim() : '';
@@ -954,7 +941,6 @@ export async function executeGoogleOperation(
           };
         }
 
-        // Extract ID if URL passed
         const docIdMatch = documentId.match(/[-\w]{25,}/);
         if (docIdMatch) {
           documentId = docIdMatch[0];
@@ -996,7 +982,6 @@ export async function executeGoogleOperation(
           updatedArt = createRevisionForArtifact(updatedArt, 'google_sync', 'system');
           message = 'Linked and replaced local content with Google Doc.';
         } else {
-          // compare_only
           const syncRes = compareSyncState(art.content, doc.content);
           updatedArt.syncStatus = syncRes.identical ? 'synchronized' : 'linked';
           if (syncRes.identical) {
@@ -1236,8 +1221,8 @@ export function buildWorkspaceContextPrompt(workspace?: Workspace | null, google
 2. **Google Workspace Cloud Provider** (External Cloud Integration):
 - Google Docs: \`create_google_doc\`, \`read_google_doc\`, \`update_google_doc\`
 - Google Drive: \`list_google_drive_files\`, \`search_google_drive\`, \`read_google_drive_file\`
-- Google Keep Archive: \`create_keep_note\`, \`read_keep_note\`, \`update_keep_note\`
-- Use Google tools ONLY when the user explicitly requests Google Docs, Google Drive, or Google Keep operations.
+- Reference Archive (historical Keep-compatible tools): \`create_keep_note\`, \`read_keep_note\`, \`update_keep_note\`
+- Use Google tools ONLY when the user explicitly requests Google Docs or Google Drive operations. Historical Keep-compatible names are backed by the local Reference Archive and do NOT synchronize with the official Google Keep product.
 - Google Docs and Drive are external providers and do NOT replace the canonical local WorkspaceArtifact unless explicitly linked.
 - Google Authentication Status: ${googleConnected || googleIdentity.isAuthorized() ? 'CONNECTED' : 'NOT CONNECTED (will prompt if called)'}\n\n`;
 
