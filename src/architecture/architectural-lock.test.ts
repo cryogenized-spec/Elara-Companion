@@ -53,3 +53,15 @@ test('canonical reference archive owns historical Keep storage key deliberately'
   assert.match(source, /createReferenceNote/);
   assert.match(source, /updateReferenceNote/);
 });
+
+test('Settings UI uses application-owned persistence and capability boundaries', async () => {
+  const source = await readText('src/components/SettingsModal.tsx');
+  assert.doesNotMatch(source, /from ['\"]\.\.\/lib\/db['\"]/);
+  assert.doesNotMatch(source, /from ['\"]\.\.\/lib\/storage['\"]/);
+  assert.doesNotMatch(source, /from ['\"]\.\.\/contracts\/implementations['\"]/);
+  assert.match(source, /settingsPersistence\.loadPersonaSnapshots/);
+  assert.match(source, /settingsPersistence\.savePersonaSnapshots/);
+  assert.match(source, /getSettingsRateLimits/);
+  assert.match(source, /getUpcomingCalendarEvents/);
+  assert.doesNotMatch(source, /searchKeepNotes|createKeepNote|updateKeepNote|getKeepNote|deleteKeepNote|listKeepNotes/);
+});
