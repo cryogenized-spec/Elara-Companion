@@ -8,9 +8,9 @@ import {
   listGoogleDriveFiles,
   searchGoogleDriveFiles,
   readGoogleDriveFile,
-  isGoogleConnected,
-} from './googleApi';
-import { createKeepNote, getKeepNote, updateKeepNote } from '../legacy/googleKeepArchive';
+} from '../services/googleDocsDriveService';
+import { googleIdentity } from '../services/googleWorkspaceService';
+import { createKeepNote, getKeepNote, updateKeepNote } from '../services/referenceArchiveService';
 
 export const workspaceToolDeclarations = [
   // ==========================================
@@ -1239,7 +1239,7 @@ export function buildWorkspaceContextPrompt(workspace?: Workspace | null, google
 - Google Keep Archive: \`create_keep_note\`, \`read_keep_note\`, \`update_keep_note\`
 - Use Google tools ONLY when the user explicitly requests Google Docs, Google Drive, or Google Keep operations.
 - Google Docs and Drive are external providers and do NOT replace the canonical local WorkspaceArtifact unless explicitly linked.
-- Google Authentication Status: ${googleConnected || isGoogleConnected() ? 'CONNECTED' : 'NOT CONNECTED (will prompt if called)'}\n\n`;
+- Google Authentication Status: ${googleConnected || googleIdentity.isAuthorized() ? 'CONNECTED' : 'NOT CONNECTED (will prompt if called)'}\n\n`;
 
   if (!workspace || !Array.isArray(workspace.artifacts) || workspace.artifacts.length === 0) {
     prompt += `[WORKSPACE STATUS]\nThe user's local Workspace is currently empty.\n`;
