@@ -1,21 +1,25 @@
 import React, { useCallback, useEffect, useId, useState } from 'react';
-import mermaid from 'mermaid';
 
 interface MermaidBlockProps {
   content: string;
 }
 
+let mermaidModule: typeof import('mermaid') | null = null;
 let configured = false;
 
-const configureMermaid = () => {
-  if (configured) return;
-  mermaid.initialize({
-    startOnLoad: false,
-    securityLevel: 'strict',
-    theme: 'dark',
-    flowchart: { useMaxWidth: true, htmlLabels: false },
-  });
-  configured = true;
+const loadMermaid = async () => {
+  mermaidModule ??= await import('mermaid');
+  const mermaid = mermaidModule.default;
+  if (!configured) {
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'strict',
+      theme: 'dark',
+      flowchart: { useMaxWidth: true, htmlLabels: false },
+    });
+    configured = true;
+  }
+  return mermaid;
 };
 
 export const MermaidBlock: React.FC<MermaidBlockProps> = ({ content }) => {
@@ -26,10 +30,10 @@ export const MermaidBlock: React.FC<MermaidBlockProps> = ({ content }) => {
   const renderId = `elara-mermaid-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
   const renderDiagram = useCallback(async () => {
-    configureMermaid();
     setError(null);
     setSvg(null);
     try {
+      const mermaid = await loadMermaid();
       const result = await mermaid.render(renderId, content.trim());
       setSvg(result.svg);
     } catch (renderError) {
