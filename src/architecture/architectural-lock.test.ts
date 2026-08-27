@@ -87,6 +87,28 @@ test('Settings UI uses application-owned persistence and capability boundaries',
   assert.doesNotMatch(googleImport[0], /searchKeepNotes|createKeepNote|updateKeepNote|getKeepNote|deleteKeepNote|listKeepNotes/);
 });
 
+test('OOC UI surface delegates model execution to the application service', async () => {
+  const source = await readText('src/components/OocConversationPanel.tsx');
+  assert.doesNotMatch(source, /GoogleGenAI|generateContentStream|buildRuntimeConfig|from ['\"]\.\.\/lib\/chatRuntime['\"]/);
+  assert.doesNotMatch(source, /from ['\"]\.\.\/lib\/contextManager['\"]/);
+  assert.match(source, /streamOocResponse/);
+  assert.match(source, /loadOocSettings/);
+  assert.match(source, /appendOocMessage/);
+});
+
+test('OOC execution owns provider access behind the runtime contract', async () => {
+  const source = await readText('src/services/oocConversationService.ts');
+  assert.match(source, /geminiRuntimeContract\.stream/);
+  assert.doesNotMatch(source, /new GoogleGenAI/);
+  assert.match(source, /delete config\.tools/);
+});
+
+test('Scratchpad service bypasses the legacy context-manager wrapper', async () => {
+  const source = await readText('src/services/scratchpadService.ts');
+  assert.match(source, /from ['\"]\.\.\/lib\/contextProjectionStorage['\"]/);
+  assert.doesNotMatch(source, /from ['\"]\.\.\/lib\/contextManager['\"]/);
+});
+
 test('Workspace background reconciliation uses the application persistence boundary', async () => {
   const source = await readText('src/services/workspaceBackgroundService.ts');
   assert.match(source, /from ['\"]\.\/workspacePersistenceService['\"]/);
