@@ -92,6 +92,7 @@ export async function streamOocResponse(request: OocExecutionRequest): Promise<v
     topP: settings.topP,
     topK: settings.topK,
     thinkingBudget: settings.thinkingBudget,
+    enableTools: false,
     signal,
     onChunk: (chunk) => {
       if (chunk.text) responseText += chunk.text;
