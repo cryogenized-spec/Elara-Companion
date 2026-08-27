@@ -1,29 +1,16 @@
-import { MemoryAction, MemoryItem, MemoryLink, MemoryScratchpadState } from '../types';
+import { MemoryAction, MemoryScratchpadState } from '../types';
 import { consolidateMemories } from './memoryConsolidation';
-import { recordLiveMemoryActivity } from './thinkingLiveRuntime';
 
-const ACTIVE_SCRATCHPAD_KEY = 'elara_active_scratchpad_v1';
-const SCRATCHPAD_EVENT = 'elara:scratchpad-updated';
-
-function buildPersistentScratchpad(memories: MemoryItem[]): string {
-  const ranked = [...memories].sort((a, b) => {
-    const importanceRank: Record<string, number> = { core: 4, important: 3, normal: 2, low: 1 };
-    return (importanceRank[b.importance] || 0) - (importanceRank[a.importance] || 0);
-  }).slice(0, 40);
-  if (ranked.length === 0) return '';
-  return ranked.map((memory) => `- [${memory.isPrivate ? 'PRIVATE OBSERVATION' : 'SHARED FACT'}] [${memory.category}]${memory.kind ? ` [${memory.kind}]` : ''} [${memory.confidence}] ${memory.content}`).join('\n');
-}
-
-function normalizeMemoryLinks(links: MemoryLink[] | undefined, conversationId?: string, sourceArtifactId?: string): MemoryLink[] | undefined {
-  const next: MemoryLink[] = [];
-  const pushUnique = (link: MemoryLink) => { if (!link.id || next.some((existing) => existing.type === link.type && existing.id === link.id)) return; next.push(link); };
+function normalizeMemoryLinks(links: any[] | undefined, conversationId?: string, sourceArtifactId?: string): any[] | undefined {
+  const next: any[] = [];
+  const pushUnique = (link: any) => { if (!link.id || next.some((existing) => existing.type === link.type && existing.id === link.id)) return; next.push(link); };
   for (const link of links || []) if (link?.type && link.id) pushUnique(link);
   if (conversationId) pushUnique({ type: 'conversation', id: conversationId, label: 'Source conversation' });
   if (sourceArtifactId) pushUnique({ type: 'artifact', id: sourceArtifactId, label: 'Source artifact' });
   return next.length ? next : undefined;
 }
 
-function deriveInitialResolution(kind?: MemoryItem['kind'], lifecycle?: MemoryItem['lifecycle']): MemoryItem['resolution'] {
+function deriveInitialResolution(kind?: any, lifecycle?: any): any {
   if (kind === 'observation') return 'observation';
   if (kind === 'episode') return 'episodic';
   if (lifecycle === 'core') return 'core';
@@ -31,19 +18,10 @@ function deriveInitialResolution(kind?: MemoryItem['kind'], lifecycle?: MemoryIt
   return 'contextual';
 }
 
-function persistScratchpad(memories: MemoryItem[]): void {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
-  const scratchpad = buildPersistentScratchpad(memories);
-  try { localStorage.setItem(ACTIVE_SCRATCHPAD_KEY, scratchpad); window.dispatchEvent(new CustomEvent(SCRATCHPAD_EVENT, { detail: { scratchpad } })); }
-  catch (err) { console.warn('Persistent scratchpad mirror unavailable:', err); }
-}
-
 export function applyMemoryActions(state: MemoryScratchpadState, actions: MemoryAction[], conversationId?: string): MemoryScratchpadState {
   if (!actions || actions.length === 0) {
     const consolidated = consolidateMemories(state.memories);
-    const nextState = consolidated.memories === state.memories ? { ...state, schemaVersion: 3 } : { ...state, memories: consolidated.memories, lastMaintenanceAt: new Date().toISOString(), schemaVersion: 3 };
-    persistScratchpad(nextState.memories);
-    return nextState;
+    return consolidated.memories === state.memories ? { ...state, schemaVersion: 3 } : { ...state, memories: consolidated.memories, lastMaintenanceAt: new Date().toISOString(), schemaVersion: 3 };
   }
   let currentMemories = [...state.memories];
   let stateModified = false;
@@ -110,13 +88,7 @@ export function applyMemoryActions(state: MemoryScratchpadState, actions: Memory
       });
       stateModified = true;
     }
-
-    if (typeof window !== 'undefined' && String(action.type) !== 'NO_ACTION') {
-      recordLiveMemoryActivity(action, action.reason);
-    }
   }
   const consolidated = consolidateMemories(currentMemories);
-  const nextState = stateModified || consolidated.memories !== currentMemories ? { ...state, memories: consolidated.memories, lastMaintenanceAt: new Date().toISOString(), schemaVersion: 3 } : { ...state, schemaVersion: 3 };
-  persistScratchpad(nextState.memories);
-  return nextState;
+  return stateModified || consolidated.memories !== currentMemories ? { ...state, memories: consolidated.memories, lastMaintenanceAt: new Date().toISOString(), schemaVersion: 3 } : { ...state, schemaVersion: 3 };
 }
