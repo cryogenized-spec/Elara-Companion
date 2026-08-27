@@ -1,15 +1,19 @@
 export {
   ELARA_SAFETY_SETTINGS,
   buildRuntimeConfig,
+} from '../../src/runtime/geminiRuntimeConfigService';
+
+export {
   buildConversationContents,
   MAX_AGENT_ITERATIONS,
-} from '../../src/lib/chatRuntime';
+  type ChatHistoryMessage,
+} from '../../src/runtime/chatRuntimePrimitives';
 
 export { runResilientGeminiStreamTurn } from '../../src/lib/resilientGeminiStream';
 
 /**
- * Server-side adapter boundary for Chat runtime implementation details.
- * Routes must depend on this boundary rather than importing provider/runtime
- * implementation modules directly. The imported modules remain transitional
- * until the physical runtime extraction is completed.
+ * Server-side Chat runtime boundary. Routes depend on this adapter rather than
+ * importing legacy runtime modules directly. The remaining resilience helper
+ * is intentionally isolated here until its implementation is physically moved
+ * into the runtime layer.
  */
