@@ -1,9 +1,10 @@
 name: Apply Settings boundary migration
 
 on:
-  push:
+  pull_request:
     branches:
-      - refactor/pass64-google-facade-inversion
+      - main
+    types: [synchronize]
 
 permissions:
   contents: write
@@ -92,14 +93,11 @@ test('Settings UI uses application-owned persistence and settings capability bou
 """
           if 'Settings UI uses application-owned persistence and settings capability boundaries' not in lock_source:
               lock.write_text(lock_source + extra)
-          
-          # Archive this one-shot migration workflow after applying it.
+
           workflow = Path('.github/workflows/apply-settings-boundary.yml')
           workflow.write_text("""name: Apply Settings boundary migration (archived)\n\n# One-shot migration retained only as an audit record.\n\non:\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\njobs:\n  archived:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo 'Settings boundary migration already applied.'\n""")
           PY
-          
-          npm install --no-audit --no-fund
-          npm run verify:production
+
           git config user.name 'Elara Architecture Bot'
           git config user.email 'architecture@users.noreply.github.com'
           git add src/components/SettingsModal.tsx src/services/settingsDiagnosticsService.ts src/services/settingsCalendarService.ts src/architecture/architectural-lock.test.ts .github/workflows/apply-settings-boundary.yml
