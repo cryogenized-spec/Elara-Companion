@@ -19,7 +19,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
 
       - name: Generate authoritative npm lockfile
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
