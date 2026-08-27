@@ -44,7 +44,7 @@ jobs:
           p.write_text(s)
           lock=Path('src/architecture/architectural-lock.test.ts'); ls=lock.read_text()
           old="  assert.doesNotMatch(source, /searchKeepNotes|createKeepNote|updateKeepNote|getKeepNote|deleteKeepNote|listKeepNotes/);"
-          new="""  const googleImport = source.match(/import \\{[\\s\\S]*?\\} from ['\\\"]\\.\\.\\/services\\/settingsGoogleService['\\\"]/);\n  assert.ok(googleImport, 'SettingsModal must import settingsGoogleService through the canonical boundary');\n  assert.doesNotMatch(googleImport[0], /searchKeepNotes|createKeepNote|updateKeepNote|getKeepNote|deleteKeepNote|listKeepNotes/);"""
+          new="""  const googleImport = source.match(/import \\{[\\s\\S]*?\\} from ['\\\"]\\.\\.\\/services\\/settingsGoogleService['\\\"]/)\n  assert.ok(googleImport, 'SettingsModal must import settingsGoogleService through the canonical boundary');\n  assert.doesNotMatch(googleImport[0], /searchKeepNotes|createKeepNote|updateKeepNote|getKeepNote|deleteKeepNote|listKeepNotes/);"""
           if old in ls: lock.write_text(ls.replace(old,new,1))
           PY
           npm install --no-audit --no-fund
