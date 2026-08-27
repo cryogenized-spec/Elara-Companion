@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { X, Copy, Code, Check, FileText, Bookmark, Download, Eye, Edit3, ExternalLink } from 'lucide-react';
 import { CanvasData } from '../types';
-import { createGoogleDoc, createKeepNote } from '../lib/googleApi';
+import { createGoogleDoc } from '../services/googleDocsDriveService';
+import { createGoogleKeepNote } from '../services/googleKeepService';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -65,17 +66,16 @@ export const CanvasModal: React.FC<CanvasModalProps> = ({ canvas, onClose, onUpd
     try {
       setSavingKeep(true);
       setStatusMessage(null);
-      const note = await createKeepNote(canvas.title || 'Canvas Note', localContent, ['Canvas']);
+      await createGoogleKeepNote(canvas.title || 'Canvas Note', localContent);
       setStatusMessage({
         type: 'success',
-        text: 'Saved to Google Keep Archive!',
-        link: note.url,
+        text: 'Saved to Google Keep.',
       });
     } catch (err: any) {
       console.error('Failed to save to Keep:', err);
       setStatusMessage({
         type: 'error',
-        text: err?.message || 'Failed to save to Keep Archive.',
+        text: err?.message || 'Failed to save to Google Keep.',
       });
     } finally {
       setSavingKeep(false);
