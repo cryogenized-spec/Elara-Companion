@@ -1,4 +1,5 @@
 import type { GoogleCapability } from './index';
+import type { GoogleHubAuthorizationStateContract, GoogleHubAuthorizationSnapshot, GoogleHubAuthorizationStatus } from './googleHubAuthorization';
 
 export type GoogleHubCategory =
   | 'communication'
@@ -53,3 +54,9 @@ export interface GoogleHubCapabilityRegistry {
   list(): readonly GoogleHubCapabilityDescriptor[];
   listByCategory(category: GoogleHubCategory): readonly GoogleHubCapabilityDescriptor[];
 }
+
+export type {
+  GoogleHubAuthorizationStateContract,
+  GoogleHubAuthorizationSnapshot,
+  GoogleHubAuthorizationStatus,
+};
