@@ -37,7 +37,10 @@ test('flushes before function calls and returns the calls', async () => {
   });
 
   assert.deepEqual(result.functionCalls, [{ name: 'foo', args: { x: 1 } }]);
-  assert.deepEqual(emitted, [{ text: 'before' }]);
+  assert.equal(emitted.length, 1);
+  assert.equal(emitted[0]?.text, 'before');
+  assert.equal(emitted[0]?.finishReason, undefined);
+  assert.equal(emitted[0]?.safetyRatings, undefined);
 });
 
 test('stops on abort without turning the result into an error', async () => {
