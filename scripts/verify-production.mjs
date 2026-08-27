@@ -6,6 +6,7 @@ const steps = [
   ['test', ['test']],
   ['benchmark:memory', ['run', 'benchmark:memory']],
   ['build', ['run', 'build']],
+  ['bundle:budget', ['run', 'bundle:budget']],
 ];
 
 for (const [label, args] of steps) {
@@ -16,4 +17,4 @@ for (const [label, args] of steps) {
   }
 }
 
-console.log('\nProduction verification passed: lockbox, lint/typecheck, tests, memory benchmark, and build.');
+console.log('\nProduction verification passed: lockbox, lint/typecheck, tests, memory benchmark, build, and bundle budget.');

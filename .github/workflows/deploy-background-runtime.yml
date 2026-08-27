@@ -26,10 +26,10 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: background-runtime/package.json
+          cache-dependency-path: background-runtime/package-lock.json
 
-      - name: Install Wrangler
-        run: npm install
+      - name: Install Wrangler and dependencies
+        run: npm ci
 
       - name: Deploy Worker
         env:

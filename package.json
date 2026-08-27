@@ -2,11 +2,18 @@
   "name": "elara-companion-v3",
   "private": true,
   "version": "3.0.0",
+  "packageManager": "npm@11.17.0",
   "type": "module",
+  "allowScripts": {
+    "@google/genai@2.19.0": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true,
+    "protobufjs@7.6.5": true
+  },
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start": "node dist/server.cjs",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/server.mjs",
+    "start": "node dist/server.mjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lockbox:validate": "node scripts/lockbox-validate.mjs",
@@ -14,7 +21,8 @@
     "lockbox:secrets": "node scripts/lockbox-secret-scan.mjs",
     "lockbox:status": "node scripts/lockbox-status.mjs",
     "lockbox:verify": "node scripts/lockbox-verify.mjs",
-    "lint": "npm run lockbox:validate && npm run lockbox:audit && npm run lockbox:secrets && npm --prefix background-runtime install --no-audit --no-fund && tsc --noEmit && npm --prefix background-runtime run typecheck",
+    "bundle:budget": "node scripts/hardening-bundle-budget.mjs",
+    "lint": "npm run lockbox:validate && npm run lockbox:audit && npm run lockbox:secrets && npm --prefix background-runtime ci --no-audit --no-fund && tsc --noEmit && npm --prefix background-runtime run typecheck",
     "test": "node --import tsx --test",
     "benchmark:memory": "tsx scripts/benchmark-memory-consolidation.ts",
     "verify:production": "node scripts/verify-production.mjs"
@@ -27,7 +35,6 @@
     "diff": "^9.0.0",
     "dotenv": "^17.2.3",
     "esbuild": "^0.25.0",
-    "express": "^4.21.2",
     "idb-keyval": "^6.3.0",
     "lucide-react": "^0.546.0",
     "mermaid": "^11.16.1",

@@ -2,6 +2,10 @@
   "name": "elara-background-runtime",
   "private": true,
   "type": "module",
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "workerd@1.20260825.1": true
+  },
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",

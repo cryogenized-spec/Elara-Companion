@@ -1,21 +1,31 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
-import { buildConversationContents, buildRuntimeConfig, deriveThinkingLevel, normalizeModel, parseRuntimeDataUrl } from '../chatRuntime';
+import {
+  buildConversationContents,
+  MAX_AGENT_ITERATIONS,
+  parseRuntimeDataUrl,
+} from '../chatRuntimePrimitives';
+import {
+  buildRuntimeConfig,
+  deriveThinkingLevel,
+  normalizeModel,
+} from '../geminiRuntimeConfigService';
 
-test('chat runtime normalizes model names and thinking levels consistently', () => {
+test('canonical runtime normalizes model names and thinking levels consistently', () => {
   assert.equal(normalizeModel('models/gemini-3.7-flash'), 'gemini-3.7-flash');
   assert.equal(deriveThinkingLevel(undefined, 0), 'minimal');
   assert.equal(deriveThinkingLevel(undefined, 2048), 'low');
   assert.equal(deriveThinkingLevel(undefined, 4096), 'medium');
   assert.equal(deriveThinkingLevel(undefined, 8192), 'high');
+  assert.equal(MAX_AGENT_ITERATIONS, 5);
 });
 
-test('chat runtime parses data URLs without server dependencies', () => {
+test('canonical runtime parses data URLs without server dependencies', () => {
   assert.deepEqual(parseRuntimeDataUrl('data:image/png;base64,AAAA'), { mimeType: 'image/png', data: 'AAAA' });
   assert.equal(parseRuntimeDataUrl('not-a-data-url'), null);
 });
 
-test('chat runtime constructs the same multimodal content contract for history and current input', () => {
+test('canonical runtime constructs the same multimodal content contract for history and current input', () => {
   const contents = buildConversationContents(
     [{ role: 'user', content: 'previous', image: 'data:image/png;base64,AAAA' }],
     'current',
@@ -30,7 +40,7 @@ test('chat runtime constructs the same multimodal content contract for history a
   assert.equal(contents[1].parts[1].text, 'current');
 });
 
-test('chat runtime provides one tool-bearing model configuration contract', () => {
+test('canonical runtime provides one tool-bearing model configuration contract', () => {
   const config = buildRuntimeConfig({ model: 'gemini-3.7-flash', systemPrompt: 'test' });
   assert.equal(Array.isArray(config.tools), true);
   assert.equal(config.tools.length, 1);

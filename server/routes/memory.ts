@@ -1,6 +1,6 @@
 import express from "express";
 import { getGeminiClient } from "../services/gemini";
-import { ELARA_SAFETY_SETTINGS } from "../../src/lib/chatRuntime";
+import { ELARA_SAFETY_SETTINGS } from "../services/chatModelRuntime";
 
 type MemoryExtractionAction = {
   type?: string;
