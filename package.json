@@ -2,6 +2,7 @@
   "name": "elara-companion-v3",
   "private": true,
   "version": "3.0.0",
+  "packageManager": "npm@11.17.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -15,7 +16,7 @@
     "lockbox:status": "node scripts/lockbox-status.mjs",
     "lockbox:verify": "node scripts/lockbox-verify.mjs",
     "bundle:budget": "node scripts/hardening-bundle-budget.mjs",
-    "lint": "npm run lockbox:validate && npm run lockbox:audit && npm run lockbox:secrets && npm --prefix background-runtime install --no-audit --no-fund && tsc --noEmit && npm --prefix background-runtime run typecheck",
+    "lint": "npm run lockbox:validate && npm run lockbox:audit && npm run lockbox:secrets && npm --prefix background-runtime ci --no-audit --no-fund && tsc --noEmit && npm --prefix background-runtime run typecheck",
     "test": "node --import tsx --test",
     "benchmark:memory": "tsx scripts/benchmark-memory-consolidation.ts",
     "verify:production": "node scripts/verify-production.mjs"
