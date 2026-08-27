@@ -1,16 +1,16 @@
-import { MemoryAction, MemoryScratchpadState } from '../types';
+import { MemoryAction, MemoryItem, MemoryLink, MemoryScratchpadState } from '../types';
 import { consolidateMemories } from './memoryConsolidation';
 
-function normalizeMemoryLinks(links: any[] | undefined, conversationId?: string, sourceArtifactId?: string): any[] | undefined {
-  const next: any[] = [];
-  const pushUnique = (link: any) => { if (!link.id || next.some((existing) => existing.type === link.type && existing.id === link.id)) return; next.push(link); };
+function normalizeMemoryLinks(links: MemoryLink[] | undefined, conversationId?: string, sourceArtifactId?: string): MemoryLink[] | undefined {
+  const next: MemoryLink[] = [];
+  const pushUnique = (link: MemoryLink) => { if (!link.id || next.some((existing) => existing.type === link.type && existing.id === link.id)) return; next.push(link); };
   for (const link of links || []) if (link?.type && link.id) pushUnique(link);
   if (conversationId) pushUnique({ type: 'conversation', id: conversationId, label: 'Source conversation' });
   if (sourceArtifactId) pushUnique({ type: 'artifact', id: sourceArtifactId, label: 'Source artifact' });
   return next.length ? next : undefined;
 }
 
-function deriveInitialResolution(kind?: any, lifecycle?: any): any {
+function deriveInitialResolution(kind?: MemoryItem['kind'], lifecycle?: MemoryItem['lifecycle']): MemoryItem['resolution'] {
   if (kind === 'observation') return 'observation';
   if (kind === 'episode') return 'episodic';
   if (lifecycle === 'core') return 'core';
