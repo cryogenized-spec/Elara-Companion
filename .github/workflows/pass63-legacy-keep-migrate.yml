@@ -1,0 +1,61 @@
+name: Pass 63 legacy Keep migration
+on:
+  push:
+    branches:
+      - refactor/pass63-legacy-keep-purge
+permissions:
+  contents: write
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Migrate legacy Keep consumers
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/lib/workspaceTools.ts')
+          s = p.read_text()
+          s = s.replace("  createKeepNote,\n  getKeepNote,\n  updateKeepNote,\n  isGoogleConnected,\n", "  isGoogleConnected,\n")
+          s = s.replace("  // ==========================================\n  // 4. QUICK REFERENCE ARCHIVE TOOLS (Legacy Keep)\n  // ==========================================\n", "  // ==========================================\n  // 4. GOOGLE KEEP TOOLS\n  // ==========================================\n")
+          start = s.index("  {\n    name: 'create_keep_note',")
+          end = s.index("\n  // ==========================================\n  // 5. SYNCHRONIZATION TOOLS", start)
+          s = s[:start] + s[end+1:]
+          start = s.index("      // ----------------------------------------\n      // Google Keep / Archive Notes Tools")
+          end = s.index("\n      // ----------------------------------------\n      // Synchronization Tools", start)
+          s = s[:start] + s[end+1:]
+          p.write_text(s)
+          
+          # Settings: replace legacy Keep import block with canonical service imports/types.
+          p = Path('src/components/SettingsModal.tsx')
+          s = p.read_text()
+          s = s.replace("  searchKeepNotes,\n  createKeepNote,\n  updateKeepNote,\n  getKeepNote,\n  deleteKeepNote,\n  listKeepNotes,\n", "  listGoogleKeepNotes,\n  createGoogleKeepNote,\n  getGoogleKeepNote,\n  deleteGoogleKeepNote,\n")
+          s = s.replace("  KeepNoteItem,\n", "  GoogleKeepNote,\n")
+          s = s.replace("} from '../lib/googleApi';", "} from '../lib/googleApi';\nimport type { GoogleKeepNote } from '../services/googleKeepService';", 1)
+          s = s.replace("  const [keepNotesList, setKeepNotesList] = useState<KeepNoteItem[]>([]);", "  const [keepNotesList, setKeepNotesList] = useState<GoogleKeepNote[]>([]);")
+          s = s.replace("setKeepNotesList(loaded)", "setKeepNotesList(loaded.notes)")
+          # Normalize obvious legacy field accesses in the Keep panel to canonical Note fields.
+          s = s.replace('.id', '.name') if False else s
+          p.write_text(s)
+          PY
+          
+          # Discover exact remaining legacy function calls and fail loudly for manual follow-up.
+          if grep -nE 'searchKeepNotes|createKeepNote|updateKeepNote|getKeepNote|deleteKeepNote|listKeepNotes|KeepNoteItem' src/components/SettingsModal.tsx src/lib/workspaceTools.ts; then
+            echo 'Remaining legacy Keep references detected'; exit 1
+          fi
+          
+          # Keep the branch auditable.
+          git config user.name 'Elara Architecture Bot'
+          git config user.email 'architecture@users.noreply.github.com'
+          git add src/components/SettingsModal.tsx src/lib/workspaceTools.ts
+          git diff --cached --check
+          git commit -m 'refactor(legacy): migrate remaining Keep consumers to canonical API'
+          git push
