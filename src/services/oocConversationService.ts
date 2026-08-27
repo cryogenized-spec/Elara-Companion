@@ -1,7 +1,7 @@
 import { getDbConversations, getDbSettings } from '../lib/db';
 import type { Conversation, ElaraSettings } from '../types';
 import { DEFAULT_PERSONA_PROTOCOL, DEFAULT_INTIMACY_MODULE, DEFAULT_RUNTIME_RULES } from '../constants/defaultPrompt';
-import { buildSystemPayload, loadActiveScratchpad, loadUserProfileNotes } from '../lib/contextManager';
+import { buildSystemPayload, loadActiveScratchpad, loadUserProfileNotes } from './chatContextService';
 import { geminiRuntimeContract } from '../contracts/implementations';
 import type { GeminiHistoryMessage } from '../contracts';
 
