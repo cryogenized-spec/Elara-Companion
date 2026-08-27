@@ -27,6 +27,8 @@ export interface RuntimeConfigOptions {
   thinkingBudget?: number;
   thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
   toolExposure?: ToolExposurePolicy;
+  /** Keep normal agent/tool behaviour as the default; specialised callers can explicitly disable tools. */
+  enableTools?: boolean;
   /** @deprecated Always applied. Kept for type compatibility only. */
   includeSafetySettings?: boolean;
 }
@@ -81,6 +83,8 @@ export function buildRuntimeConfig(options: RuntimeConfigOptions): any {
     config.thinkingConfig = { thinkingBudget: typeof options.thinkingBudget === 'number' ? options.thinkingBudget : -1, includeThoughts: true };
   }
 
-  config.tools = [{ functionDeclarations: options.toolExposure ? getAgentToolDeclarations(options.toolExposure) : agentToolDeclarations }];
+  if (options.enableTools !== false) {
+    config.tools = [{ functionDeclarations: options.toolExposure ? getAgentToolDeclarations(options.toolExposure) : agentToolDeclarations }];
+  }
   return config;
 }
