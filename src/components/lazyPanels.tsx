@@ -1,4 +1,5 @@
 import React, { Suspense } from 'react';
+import type { CanvasData, ElaraSettings, WorldState } from '../types';
 
 const LazyCanvasPanelImpl = React.lazy(async () => {
   const module = await import('./CanvasPanel');
@@ -49,7 +50,18 @@ export const WorkspaceView: React.FC<LazyWorkspaceViewProps> = (props) => (
   </Suspense>
 );
 
-export type LazySettingsModalProps = React.ComponentProps<typeof import('./SettingsModal').SettingsModal>;
+export type LazySettingsModalProps = {
+  isOpen: boolean;
+  onClose: () => void;
+  settings: ElaraSettings;
+  onSaveSettings: (newSettings: ElaraSettings) => void;
+  customPortrait: string | null;
+  onUploadPortrait: (base64Img: string) => void;
+  onRemovePortrait: () => void;
+  onExportAllData: () => void;
+  onImportData: (jsonStr: string) => void;
+  onClearAllData: () => void;
+};
 export const SettingsModal: React.FC<LazySettingsModalProps> = (props) => (
   <Suspense fallback={null}>
     <LazySettingsModalImpl {...props} />
@@ -83,3 +95,5 @@ export const CameraModal: React.FC<LazyCameraModalProps> = (props) => (
     <LazyCameraModalImpl {...props} />
   </Suspense>
 );
+
+export type { CanvasData, WorldState };
