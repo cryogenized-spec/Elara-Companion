@@ -1,4 +1,4 @@
-import { loadActiveScratchpad, saveActiveScratchpad } from '../lib/contextManager';
+import { loadActiveScratchpad, saveActiveScratchpad } from '../lib/contextProjectionStorage';
 import { loadMemoryState } from './memoryService';
 import type { MemoryScratchpadState } from '../types';
 
