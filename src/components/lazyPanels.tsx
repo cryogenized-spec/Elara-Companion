@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import type { CanvasData, Workspace, Conversation, Settings, MemoryState, WorldState } from '../types';
+import type { CanvasData, Settings, WorldState } from '../types';
 
 const LazyCanvasPanelImpl = React.lazy(async () => {
   const module = await import('./CanvasPanel');
@@ -96,19 +96,19 @@ export const WorldModal: React.FC<LazyWorldModalProps> = (props) => (
   </Suspense>
 );
 
-export const ThoughtLogModal = (props: React.ComponentProps<typeof import('./ThoughtLogModal')['ThoughtLogModal']>) => (
+export const ThoughtLogModal = (props: React.ComponentProps<typeof import('./ThoughtLogModal').ThoughtLogModal>) => (
   <Suspense fallback={null}>
     <LazyThoughtLogModalImpl {...props} />
   </Suspense>
 );
 
-export const PortraitViewerModal = (props: React.ComponentProps<typeof import('./PortraitViewerModal')['PortraitViewerModal']>) => (
+export const PortraitViewerModal = (props: React.ComponentProps<typeof import('./PortraitViewerModal').PortraitViewerModal>) => (
   <Suspense fallback={null}>
     <LazyPortraitViewerModalImpl {...props} />
   </Suspense>
 );
 
-export const CameraModal = (props: React.ComponentProps<typeof import('./CameraModal')['CameraModal']>) => (
+export const CameraModal = (props: React.ComponentProps<typeof import('./CameraModal').CameraModal>) => (
   <Suspense fallback={null}>
     <LazyCameraModalImpl {...props} />
   </Suspense>
