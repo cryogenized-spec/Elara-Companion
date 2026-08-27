@@ -7,6 +7,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const hmrEnabled = env.DISABLE_HMR !== 'true';
+  const basePath = env.VITE_BASE_PATH || '/';
 
   const lazyPanelRewrites: Record<string, string> = {
     "./components/CanvasPanel": "./components/lazyPanels",
@@ -19,7 +20,7 @@ export default defineConfig(({ mode }) => {
   };
 
   return {
-    base: './',
+    base: basePath,
     define: {
       global: 'globalThis',
     },
@@ -55,9 +56,11 @@ export default defineConfig(({ mode }) => {
           theme_color: '#ffffff',
           background_color: '#09090b',
           display: 'standalone',
+          start_url: basePath,
+          scope: basePath,
           icons: [
-            { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-            { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' }
+            { src: `${basePath}pwa-192x192.png`, sizes: '192x192', type: 'image/png' },
+            { src: `${basePath}pwa-512x512.png`, sizes: '512x512', type: 'image/png' }
           ]
         }
       })
