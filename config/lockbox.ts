@@ -20,6 +20,8 @@ export const LOCKBOX_MANIFEST = [
   { key: 'GOOGLE_OAUTH_CLIENT_SECRET', namespace: 'google', classification: 'critical', requiredBy: ['background Google auth worker'], exposures: ['worker', 'ci'] },
   { key: 'GOOGLE_OAUTH_REDIRECT_URI', namespace: 'google', classification: 'config', requiredBy: ['background Google auth worker'], exposures: ['worker', 'ci'] },
   { key: 'GOOGLE_VAULT_KV_NAMESPACE_ID', namespace: 'google', classification: 'internal', requiredBy: ['Google auth worker deployment'], exposures: ['ci'] },
+  { key: 'ELARA_SERVER_ACCESS_TOKEN', namespace: 'app', classification: 'critical', requiredBy: ['authenticated production Express API'], exposures: ['server', 'ci'] },
+  { key: 'ELARA_ALLOWED_ORIGINS', namespace: 'app', classification: 'config', requiredBy: ['production Express CORS'], exposures: ['server', 'ci'] },
   { key: 'CLOUDFLARE_API_TOKEN', namespace: 'cloudflare', classification: 'critical', requiredBy: ['Worker deployment'], exposures: ['ci'] },
   { key: 'CLOUDFLARE_ACCOUNT_ID', namespace: 'cloudflare', classification: 'internal', requiredBy: ['Worker deployment'], exposures: ['ci'] },
   { key: 'ELARA_BACKGROUND_TOKEN', namespace: 'cloudflare', classification: 'critical', requiredBy: ['background Worker authorization'], exposures: ['worker', 'ci'] },
