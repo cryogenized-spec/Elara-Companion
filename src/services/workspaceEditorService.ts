@@ -1,20 +1,16 @@
 import type { ArtifactRevision, Workspace, WorkspaceArtifact } from '../types';
 import { workspacePersistenceService } from './workspacePersistenceService';
-import {
-  createArtifact,
-  deleteArtifact,
-  setActiveArtifact,
-  updateArtifact,
-} from '../lib/workspaceStorage';
+import { workspaceService } from './workspaceService';
 import { compareRevisions, createCheckpoint, restoreRevision } from '../lib/revisionUtils';
 
 export const workspaceEditorService = {
   getWorkspace: workspacePersistenceService.getWorkspace,
   saveWorkspace: workspacePersistenceService.saveWorkspace,
-  selectArtifact: setActiveArtifact,
-  createArtifact,
-  deleteArtifact,
-  updateArtifact,
+  selectArtifact: workspaceService.selectArtifact,
+  createArtifact: workspaceService.createArtifact,
+  deleteArtifact: workspaceService.removeArtifact,
+  updateArtifact: (workspace: Workspace, artifactId: string, updates: Partial<WorkspaceArtifact>): Workspace =>
+    workspaceService.updateArtifactById(artifactId, updates) ? workspaceService.getWorkspace() : workspace,
   checkpoint: createCheckpoint,
   restoreRevision,
   compareRevisions,
