@@ -1,4 +1,4 @@
-// Google Workspace provider. V3 keeps one client layer for the UI and agent.
+// Google Workspace compatibility façade. Canonical implementations live in src/services and authorization is owned by the Google capability layer.
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
@@ -79,26 +79,6 @@ export async function requestGoogleAuth(forcePrompt = false): Promise<string> {
   });
 }
 
-async function parseGoogleApiError(res: Response, prefix: string): Promise<string> {
-  const raw = await res.text().catch(() => '');
-  try {
-    const json = JSON.parse(raw);
-    return `${prefix}: ${json?.error?.message || json?.error || `HTTP ${res.status}`}`;
-  } catch {
-    return `${prefix}: ${raw || `HTTP ${res.status}`}`;
-  }
-}
-
-function authHeaders(token: string) { return { Authorization: `Bearer ${token}` }; }
-function jsonHeaders(token: string) { return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }; }
-
-function encodeBase64Url(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = '';
-  bytes.forEach((b) => { binary += String.fromCharCode(b); });
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
 import { listGmailMessages, getGmailMessageDetails, createGmailDraft, sendGmailMessage } from '../services/googleGmailService';
 export { listGmailMessages, getGmailMessageDetails, createGmailDraft, sendGmailMessage } from '../services/googleGmailService';
 export type { GmailMessageSummary, GmailMessageFull } from '../services/googleGmailService';
@@ -114,29 +94,12 @@ import { createGoogleKeepNote, listGoogleKeepNotes, getGoogleKeepNote, deleteGoo
 
 export { getTaskLists, getTasks, createTask } from '../services/googleTasksService';
 export type { TaskItem } from '../services/googleTasksService';
-
 export { createGoogleSheet, getSpreadsheetDetails, readSheetValues, appendSheetRow } from '../services/googleSheetsService';
 export type { SheetMetadata } from '../services/googleSheetsService';
-
 export { searchContacts, listContacts } from '../services/googleContactsService';
 export type { ContactPerson } from '../services/googleContactsService';
-
 export { createGoogleKeepNote, listGoogleKeepNotes, getGoogleKeepNote, deleteGoogleKeepNote } from '../services/googleKeepService';
 export type { GoogleKeepNote } from '../services/googleKeepService';
-
-// ---------------- Local reference archive compatibility ----------------
-export interface KeepNoteItem { id:string; title:string; content:string; tags:string[]; updatedAt:string; url?:string; }
-const LOCAL_KEEP_ARCHIVE_KEY='elara_passive_keep_archive_v1';
-export function loadLocalKeepArchive():KeepNoteItem[]{try{const raw=localStorage.getItem(LOCAL_KEEP_ARCHIVE_KEY);return raw?JSON.parse(raw):[];}catch{return [];}}
-export function saveLocalKeepArchive(notes:KeepNoteItem[]){try{localStorage.setItem(LOCAL_KEEP_ARCHIVE_KEY,JSON.stringify(notes));}catch{}}
-export async function createKeepNote(title:string,content:string,tags:string[]=[]):Promise<KeepNoteItem>{const note={id:`keep_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,title:title||'Untitled Note',content:content||'',tags,updatedAt:new Date().toISOString()};saveLocalKeepArchive([note,...loadLocalKeepArchive()]);return note;}
-export async function searchKeepNotes(query=''):Promise<{notes:KeepNoteItem[]}>{const notes=loadLocalKeepArchive();if(!query.trim())return {notes};const q=query.toLowerCase();return {notes:notes.filter(n=>n.title.toLowerCase().includes(q)||n.content.toLowerCase().includes(q)||n.tags.some(t=>t.toLowerCase().includes(q)))};}
-export async function listKeepNotes():Promise<{notes:KeepNoteItem[]}>{return {notes:loadLocalKeepArchive()};}
-export async function getKeepNote(idOrTitle:string):Promise<KeepNoteItem|null>{const q=idOrTitle.toLowerCase();return loadLocalKeepArchive().find(n=>n.id===idOrTitle||n.title.toLowerCase()===q||n.title.toLowerCase().includes(q))||null;}
-export async function updateKeepNote(id:string,updates:Partial<KeepNoteItem>):Promise<KeepNoteItem|null>{const notes=loadLocalKeepArchive();const i=notes.findIndex(n=>n.id===id);if(i<0)return null;notes[i]={...notes[i],...updates,updatedAt:new Date().toISOString()};saveLocalKeepArchive(notes);return notes[i];}
-export async function deleteKeepNote(id:string):Promise<boolean>{saveLocalKeepArchive(loadLocalKeepArchive().filter(n=>n.id!==id));return true;}
-export async function copyCanvasToKeep(title:string,content:string,tags:string[]=['Canvas']){return createKeepNote(title||'Canvas Note',content,tags);}
-export async function copyCanvasToGoogledocs(title:string,content:string){return createGoogleDoc(title||'Canvas Document',content);}
 
 import { listChatSpaces, createChatSpace, listChatMessages, sendChatMessage, sendChatCardMessage, postChatWebhook, loadSpaceWebhooks, saveSpaceWebhooks, buildTaskApprovalCard, buildDraftPreviewCard, buildScheduleSweepCard, buildSystemAlertCard } from '../services/googleChatService';
 export { listChatSpaces, createChatSpace, listChatMessages, sendChatMessage, sendChatCardMessage, postChatWebhook, loadSpaceWebhooks, saveSpaceWebhooks, buildTaskApprovalCard, buildDraftPreviewCard, buildScheduleSweepCard, buildSystemAlertCard } from '../services/googleChatService';
