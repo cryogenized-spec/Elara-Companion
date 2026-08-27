@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import type { CanvasData, Settings, WorldState } from '../types';
+import type { CanvasData } from '../types';
 
 const LazyCanvasPanelImpl = React.lazy(async () => {
   const module = await import('./CanvasPanel');
@@ -36,80 +36,53 @@ const LazyCameraModalImpl = React.lazy(async () => {
   return { default: module.CameraModal };
 });
 
-export interface LazyCanvasPanelProps {
-  canvas: CanvasData | null;
-  onClose: () => void;
-  onUpdateContent?: (content: string) => void;
-}
-
+export type LazyCanvasPanelProps = React.ComponentProps<typeof import('./CanvasPanel').CanvasPanel>;
 export const CanvasPanel: React.FC<LazyCanvasPanelProps> = (props) => (
   <Suspense fallback={null}>
     <LazyCanvasPanelImpl {...props} />
   </Suspense>
 );
 
-export interface LazyWorkspaceViewProps {
-  activeArtifactId?: string | null;
-  onSelectArtifact?: (id: string) => void;
-  onBackToChat?: () => void;
-  onOpenSidebar?: () => void;
-}
-
+export type LazyWorkspaceViewProps = React.ComponentProps<typeof import('./WorkspaceView').WorkspaceView>;
 export const WorkspaceView: React.FC<LazyWorkspaceViewProps> = (props) => (
   <Suspense fallback={null}>
     <LazyWorkspaceViewImpl {...props} />
   </Suspense>
 );
 
-export interface LazySettingsModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  settings: Settings;
-  onSaveSettings: (settings: Settings) => void;
-  customPortrait: string | null;
-  onUploadPortrait: (base64: string) => void;
-  onRemovePortrait: () => void;
-  onExportAllData?: () => void;
-  onImportData?: (json: string) => void;
-}
-
+export type LazySettingsModalProps = React.ComponentProps<typeof import('./SettingsModal').SettingsModal>;
 export const SettingsModal: React.FC<LazySettingsModalProps> = (props) => (
   <Suspense fallback={null}>
     <LazySettingsModalImpl {...props} />
   </Suspense>
 );
 
-export interface LazyWorldModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  worldState: WorldState;
-  onSaveWorldState: (state: WorldState) => void;
-  onResetWorldState: () => void;
-  onExportWorldState: () => void;
-  onImportWorldState: (json: string) => void;
-  userName: string;
-}
-
+export type LazyWorldModalProps = React.ComponentProps<typeof import('./WorldModal').WorldModal>;
 export const WorldModal: React.FC<LazyWorldModalProps> = (props) => (
   <Suspense fallback={null}>
     <LazyWorldModalImpl {...props} />
   </Suspense>
 );
 
-export const ThoughtLogModal = (props: React.ComponentProps<typeof import('./ThoughtLogModal').ThoughtLogModal>) => (
+export type LazyThoughtLogModalProps = React.ComponentProps<typeof import('./ThoughtLogModal').ThoughtLogModal>;
+export const ThoughtLogModal: React.FC<LazyThoughtLogModalProps> = (props) => (
   <Suspense fallback={null}>
     <LazyThoughtLogModalImpl {...props} />
   </Suspense>
 );
 
-export const PortraitViewerModal = (props: React.ComponentProps<typeof import('./PortraitViewerModal').PortraitViewerModal>) => (
+export type LazyPortraitViewerModalProps = React.ComponentProps<typeof import('./PortraitViewerModal').PortraitViewerModal>;
+export const PortraitViewerModal: React.FC<LazyPortraitViewerModalProps> = (props) => (
   <Suspense fallback={null}>
     <LazyPortraitViewerModalImpl {...props} />
   </Suspense>
 );
 
-export const CameraModal = (props: React.ComponentProps<typeof import('./CameraModal').CameraModal>) => (
+export type LazyCameraModalProps = React.ComponentProps<typeof import('./CameraModal').CameraModal>;
+export const CameraModal: React.FC<LazyCameraModalProps> = (props) => (
   <Suspense fallback={null}>
     <LazyCameraModalImpl {...props} />
   </Suspense>
 );
+
+void (null as unknown as CanvasData);
