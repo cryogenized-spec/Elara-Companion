@@ -63,5 +63,7 @@ test('Settings UI uses application-owned persistence and capability boundaries',
   assert.match(source, /settingsPersistence\.savePersonaSnapshots/);
   assert.match(source, /getSettingsRateLimits/);
   assert.match(source, /getUpcomingCalendarEvents/);
-  assert.doesNotMatch(source, /searchKeepNotes|createKeepNote|updateKeepNote|getKeepNote|deleteKeepNote|listKeepNotes/);
+  const googleImport = source.match(/import \{[\s\S]*?\} from ['\"]\.\.\/services\/settingsGoogleService['\"]/)
+  assert.ok(googleImport, 'SettingsModal must import settingsGoogleService through the canonical boundary');
+  assert.doesNotMatch(googleImport[0], /searchKeepNotes|createKeepNote|updateKeepNote|getKeepNote|deleteKeepNote|listKeepNotes/);
 });
