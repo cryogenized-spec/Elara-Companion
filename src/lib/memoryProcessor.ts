@@ -1,7 +1,6 @@
 import { MemoryAction, MemoryItem, MemoryLink, MemoryScratchpadState } from '../types';
 import { consolidateMemories } from './memoryConsolidation';
 import { recordLiveMemoryActivity } from './thinkingLiveRuntime';
-import { persistMemoryScratchpad } from '../services/memoryScratchpadProjection';
 
 function normalizeMemoryLinks(links: MemoryLink[] | undefined, conversationId?: string, sourceArtifactId?: string): MemoryLink[] | undefined {
   const next: MemoryLink[] = [];
@@ -20,12 +19,11 @@ function deriveInitialResolution(kind?: MemoryItem['kind'], lifecycle?: MemoryIt
   return 'contextual';
 }
 
+/** Pure memory-state transition engine. Persistence and derived projections belong to the Memory application service. */
 export function applyMemoryActions(state: MemoryScratchpadState, actions: MemoryAction[], conversationId?: string): MemoryScratchpadState {
   if (!actions || actions.length === 0) {
     const consolidated = consolidateMemories(state.memories);
-    const nextState = consolidated.memories === state.memories ? { ...state, schemaVersion: 3 } : { ...state, memories: consolidated.memories, lastMaintenanceAt: new Date().toISOString(), schemaVersion: 3 };
-    persistMemoryScratchpad(nextState.memories);
-    return nextState;
+    return consolidated.memories === state.memories ? { ...state, schemaVersion: 3 } : { ...state, memories: consolidated.memories, lastMaintenanceAt: new Date().toISOString(), schemaVersion: 3 };
   }
   let currentMemories = [...state.memories];
   let stateModified = false;
@@ -98,7 +96,5 @@ export function applyMemoryActions(state: MemoryScratchpadState, actions: Memory
     }
   }
   const consolidated = consolidateMemories(currentMemories);
-  const nextState = stateModified || consolidated.memories !== currentMemories ? { ...state, memories: consolidated.memories, lastMaintenanceAt: new Date().toISOString(), schemaVersion: 3 } : { ...state, schemaVersion: 3 };
-  persistMemoryScratchpad(nextState.memories);
-  return nextState;
+  return stateModified || consolidated.memories !== currentMemories ? { ...state, memories: consolidated.memories, lastMaintenanceAt: new Date().toISOString(), schemaVersion: 3 } : { ...state, schemaVersion: 3 };
 }
