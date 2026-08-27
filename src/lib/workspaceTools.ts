@@ -8,11 +8,9 @@ import {
   listGoogleDriveFiles,
   searchGoogleDriveFiles,
   readGoogleDriveFile,
-  createKeepNote,
-  getKeepNote,
-  updateKeepNote,
   isGoogleConnected,
 } from './googleApi';
+import { createKeepNote, getKeepNote, updateKeepNote } from '../legacy/googleKeepArchive';
 
 export const workspaceToolDeclarations = [
   // ==========================================

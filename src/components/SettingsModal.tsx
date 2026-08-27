@@ -95,7 +95,7 @@ import {
   ChatSpace,
   ChatMessageResult,
   SpaceWebhookConfig,
-} from '../lib/googleApi';
+} from '../services/settingsGoogleService';
 
 interface SettingsModalProps {
   isOpen: boolean;
