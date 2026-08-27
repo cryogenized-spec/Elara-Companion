@@ -11,7 +11,7 @@ import { serverLockbox } from './server/services/lockbox';
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(serverLockbox.runtime('PORT', '3000')) || 3000;
 
   // Global CORS & Content security for iframe / mobile environments
   app.use((req, res, next) => {
