@@ -1,73 +1,80 @@
 # Elara Companion v3
 
-Elara is a React/Vite personal companion application built around a Gemini-backed chat runtime, a persistent local Workspace, durable conversation recovery, structured long-term memory, revision history, agent tooling, and optional Google Workspace integration.
+Elara is a React/Vite personal companion application built around a Gemini-backed chat runtime, durable conversations, a persistent local Workspace, structured long-term memory, revision history, agent tooling, optional Google Workspace integration, background execution, and recovery-aware application state.
 
-This repository is the canonical application codebase. The current architecture favors one authoritative implementation per responsibility: one chat runtime, one Markdown renderer, one structured memory store, one retrieval path, and unified settings rather than parallel legacy controls.
+This repository is the canonical refactor/production successor. The historical repository `cryogenized-spec/Elara-companion-app-v2` remains the protected reference and is not used for new development.
 
-## Core architecture
+## Architectural status
 
-The application is organized around these runtime domains:
+The repository has completed the architectural rehabilitation and final hardening programme. The current codebase follows one authoritative implementation per responsibility and uses explicit application/service boundaries to keep UI, domain orchestration, provider/runtime code, and persistence from collapsing back into one another.
 
-- **Application shell** — `src/App.tsx` coordinates views, conversation state, settings, persistence, and feature integration.
-- **Chat runtime** — `src/lib/chatRuntime.ts` provides the shared Gemini model/context/tool-loop primitives used by the server and browser-direct paths.
-- **Context assembly** — `src/lib/contextManager.ts` builds the system payload, including the stable profile and query-specific retrieved memory context.
-- **Canonical Markdown rendering** — chat messages use the unified renderer rather than separate user/assistant Markdown implementations.
-- **Agent tools** — `src/lib/agentToolRegistry.ts` is the canonical combined Workspace + Google tool declaration/dispatch boundary.
-- **Local Workspace** — Workspace storage, artifacts, revisions, comparison, restore, and synchronization live in the Workspace/revision helpers under `src/lib/`.
-- **Google integration** — Google agent/API helpers provide authenticated external Workspace access with explicit write confirmation.
-- **Memory** — the structured IndexedDB memory state is authoritative; the visible Scratchpad is a derived inspection/projection surface.
+The important canonical boundaries are:
+
+- Application shell: `src/App.tsx` composes the application and views; it should not become the owner of subsystem mechanics again.
+- Conversation/application state: owns conversation lifecycle and persistence-facing message state.
+- Chat runtime: provider execution is requested through the Gemini runtime contract and application runtime services.
+- Gemini runtime configuration: `src/runtime/geminiRuntimeConfigService.ts` owns model/tool configuration policy.
+- Gemini execution: `src/runtime/geminiRuntimeService.ts` is the application-facing execution boundary; lower-level provider/client files remain implementation details.
+- Context assembly: `src/services/chatContextService.ts` owns system-payload assembly, memory retrieval context, and retrieval traces. `src/lib/contextManager.ts` is compatibility-only.
+- OOC: `src/services/oocConversationService.ts` owns OOC execution and explicitly disables tools through the runtime contract.
+- Workspace application operations: `src/services/workspaceService.ts`.
+- Workspace persistence: `src/services/workspacePersistenceService.ts`, backed by the existing storage implementation.
+- Workspace/background reconciliation: `src/services/workspaceBackgroundService.ts`, with per-job idempotency enforced by the background application layer.
+- Google authorization: browser identity/token lifecycle is owned by `src/lib/googleAuthorization.ts`; `src/services/googleWorkspaceService.ts` is the application-facing capability boundary. `src/lib/googleApi.ts` is compatibility-only.
+- Historical local Keep-compatible archive: `src/services/referenceArchiveService.ts`. The obsolete legacy Keep implementation has been physically removed.
+- Settings: application-owned persistence, diagnostics, Calendar, Google, and Voice/Chat configuration boundaries are used by the Settings UI.
+- Memory: structured IndexedDB memory remains authoritative; projections and retrieval traces are derived views.
+- Agent tools: canonical registry/execution paths own tool declarations and dispatch rather than individual UI components.
+
+The permanent Stage 4 architectural contract and executable lock suite live in `docs/STAGE4_FINAL_ARCHITECTURAL_HARDENING.md` and `src/architecture/finalArchitectureLock.test.ts`.
 
 ## Memory architecture
 
-Elara's memory system is intentionally layered rather than being a single prompt-sized notebook. See [`docs/ELARA_MEMORY_ARCHITECTURE.md`](docs/ELARA_MEMORY_ARCHITECTURE.md) for the full contract.
-
-The memory pipeline is:
+Elara's memory system is deliberately layered:
 
 ```text
 conversation
     -> observation extraction
     -> structured memory store
     -> duplicate/conflict consolidation
-    -> promotion and lifecycle maintenance
+    -> promotion/lifecycle maintenance
     -> contextual retrieval
     -> bounded Gemini context
 ```
 
-Memory is represented at several resolutions: `core`, `contextual`, `episodic`, `observation`, and `synthesized`. Lifecycle state separately tracks whether a record is `active`, `stale`, `archived`, `superseded`, or `conflicted`.
+Structured memory is the source of truth. Retrieval is deterministic and bounded, while maintenance can age/archive records without destroying historical provenance. The human-facing Scratchpad/Insights surfaces are projections and inspection tools rather than competing stores.
 
-The memory store keeps provenance, evidence, reinforcement, retrieval history, relationships, and supersession information. Retrieval is deterministic and bounded so growing memory cannot cause unbounded prompt expansion. Maintenance runs at the persistence boundary and ages or archives records without destroying useful history.
+## Chat, runtime, and recovery
 
-The Scratchpad is the human-facing memory inspection surface. Its Insights view is read-only and explains why a memory exists, its resolution/state, confidence, importance, evidence, provenance, freshness, and relationships. Structured memory remains the single source of truth.
+Normal Chat execution uses the canonical Gemini runtime contract. Model selection, tool exposure, streaming, resilience, abort handling, and recovery are kept behind runtime/application boundaries. Specialized surfaces can explicitly disable tools; OOC does so by policy rather than by editing a provider configuration object in the UI.
 
-## Chat, Markdown, and recovery
+Browser-direct execution remains supported for static hosting. Server-backed execution remains available where an Express runtime is deployed.
 
-Elara uses one canonical Markdown renderer across user and assistant messages. Lightweight structures such as tables, lists, checklists, quotes, emphasis, links, code blocks, and short formatted notes can remain directly in chat; larger persistent/editable work belongs in the Workspace/artifact layer.
+Conversation drafts and recoverable outgoing messages use local recovery mechanisms. Background operations have explicit reconciliation and duplicate-completion handling.
 
-The chat composer has durable per-conversation drafts. Drafts are persisted locally and can be recovered after reload, backgrounding, app termination, or other lifecycle interruptions.
+## Workspace
 
-Outgoing messages also use a local recovery/outbox layer with client-side identity and server-side idempotency protection. Recently sent/recoverable text can be restored or copied from the Chat & Editor settings without adding controls over the typing surface. The recovery layer is intentionally silent unless something actually needs recovery.
+Workspace state is persisted through the Workspace persistence boundary. Application operations belong to `workspaceService`; persistence mechanics belong below it. UI components must not import the underlying storage implementation directly.
 
-Mobile viewport handling includes explicit resume/IME re-synchronization so returning to Elara with the Android keyboard already open does not leave the editor underneath the keyboard.
+Artifact revisions, restore, comparison, synchronization, and background reconciliation retain their existing persisted formats while using explicit ownership boundaries.
 
-## AI and model runtime
+## Google integration
 
-AI calls are centralized through the Gemini runtime contract. Model selection, reliability/retry behavior, temporary model health, fallback ordering, and restoration policy are handled by the existing resilience layer rather than separate ad-hoc callers.
+Google identity and OAuth token lifecycle have a single browser-side implementation authority. Capability authorization is incremental for browser Google integrations. The compatibility `googleApi` façade delegates to canonical service modules and contains no independent OAuth state.
 
-The runtime supports both server-backed execution and browser-direct execution for static-hosting environments. Production behavior is validated through the same TypeScript, test, and build gates used by CI.
+Google Keep has two intentionally distinct concepts: the official Google Keep API integration remains available through `googleKeepService`, while historical local Keep-compatible notes are backed by `referenceArchiveService`. The obsolete local Keep implementation under `src/legacy` has been removed.
 
-## Persistence
+The background Google auth Worker is a separate trust domain. It stores its refresh-token record in the Cloudflare-backed vault and protects token/status/disconnect operations with `ELARA_BACKGROUND_TOKEN`.
 
-IndexedDB is the durable application store for conversations, settings, and structured memory. `src/lib/db.ts` is the main persistence/migration boundary and normalizes persisted data before exposing it to the application.
+## Persistence and Lockbox
 
-Browser `localStorage` remains for derived/runtime compatibility projections such as profile/context mirrors where appropriate. These projections are not authoritative over the structured stores.
+IndexedDB is the durable application store for conversations, settings, and structured memory. Browser `localStorage` is used only where a projection or explicit compatibility/data-retention requirement exists.
 
-Memory schema changes are additive and migration-safe. The current structured memory schema is version 3.
+Sensitive configuration is governed by the Lockbox manifest under `config/`. Direct `process.env` access is restricted to approved server/worker/automation adapters and is checked by the Lockbox audit.
 
-## Agent safety
+Never commit real API keys, OAuth secrets, GitHub tokens, Cloudflare credentials, or automation secrets.
 
-Google read and write operations are separated at the agent registry. External writes and destructive actions require explicit confirmation before dispatch. Authentication failures invalidate the runtime session appropriately, and disconnect/revoke operations are explicit authenticated actions.
-
-## Development
+## Development checks
 
 Install dependencies:
 
@@ -75,36 +82,44 @@ Install dependencies:
 npm install
 ```
 
-Run the development application:
+Run locally:
 
 ```bash
 npm run dev
 ```
 
-Run the production checks used by CI:
+Run the full production verification used by CI:
 
 ```bash
-npm run lint
-npm test
-npm run build
+npm run verify:production
 ```
 
-`npm run lint` performs TypeScript checks for the main application and background runtime. `npm test` uses Node's built-in test runner through `tsx`. `npm run build` produces the Vite frontend and bundles the Express server to `dist/server.cjs`.
+That verification includes Lockbox validation/audit/secret scanning, TypeScript checks, background-runtime typechecking, unit tests, the memory benchmark, and the production build.
 
-CI currently runs on Node 24 and validates Typecheck, Unit tests, and Build before merge.
+## Feature-development contract
 
-## Deployment
+Future changes should follow:
 
-The frontend is Vite-based and can run directly in the browser. The production server is bundled to `dist/server.cjs`. Browser-direct Gemini execution remains available for static-hosting environments where an Express runtime is not available.
+```text
+feature requirement
+    -> owning domain/service
+    -> stable contract
+    -> infrastructure adapter (when required)
+    -> UI composition
+```
 
-## Repository conventions
+Do not introduce a second state authority, provider façade, persistence mirror, tool registry, renderer, or runtime execution path when an existing owner already exists.
 
-Keep one authoritative implementation for each subsystem. Prefer extending the existing persistence/runtime/settings boundary over introducing parallel compatibility layers. New UI controls should live in the existing unified settings or feature surface rather than floating independently over the chat/editor.
+Persistence/schema changes require migration and recovery coverage. Background changes require duplicate/retry/reload semantics. External authorization changes must preserve the applicable single-authority trust-domain model. Specialized model execution must declare tool exposure explicitly.
 
-When changing memory behavior, update the memory architecture contract and regression coverage together. When changing chat behavior, preserve the canonical renderer, context assembly, recovery, and mobile viewport boundaries rather than introducing duplicate paths.
+## Deployment notes
 
-## Architecture status
+The frontend is Vite-based and can be deployed as a static site. The repository also contains an optional Express production server and a separate Cloudflare background runtime/Google-auth worker.
 
-The memory architecture program is complete through Pass 8: schema foundation, observation stream, consolidation/promotion, retrieval, Gemini context integration, maintenance/decay, transparency/inspection, and final hardening/regression are implemented.
+Cloud Run deployments should use the injected `PORT` value; the server now honors it while retaining port 3000 as the local-development default.
 
-The repository is now in the post-memory-architecture state. Future work should build on these consolidated boundaries rather than reintroducing legacy parallel implementations.
+GitHub Pages deployment requires Pages to be enabled/configured for the repository. The static build itself succeeds; if the Pages workflow cannot create or configure the Pages site, resolve that repository-level GitHub Pages permission/configuration rather than changing application code.
+
+## Historical architecture records
+
+The repository retains Pass notes and architecture documents as historical evidence for why boundaries exist. They are not alternate implementations. New development should follow the canonical boundaries and the Stage 4 feature-safety contract rather than resurrecting older paths.
