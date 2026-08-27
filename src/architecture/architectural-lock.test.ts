@@ -80,13 +80,13 @@ test('Settings UI uses application-owned persistence and capability boundaries',
 
 test('Workspace background reconciliation uses the application persistence boundary', async () => {
   const source = await readText('src/services/workspaceBackgroundService.ts');
-  assert.match(source, /services\/workspacePersistenceService/);
+  assert.match(source, /from ['\"]\.\/workspacePersistenceService['\"]/);
   assert.doesNotMatch(source, /from ['\"]\.\.\/lib\/workspaceStorage['\"]/);
 });
 
 test('Workspace editor delegates application mutations to the Workspace service', async () => {
   const source = await readText('src/services/workspaceEditorService.ts');
-  assert.match(source, /services\/workspaceService/);
+  assert.match(source, /from ['\"]\.\/workspaceService['\"]/);
   assert.match(source, /createArtifact: workspaceService\.createArtifact/);
   assert.match(source, /deleteArtifact: workspaceService\.deleteArtifact/);
   assert.match(source, /updateArtifact: workspaceService\.updateArtifact/);
