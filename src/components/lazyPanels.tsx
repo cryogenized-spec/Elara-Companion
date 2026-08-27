@@ -1,5 +1,4 @@
 import React, { Suspense } from 'react';
-import type { CanvasData } from '../types';
 
 const LazyCanvasPanelImpl = React.lazy(async () => {
   const module = await import('./CanvasPanel');
@@ -84,5 +83,3 @@ export const CameraModal: React.FC<LazyCameraModalProps> = (props) => (
     <LazyCameraModalImpl {...props} />
   </Suspense>
 );
-
-void (null as unknown as CanvasData);
