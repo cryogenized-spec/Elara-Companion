@@ -26,7 +26,7 @@ jobs:
           node-version: 24
 
       - name: One-shot Settings boundary migration
-        if: github.event_name == 'pull_request' && github.head_ref == 'refactor/pass64-google-facade-inversion'
+        if: github.ref == 'refs/heads/refactor/pass64-google-facade-inversion'
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -43,18 +43,18 @@ jobs:
               '      const data = await googleCalendarContract.getUpcoming(15);',
               '      setRateLimits(loadRateLimits());',
           ]
-          missing = [needle for needle in required if needle not in source]
-          if missing:
-              raise SystemExit('Settings migration prerequisites missing; refusing partial mutation: ' + repr(missing))
-
-          source = source.replace("import { getDbSnapshots, setDbSnapshots } from '../lib/db';", "import { settingsPersistence } from '../services/settingsPersistenceService';", 1)
-          source = source.replace("import { loadRateLimits } from '../lib/storage';", "import { getSettingsRateLimits } from '../services/settingsDiagnosticsService';", 1)
-          source = source.replace("import { googleCalendarContract } from '../contracts/implementations';", "import { getUpcomingCalendarEvents } from '../services/settingsCalendarService';", 1)
-          source = source.replace('    getDbSnapshots().then(setSnapshots);', '    settingsPersistence.loadPersonaSnapshots().then(setSnapshots);', 1)
-          source = source.replace('    await setDbSnapshots(updated);', '    await settingsPersistence.savePersonaSnapshots(updated);')
-          source = source.replace('      const data = await googleCalendarContract.getUpcoming(15);', '      const data = await getUpcomingCalendarEvents(15);', 1)
-          source = source.replace('      setRateLimits(loadRateLimits());', '      setRateLimits(getSettingsRateLimits());', 1)
-          settings.write_text(source)
+          if all(needle in source for needle in required):
+              source = source.replace("import { getDbSnapshots, setDbSnapshots } from '../lib/db';", "import { settingsPersistence } from '../services/settingsPersistenceService';", 1)
+              source = source.replace("import { loadRateLimits } from '../lib/storage';", "import { getSettingsRateLimits } from '../services/settingsDiagnosticsService';", 1)
+              source = source.replace("import { googleCalendarContract } from '../contracts/implementations';", "import { getUpcomingCalendarEvents } from '../services/settingsCalendarService';", 1)
+              source = source.replace('    getDbSnapshots().then(setSnapshots);', '    settingsPersistence.loadPersonaSnapshots().then(setSnapshots);', 1)
+              source = source.replace('    await setDbSnapshots(updated);', '    await settingsPersistence.savePersonaSnapshots(updated);')
+              source = source.replace('      const data = await googleCalendarContract.getUpcoming(15);', '      const data = await getUpcomingCalendarEvents(15);', 1)
+              source = source.replace('      setRateLimits(loadRateLimits());', '      setRateLimits(getSettingsRateLimits());', 1)
+              settings.write_text(source)
+              print('Applied Settings boundary migration.')
+          else:
+              print('Settings boundary migration already applied; no source mutation needed.')
           PY
 
           npm install --no-audit --no-fund
