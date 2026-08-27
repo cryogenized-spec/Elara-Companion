@@ -104,6 +104,20 @@ test('OOC execution owns provider access behind the runtime contract', async () 
   assert.doesNotMatch(source, /buildRuntimeConfig/);
 });
 
+test('canonical Chat context service owns system-payload assembly', async () => {
+  const source = await readText('src/services/chatContextService.ts');
+  assert.match(source, /export function buildSystemPayload/);
+  assert.match(source, /inspectMemoryRetrieval/);
+  assert.match(source, /retrieveRelevantMemories/);
+  assert.match(source, /withInjectedMemoryTrace/);
+});
+
+test('contextManager is compatibility-only and contains no context implementation', async () => {
+  const source = await readText('src/lib/contextManager.ts');
+  assert.match(source, /from ['\"]\.\.\/services\/chatContextService['\"]/);
+  assert.doesNotMatch(source, /inspectMemoryRetrieval|retrieveRelevantMemories|buildRetrievedMemoryContext|function buildSystemPayload/);
+});
+
 test('Scratchpad service bypasses the legacy context-manager wrapper', async () => {
   const source = await readText('src/services/scratchpadService.ts');
   assert.match(source, /from ['\"]\.\.\/lib\/contextProjectionStorage['\"]/);
