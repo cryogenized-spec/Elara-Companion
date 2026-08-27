@@ -10,8 +10,17 @@ export { listGmailMessages, sendGmailMessage, createGmailDraft } from './googleG
 export type { GmailMessageSummary } from './googleGmailService';
 export { listChatSpaces, createChatSpace, listChatMessages, sendChatMessage, sendChatCardMessage, postChatWebhook, buildTaskApprovalCard, buildDraftPreviewCard, buildScheduleSweepCard, buildSystemAlertCard, loadSpaceWebhooks, saveSpaceWebhooks } from './googleChatService';
 export type { ChatSpace, ChatMessageResult, SpaceWebhookConfig } from './googleChatService';
-export { createKeepNote, searchKeepNotes, listKeepNotes, getKeepNote, updateKeepNote, deleteKeepNote } from '../legacy/googleKeepArchive';
-export type { KeepNoteItem } from '../legacy/googleKeepArchive';
+
+// Local reference archive remains supported as a user-facing feature, but no longer lives under a legacy Google implementation.
+export {
+  createReferenceNote as createKeepNote,
+  searchReferenceNotes as searchKeepNotes,
+  listReferenceNotes as listKeepNotes,
+  getReferenceNote as getKeepNote,
+  updateReferenceNote as updateKeepNote,
+  deleteReferenceNote as deleteKeepNote,
+} from './referenceArchiveService';
+export type { ReferenceNoteItem as KeepNoteItem } from './referenceArchiveService';
 
 export const requestGoogleAuth = (forcePrompt = false) => googleIdentity.requestBaseAuthorization(forcePrompt);
 export const isGoogleConnected = () => googleIdentity.isAuthorized();
