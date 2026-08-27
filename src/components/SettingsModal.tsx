@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ElaraSettings, AVAILABLE_MODELS, PersonaSnapshot } from '../types';
-import { getDbSnapshots, setDbSnapshots } from '../lib/db';
+import { settingsPersistence } from '../services/settingsPersistenceService';
 import { 
   DEFAULT_ELARA_SYSTEM_PROMPT,
   DEFAULT_PERSONA_PROTOCOL,
@@ -66,12 +66,6 @@ import {
   searchGoogleDriveDocs,
   GoogleDocSummary,
   searchContacts,
-  searchKeepNotes,
-  createKeepNote,
-  updateKeepNote,
-  getKeepNote,
-  deleteKeepNote,
-  listKeepNotes,
   createGoogleSheet,
   listGmailMessages,
   sendGmailMessage,
@@ -90,12 +84,20 @@ import {
   saveSpaceWebhooks,
   TaskItem,
   ContactPerson,
-  KeepNoteItem,
   GmailMessageSummary,
   ChatSpace,
   ChatMessageResult,
   SpaceWebhookConfig,
 } from '../services/settingsGoogleService';
+import {
+  searchReferenceNotes as searchKeepNotes,
+  createReferenceNote as createKeepNote,
+  updateReferenceNote as updateKeepNote,
+  getReferenceNote as getKeepNote,
+  deleteReferenceNote as deleteKeepNote,
+  listReferenceNotes as listKeepNotes,
+} from '../services/referenceArchiveService';
+import type { ReferenceNoteItem as KeepNoteItem } from '../services/referenceArchiveService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -110,8 +112,8 @@ interface SettingsModalProps {
   onClearAllData: () => void;
 }
 
-import { loadRateLimits } from '../lib/storage';
-import { googleCalendarContract } from '../contracts/implementations';
+import { getSettingsRateLimits } from '../services/settingsDiagnosticsService';
+import { getUpcomingCalendarEvents } from '../services/settingsCalendarService';
 import type { GoogleCalendarEvent } from '../contracts';
 import { VoiceChatSettingsPanel } from './VoiceChatSettingsPanel';
 
@@ -133,7 +135,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [showSnapshotPrompt, setShowSnapshotPrompt] = useState(false);
 
   useEffect(() => {
-    getDbSnapshots().then(setSnapshots);
+    settingsPersistence.loadPersonaSnapshots().then(setSnapshots);
   }, []);
 
   const handleSaveSnapshot = async () => {
@@ -149,7 +151,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     };
     const updated = [newSnapshot, ...snapshots];
     setSnapshots(updated);
-    await setDbSnapshots(updated);
+    await settingsPersistence.savePersonaSnapshots(updated);
     setSnapshotName('');
     setShowSnapshotPrompt(false);
   };
@@ -167,7 +169,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleDeleteSnapshot = async (id: string) => {
     const updated = snapshots.filter(s => s.id !== id);
     setSnapshots(updated);
-    await setDbSnapshots(updated);
+    await settingsPersistence.savePersonaSnapshots(updated);
   };
 
   const [activeTab, setActiveTab] = useState<'persona' | 'visuals' | 'voice' | 'workspace' | 'system' | 'data'>('visuals');
@@ -263,7 +265,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   React.useEffect(() => {
     if (isOpen) {
-      setRateLimits(loadRateLimits());
+      setRateLimits(getSettingsRateLimits());
       setIsGoogleAuthed(isGoogleConnected());
       const loadedHooks = loadSpaceWebhooks();
       setSpaceWebhooks(loadedHooks);
@@ -310,7 +312,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setIsCalendarSyncing(true);
     setCalendarSyncError(null);
     try {
-      const data = await googleCalendarContract.getUpcoming(15);
+      const data = await getUpcomingCalendarEvents(15);
       setCalendarSyncResult({
         count: data.items.length,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -686,7 +688,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       } else if (testCardType === 'draft_preview') {
         cardPayload = buildDraftPreviewCard('Weekly Briefing Draft', 'Draft email prepared for team review with action item breakdown.', 'https://mail.google.com', 'gmail');
       } else if (testCardType === 'schedule_sweep') {
-        const events = await googleCalendarContract.getUpcoming(5);
+        const events = await getUpcomingCalendarEvents(5);
         cardPayload = buildScheduleSweepCard(
           events.items.map((e) => ({
             summary: e.summary,

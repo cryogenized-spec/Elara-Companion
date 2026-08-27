@@ -164,8 +164,11 @@ export interface GeminiRuntimeRequest {
   topP?: number;
   topK?: number;
   thinkingBudget?: number;
+  thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
   workspace?: Workspace;
   googleToken?: string;
+  /** Normal Chat enables tools by default; specialised execution contexts can explicitly disable them. */
+  enableTools?: boolean;
   onChunk: (chunk: GeminiStreamChunk) => void;
   signal?: AbortSignal;
 }

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { CanvasData, Message } from '../types';
-import { getArtifactById } from '../lib/workspaceStorage';
+import { workspaceService } from '../services/workspaceService';
 import { ThinkingScratchpad } from './ThinkingScratchpad';
 import { MarkdownMessageRenderer } from './MarkdownMessageRenderer';
 import { Copy, Check, RefreshCw, Edit3, AlertTriangle, Sliders, Play, FileText, ArrowRight, ExternalLink } from 'lucide-react';
@@ -56,7 +56,7 @@ const renderDocumentCards = (
   const documentCards: { id: string; name: string; type: string; provider?: string; url?: string; isLegacyCanvas?: boolean; canvas?: CanvasData }[] = [];
 
   for (const artId of message.artifactIds || []) {
-    const art = getArtifactById(artId);
+    const art = workspaceService.getArtifactById(artId);
     if (art && !renderedArtifactIds.has(art.id)) {
       renderedArtifactIds.add(art.id);
       documentCards.push({ id: art.id, name: art.name, type: art.type || 'markdown', provider: art.provider || 'local', url: art.url });
@@ -65,7 +65,7 @@ const renderDocumentCards = (
 
   for (const canvas of message.canvases || []) {
     if (canvas.artifactId && !renderedArtifactIds.has(canvas.artifactId)) {
-      const art = getArtifactById(canvas.artifactId);
+      const art = workspaceService.getArtifactById(canvas.artifactId);
       renderedArtifactIds.add(canvas.artifactId);
       documentCards.push({ id: canvas.artifactId, name: art?.name || canvas.title, type: art?.type || 'markdown', provider: art?.provider || 'local', url: art?.url, canvas });
     } else if (!canvas.artifactId) {
