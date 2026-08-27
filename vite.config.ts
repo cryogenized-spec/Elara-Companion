@@ -8,6 +8,10 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const hmrEnabled = env.DISABLE_HMR !== 'true';
 
+  const lazyPanelRewrites: Record<string, string> = {
+    "./components/CanvasPanel": "./components/LazyCanvasPanel",
+  };
+
   return {
     base: './',
     define: {
@@ -19,10 +23,14 @@ export default defineConfig(({ mode }) => {
         enforce: 'pre',
         transform(code: string, id: string) {
           if (id.endsWith('/src/App.tsx')) {
-            return code.replace(
+            let next = code.replace(
               "from './components/MemoryModal';",
               "from './components/MemoryModalGuard';"
             );
+            for (const [from, to] of Object.entries(lazyPanelRewrites)) {
+              next = next.replace(`from '${from}';`, `from '${to}';`);
+            }
+            return next;
           }
           return null;
         },
