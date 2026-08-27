@@ -40,11 +40,9 @@ test('Google Hub registry supports independently supplied capability modules', (
   assert.equal(registry.has('tasks'), false);
 });
 
-test('Google Hub registry keeps consequential actions explicit', () => {
+test('Google Hub Gmail presents only safe default actions', () => {
   const gmail = googleHubCapabilityRegistry.get('gmail');
   const actionKinds = gmail?.actions.map((action) => action.kind) ?? [];
-  assert.ok(actionKinds.includes('search'));
-  assert.ok(actionKinds.includes('open'));
-  assert.ok(actionKinds.includes('ask'));
-  assert.equal(actionKinds.includes('send'), false);
+  assert.deepEqual(actionKinds, ['search', 'open', 'ask']);
+  assert.deepEqual(gmail?.requiredCapabilities, ['gmail.read']);
 });
