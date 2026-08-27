@@ -41,6 +41,16 @@ test('UI Google consumers use the feature-owned boundary', async () => {
   assert.deepEqual(offenders, []);
 });
 
+test('UI Workspace consumers use the application Workspace boundary', async () => {
+  const files = await collectSourceFiles('src/components');
+  const offenders: string[] = [];
+  for (const file of files) {
+    const source = await readText(file);
+    if (source.includes("from '../lib/workspaceStorage'") || source.includes('from "../lib/workspaceStorage"')) offenders.push(file);
+  }
+  assert.deepEqual(offenders, []);
+});
+
 test('legacy Keep path contains no implementation', async () => {
   const source = await readText('src/legacy/googleKeepArchive.ts');
   assert.doesNotMatch(source, /localStorage\.setItem|localStorage\.getItem|LOCAL_REFERENCE_ARCHIVE_KEY|LOCAL_KEEP_ARCHIVE_KEY/);
