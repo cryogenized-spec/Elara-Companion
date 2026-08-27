@@ -1,4 +1,5 @@
 import type { RequestHandler } from 'express';
+import { timingSafeEqual } from 'node:crypto';
 import { serverLockbox } from '../services/lockbox';
 
 const LOCAL_ORIGINS = new Set([
@@ -15,6 +16,15 @@ function allowedOrigins(): Set<string> {
   const values = configured.split(',').map((value) => value.trim()).filter(Boolean);
   if (!isProduction()) LOCAL_ORIGINS.forEach((origin) => values.push(origin));
   return new Set(values);
+}
+
+export function authorizeBackendToken(configuredToken: string | undefined, authorizationHeader: string | undefined): 'authorized' | 'missing-configuration' | 'unauthorized' {
+  if (!configuredToken) return 'missing-configuration';
+  const suppliedToken = authorizationHeader?.replace(/^Bearer\s+/i, '').trim() || '';
+  const expected = Buffer.from(configuredToken, 'utf8');
+  const supplied = Buffer.from(suppliedToken, 'utf8');
+  if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) return 'unauthorized';
+  return 'authorized';
 }
 
 export const serverCors: RequestHandler = (req, res, next) => {
@@ -44,15 +54,14 @@ export const requireBackendAccess: RequestHandler = (req, res, next) => {
     return res.status(403).json({ error: 'Non-local development access is disabled.' });
   }
 
-  const configuredToken = serverLockbox.optionalSecret('ELARA_SERVER_ACCESS_TOKEN');
-  if (!configuredToken) {
+  const status = authorizeBackendToken(
+    serverLockbox.optionalSecret('ELARA_SERVER_ACCESS_TOKEN'),
+    req.get('Authorization') || undefined,
+  );
+
+  if (status === 'missing-configuration') {
     return res.status(503).json({ error: 'Backend access is not configured for public production use.' });
   }
-
-  const suppliedToken = req.get('Authorization')?.replace(/^Bearer\s+/i, '').trim();
-  if (!suppliedToken || suppliedToken !== configuredToken) {
-    return res.status(401).json({ error: 'Unauthorized.' });
-  }
-
+  if (status !== 'authorized') return res.status(401).json({ error: 'Unauthorized.' });
   next();
 };
