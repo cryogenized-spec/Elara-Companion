@@ -1,0 +1,89 @@
+name: Stage 1.5 Settings direct migration
+
+on:
+  push:
+    branches:
+      - refactor/pass64-google-facade-inversion
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Apply deterministic Settings boundary migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          settings = Path('src/components/SettingsModal.tsx')
+          source = settings.read_text()
+
+          replacements = [
+              ("import { getDbSnapshots, setDbSnapshots } from '../lib/db';", "import { settingsPersistence } from '../services/settingsPersistenceService';"),
+              ("import { loadRateLimits } from '../lib/storage';", "import { getSettingsRateLimits } from '../services/settingsDiagnosticsService';"),
+              ("import { googleCalendarContract } from '../contracts/implementations';", "import { getUpcomingCalendarEvents } from '../services/settingsCalendarService';"),
+              ('    getDbSnapshots().then(setSnapshots);', '    settingsPersistence.loadPersonaSnapshots().then(setSnapshots);'),
+              ('    await setDbSnapshots(updated);', '    await settingsPersistence.savePersonaSnapshots(updated);'),
+              ('      const data = await googleCalendarContract.getUpcoming(15);', '      const data = await getUpcomingCalendarEvents(15);'),
+              ('      const events = await googleCalendarContract.getUpcoming(5);', '      const events = await getUpcomingCalendarEvents(5);'),
+              ('      setRateLimits(loadRateLimits());', '      setRateLimits(getSettingsRateLimits());'),
+          ]
+
+          for old, new in replacements:
+              source = source.replace(old, new)
+
+          for name in ['searchKeepNotes','createKeepNote','updateKeepNote','getKeepNote','deleteKeepNote','listKeepNotes','KeepNoteItem']:
+              source = source.replace(f'  {name},\n', '')
+
+          marker = "} from '../services/settingsGoogleService';\n"
+          if "from '../services/referenceArchiveService';" not in source:
+              archive = """} from '../services/settingsGoogleService';
+          import {
+            searchReferenceNotes as searchKeepNotes,
+            createReferenceNote as createKeepNote,
+            updateReferenceNote as updateKeepNote,
+            getReferenceNote as getKeepNote,
+            deleteReferenceNote as deleteKeepNote,
+            listReferenceNotes as listKeepNotes,
+          } from '../services/referenceArchiveService';
+          import type { ReferenceNoteItem as KeepNoteItem } from '../services/referenceArchiveService';
+          """
+              if marker not in source:
+                  raise SystemExit('settingsGoogleService import marker not found')
+              source = source.replace(marker, archive, 1)
+
+          for n in ['getDbSnapshots','setDbSnapshots','googleCalendarContract','loadRateLimits']:
+              if n in source:
+                  raise SystemExit(f'unmigrated Settings dependency remains: {n}')
+
+          settings.write_text(source)
+
+          lock = Path('src/architecture/architectural-lock.test.ts')
+          lock_source = lock.read_text()
+          old = "  assert.doesNotMatch(source, /searchKeepNotes|createKeepNote|updateKeepNote|getKeepNote|deleteKeepNote|listKeepNotes/);"
+          new = """  const googleImport = source.match(/import \\{[\\s\\S]*?\\} from ['\\\"]\\.\\.\\/services\\/settingsGoogleService['\\\"]/)\n  assert.ok(googleImport, 'SettingsModal must import settingsGoogleService through the canonical boundary');\n  assert.doesNotMatch(googleImport[0], /searchKeepNotes|createKeepNote|updateKeepNote|getKeepNote|deleteKeepNote|listKeepNotes/);"""
+          if old in lock_source:
+              lock.write_text(lock_source.replace(old, new, 1))
+          PY
+
+          grep -n "getDbSnapshots\|setDbSnapshots\|googleCalendarContract\|loadRateLimits" src/components/SettingsModal.tsx && exit 1 || true
+          grep -n "settingsPersistence\|getSettingsRateLimits\|getUpcomingCalendarEvents" src/components/SettingsModal.tsx
+          git diff --check
+
+          git config user.name 'Elara Architecture Bot'
+          git config user.email 'architecture@users.noreply.github.com'
+          git add src/components/SettingsModal.tsx src/architecture/architectural-lock.test.ts
+          git rm -f .github/workflows/stage1-settings-migrate-direct.yml
+          git diff --cached --check
+          git commit -m 'refactor(settings): complete application boundary extraction'
+          git push
