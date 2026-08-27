@@ -23,10 +23,10 @@ jobs:
       - name: Generate authoritative npm lockfile
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 
-      - name: Commit lockfile when changed
+      - name: Commit lockfile when changed or untracked
         run: |
-          if git diff --quiet -- package-lock.json; then
-            echo 'package-lock.json already matches package.json.'
+          if test -f package-lock.json && git ls-files --error-unmatch package-lock.json >/dev/null 2>&1 && git diff --quiet -- package-lock.json; then
+            echo 'package-lock.json is tracked and matches package.json.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
