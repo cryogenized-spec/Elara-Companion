@@ -99,8 +99,9 @@ test('OOC UI surface delegates model execution to the application service', asyn
 test('OOC execution owns provider access behind the runtime contract', async () => {
   const source = await readText('src/services/oocConversationService.ts');
   assert.match(source, /geminiRuntimeContract\.stream/);
+  assert.match(source, /enableTools:\s*false/);
   assert.doesNotMatch(source, /new GoogleGenAI/);
-  assert.match(source, /delete config\.tools/);
+  assert.doesNotMatch(source, /buildRuntimeConfig/);
 });
 
 test('Scratchpad service bypasses the legacy context-manager wrapper', async () => {
