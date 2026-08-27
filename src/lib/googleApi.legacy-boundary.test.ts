@@ -9,8 +9,15 @@ test('googleApi has no local Keep archive implementation or legacy Keep dependen
   assert.doesNotMatch(source, /legacy\/googleKeepArchive/);
 });
 
-test('legacy Google Keep module is only a compatibility shim', async () => {
+test('legacy Google Keep module contains no implementation', async () => {
   const source = await readFile(fileURLToPath(new URL('../legacy/googleKeepArchive.ts', import.meta.url)), 'utf8');
   assert.doesNotMatch(source, /LOCAL_KEEP_ARCHIVE_KEY|localStorage\.setItem|localStorage\.getItem/);
   assert.match(source, /services\/referenceArchiveService/);
+});
+
+test('googleApi delegates authorization to the canonical Google workspace service', async () => {
+  const source = await readFile(fileURLToPath(new URL('./googleApi.ts', import.meta.url)), 'utf8');
+  assert.match(source, /from ['"]\.\.\/services\/googleWorkspaceService['"]/);
+  assert.doesNotMatch(source, /let tokenClient\s*=|let accessToken\s*=|const SCOPES\s*=|initTokenClient\s*\(/);
+  assert.doesNotMatch(source, /fetch\(['"]https:\/\/oauth2\.googleapis\.com\/revoke/);
 });
