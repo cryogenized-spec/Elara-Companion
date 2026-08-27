@@ -1,6 +1,6 @@
 import React from 'react';
 import { Activity, ChevronDown, RefreshCw } from 'lucide-react';
-import { getLastMemoryRetrievalTrace } from '../lib/contextManager';
+import { getLastMemoryRetrievalTrace } from '../services/chatContextService';
 import type { MemoryRetrievalDisposition, MemoryRetrievalTrace } from '../lib/memoryRetrieval';
 
 const DISPOSITION_LABEL: Record<MemoryRetrievalDisposition, string> = {
