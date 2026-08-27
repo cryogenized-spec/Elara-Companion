@@ -8,27 +8,27 @@ import { setupMemoryRoutes } from './server/routes/memory';
 import { setupAudioRoutes } from './server/routes/audio';
 import { setupWorkspaceRoutes } from './server/routes/workspace';
 import { serverLockbox } from './server/services/lockbox';
+import { requireBackendAccess, serverCors } from './server/middleware/serverAuth';
 
 async function startServer() {
   const app = express();
   const PORT = Number(serverLockbox.runtime('PORT', '3000')) || 3000;
 
-  // Global CORS & Content security for iframe / mobile environments
-  app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    if (req.method === 'OPTIONS') {
-      return res.sendStatus(200);
-    }
-    next();
-  });
-
+  app.use(serverCors);
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-  // Mount modular routes
+  // Public, read-only discovery endpoints.
   setupConfigRoutes(app);
+
+  // AI, memory, audio, and Workspace mutation endpoints require the explicit
+  // backend trust boundary in production. Local development remains usable.
+  app.use('/api/chat', requireBackendAccess);
+  app.use('/api/memory', requireBackendAccess);
+  app.use('/api/audio', requireBackendAccess);
+  app.use('/api/google-chat', requireBackendAccess);
+  app.use('/api/chat/webhook', requireBackendAccess);
+  app.use('/api/chat/proactive', requireBackendAccess);
   setupChatRoutes(app);
   setupMemoryRoutes(app);
   setupAudioRoutes(app);
