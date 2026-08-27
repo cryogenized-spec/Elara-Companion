@@ -7,10 +7,9 @@ import {
   buildRuntimeConfig,
   MAX_AGENT_ITERATIONS,
   ELARA_SAFETY_SETTINGS,
-} from "../../src/lib/chatRuntime";
-import { executeAgentToolCall } from "../../src/services/agentToolExecutionService";
-import { mergeTouchedArtifactIds } from "../../src/services/agentToolExecutionService";
-import { runResilientGeminiStreamTurn } from "../../src/lib/resilientGeminiStream";
+} from "../services/chatModelRuntime";
+import { executeAgentToolCall, mergeTouchedArtifactIds } from "../../src/services/agentToolExecutionService";
+import { runResilientGeminiStreamTurn } from "../services/chatModelRuntime";
 
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 const acceptedChatRequests = new Map<string, number>();
