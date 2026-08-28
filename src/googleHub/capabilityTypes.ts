@@ -1,32 +1,35 @@
 import type { GoogleCapability } from '../lib/googleCapabilityPolicy';
 
 /** Provider identifier used by integration capability modules. */
-export type CapabilityProvider = 'google' | (string & {});
+export type CapabilityProvider = string;
 
-/**
- * The kind of user-visible operation a capability can expose.
- * These are descriptive metadata; execution remains owned by the provider service.
- */
+/** The kind of user-visible operation a capability can expose. */
 export type CapabilityActionKind = 'query' | 'create' | 'update' | 'delete' | 'external' | 'authorize';
 export type CapabilityActionEffect = 'read' | 'write' | 'external-write' | 'auth-change';
 export type CapabilityConfirmation = 'none' | 'user';
 export type CapabilityAuthorizationMode = 'identity' | 'capability';
 
-export interface CapabilityAction {
+export interface CapabilityAction<Permission = string> {
   id: string;
   label: string;
   description: string;
   kind: CapabilityActionKind;
   effect: CapabilityActionEffect;
-  requiredCapabilities?: readonly GoogleCapability[];
+  requiredPermissions?: readonly Permission[];
   confirmation?: CapabilityConfirmation;
 }
 
-/** Stable, provider-facing contract for an integration capability. */
-export interface IntegrationCapability {
+/**
+ * Provider-neutral capability contract.
+ * Permission identifiers belong to the provider adapter rather than the Hub itself.
+ */
+export interface IntegrationCapability<
+  Provider extends CapabilityProvider = CapabilityProvider,
+  Permission = string,
+> {
   id: string;
   version: 1;
-  provider: CapabilityProvider;
+  provider: Provider;
   name: string;
   description: string;
   category: string;
@@ -34,14 +37,11 @@ export interface IntegrationCapability {
   panelKey: string;
   authorization: {
     mode: CapabilityAuthorizationMode;
-    requiredCapabilities: readonly GoogleCapability[];
+    requiredPermissions: readonly Permission[];
   };
   externalUrl?: string;
-  actions: readonly CapabilityAction[];
+  actions: readonly CapabilityAction<Permission>[];
 }
 
-/** Google Hub capability definition. Scope strings are deliberately not duplicated here. */
-export type GoogleCapabilityDefinition = Omit<IntegrationCapability, 'provider' | 'authorization'> & {
-  provider: 'google';
-  authorization: IntegrationCapability['authorization'];
-};
+/** Google Hub specialization backed by the canonical Google OAuth capability policy. */
+export type GoogleCapabilityDefinition = IntegrationCapability<'google', GoogleCapability>;
