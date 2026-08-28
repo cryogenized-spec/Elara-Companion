@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { X, MessageCircle, ShieldCheck } from 'lucide-react';
+import { X, MessageCircle } from 'lucide-react';
 import { GoogleHub } from './GoogleHub';
 import { createGoogleCapabilityModules } from './googleCapabilityModules';
 import { googleHubCapabilityRegistry } from '../../services/googleCapabilityRegistry';
@@ -53,9 +53,7 @@ export function GoogleHubModal({ isOpen, onClose, onAskElara }: GoogleHubModalPr
 
   const enableCapability = async (descriptor: GoogleHubCapabilityDescriptor) => {
     try {
-      if (!authorization.authorized) {
-        await googleIdentity.requestBaseAuthorization(true);
-      }
+      if (!authorization.authorized) await googleIdentity.requestBaseAuthorization(true);
       for (const capability of descriptor.requiredCapabilities.filter((item) => !isGranted(item))) {
         await googleIdentity.requestCapabilityAuthorization(googleCapabilities.getScopes(capability), false);
       }
@@ -93,12 +91,7 @@ export function GoogleHubModal({ isOpen, onClose, onAskElara }: GoogleHubModalPr
     setActivityTick((value) => value + 1);
   };
 
-  const context = (descriptor: GoogleHubCapabilityDescriptor) => ({
-    descriptor,
-    isGranted,
-    recordActivity,
-  });
-
+  const context = (descriptor: GoogleHubCapabilityDescriptor) => ({ descriptor, isGranted, recordActivity });
   const panels = Object.fromEntries(modules.map((module) => [module.descriptor.id, module.renderPanel(context(module.descriptor))]));
   void activityTick;
 
@@ -106,34 +99,10 @@ export function GoogleHubModal({ isOpen, onClose, onAskElara }: GoogleHubModalPr
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-2 backdrop-blur-md sm:p-4" role="dialog" aria-modal="true" aria-label="Google Hub">
       <div className="flex h-[96vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0b0b0b] shadow-2xl">
         <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-5">
-          <div className="min-w-0">
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">Elara</p>
-            <h2 className="text-base font-semibold text-white">Google Hub</h2>
-          </div>
-          <div className="flex items-center gap-2">
-            {onAskElara && (
-              <button type="button" onClick={() => onAskElara('Ask Elara about my Google data. Start by considering my connected Gmail, Calendar, Drive, Tasks, Sheets, Docs, Keep, Contacts, and Chat capabilities.')} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-white/75 hover:bg-white/[0.06]">
-                <MessageCircle className="h-4 w-4" /> Ask Elara
-              </button>
-            )}
-            <button type="button" onClick={onClose} className="rounded-lg p-2 text-white/45 hover:bg-white/[0.06] hover:text-white" aria-label="Close Google Hub"><X className="h-5 w-5" /></button>
-          </div>
+          <div className="min-w-0"><p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">Elara</p><h2 className="text-base font-semibold text-white">Google Hub</h2></div>
+          <div className="flex items-center gap-2">{onAskElara && <button type="button" onClick={() => onAskElara('Use my connected Google data to help me. Inspect the relevant enabled capabilities first and explain what you find before taking any consequential action.')} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-white/75 hover:bg-white/[0.06]"><MessageCircle className="h-4 w-4" /> Ask Elara</button>}<button type="button" onClick={onClose} className="rounded-lg p-2 text-white/45 hover:bg-white/[0.06] hover:text-white" aria-label="Close Google Hub"><X className="h-5 w-5" /></button></div>
         </div>
-        <div className="min-h-0 flex-1">
-          <GoogleHub
-            accountEmail={accountEmail}
-            authorization={authorization}
-            capabilities={capabilities}
-            activity={activity}
-            capabilityPanels={panels}
-            onOpenCapability={() => undefined}
-            onEnableCapability={enableCapability}
-            onDisconnect={revokeAll}
-            onOpenGoogleAccount={() => window.open('https://myaccount.google.com/', '_blank', 'noopener,noreferrer')}
-            onAskElara={onAskElara}
-            onRevokeAll={revokeAll}
-          />
-        </div>
+        <div className="min-h-0 flex-1"><GoogleHub accountEmail={accountEmail} authorization={authorization} capabilities={capabilities} activity={activity} capabilityPanels={panels} onOpenCapability={() => undefined} onEnableCapability={enableCapability} onDisconnect={revokeAll} onOpenGoogleAccount={() => window.open('https://myaccount.google.com/', '_blank', 'noopener,noreferrer')} onAskElara={onAskElara} onRevokeAll={revokeAll} /></div>
       </div>
     </div>
   );
