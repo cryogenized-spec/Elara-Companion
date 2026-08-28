@@ -53,6 +53,14 @@ The Hub and agent must not invent independent permission semantics.
 - `src/services/googleHubContextService.test.ts`
 - `src/components/google/googleCapabilityModules.tsx`
 - `src/components/google/GoogleHubModal.tsx`
+- `src/components/google/TasksCapabilityPanel.tsx`
+- `src/components/ElaraSurfaces.tsx`
+- `src/services/googleCapabilityRegistry.ts`
+- `src/services/googleCapabilityRegistry.test.ts`
+- `src/services/googleHubComposition.test.ts`
+- `src/services/__tests__/googleCalendarLegacyInventory.test.ts`
+- `src/architecture/architectural-lock.test.ts`
+- `src/architecture/finalArchitectureLock.test.ts`
 
 ## Safety boundary
 
@@ -62,8 +70,13 @@ The context contract contains no access token, credential, secret, or provider a
 
 Source-level acceptance review completed.
 
-Dependency-backed TypeScript, lint, test, build, and browser execution are not claimed as passing because this environment has no successful project-dependency execution record for the final commit.
+Dependency-backed CI execution is now verified on the final Pass 14 head by GitHub Actions run **#838** (`33142314641`). The production verification completed successfully, including dependency installation, lockbox validation/audit/secret scan, TypeScript `--noEmit`, the repository test suite (**278 tests, 278 passed, 0 failed**), and the remaining production verification stages.
+
+Earlier runs intentionally failed during this pass and were repaired rather than ignored:
+- CI run #829 exposed a real Tasks panel syntax error and stale architecture/test expectations.
+- CI run #833 narrowed the suite to 277/278 passing with one incorrect Google Hub composition assertion.
+- Final run #838 is green after those corrections.
 
 ## Definition of done
 
-Pass 14 is source-complete when all Required now and Required for integration items remain checked and the automated execution gate is run in an environment with project dependencies available. A green status must never be inferred from source review alone.
+Pass 14 is complete. Required source/integration/verification items are checked, the final dependency-backed production verification is green, and the exact evidence is recorded here.
