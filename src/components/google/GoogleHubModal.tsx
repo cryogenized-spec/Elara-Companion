@@ -6,7 +6,7 @@ import { googleHubCapabilityRegistry } from '../../services/googleCapabilityRegi
 import { createCanonicalGoogleHubAuthorizationState } from '../../services/googleHubAuthorizationProvider';
 import { googleCapabilities, googleIdentity } from '../../services/googleWorkspaceService';
 import { googleActivityRecorder } from '../../services/googleActivityService';
-import { buildGoogleHubAgentContext, buildGoogleHubAgentPrompt } from '../../services/googleHubContextService';
+import { buildGoogleHubAgentContext, buildGoogleHubAgentPrompt, type GoogleHubSelectedResource } from '../../services/googleHubContextService';
 import type { GoogleCapability } from '../../contracts';
 import type { GoogleHubCapabilityDescriptor } from '../../contracts/googleHub';
 
@@ -45,9 +45,9 @@ export function GoogleHubModal({ isOpen, onClose, onAskElara }: GoogleHubModalPr
   const isGranted = (capability: GoogleCapability) => googleCapabilities.isGranted(googleCapabilities.getGrantedScopes(), capability);
   const activity = googleActivityRecorder.list(50).map((entry) => ({ id: entry.id, timestamp: entry.timestamp, service: entry.capabilityId, description: entry.description, reversible: entry.reversible }));
 
-  const askElara = (request: string) => {
-    const structured = buildGoogleHubAgentContext(capabilities, authorization, accountEmail, activity);
-    const prompt = buildGoogleHubAgentPrompt(request, structured);
+  const askElara = (request: string, selectedResource?: GoogleHubSelectedResource) => {
+    const structured = buildGoogleHubAgentContext(capabilities, authorization, accountEmail, activity, selectedResource);
+    const prompt = buildGoogleHubAgentPrompt({ request, selectedResource }, structured);
     if (onAskElara) onAskElara(prompt); else dispatchAsk(prompt);
   };
 
