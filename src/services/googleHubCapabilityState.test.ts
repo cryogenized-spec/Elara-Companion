@@ -39,12 +39,14 @@ test('Google Hub capability state is enabled when every actionable requirement i
   assert.deepEqual(state.enabledActions, ['Search mail', 'Create draft', 'Send mail', 'Open Gmail', 'Ask Elara']);
 });
 
-test('Google Hub action state handles empty requirements as available', () => {
-  const descriptor = googleHubCapabilityRegistry.get('calendar');
+test('Google Hub action state retains requirements and safety metadata', () => {
+  const descriptor = googleHubCapabilityRegistry.get('gmail');
   assert.ok(descriptor);
-  const state = projectGoogleHubCapabilityState(descriptor, new Set(['calendar.read']), true);
-  const createAction = state.actions.find(action => action.id === 'create');
+  const state = projectGoogleHubCapabilityState(descriptor, new Set(['gmail.read']), true);
+  const sendAction = state.actions.find(action => action.id === 'send');
   const openAction = state.actions.find(action => action.id === 'open');
-  assert.equal(createAction?.available, false);
+  assert.deepEqual(sendAction?.requiredCapabilities, ['gmail.send']);
+  assert.equal(sendAction?.requiresConfirmation, true);
+  assert.equal(sendAction?.destructive, false);
   assert.equal(openAction?.available, true);
 });
