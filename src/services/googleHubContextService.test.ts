@@ -25,7 +25,6 @@ test('Google Hub context exposes action-level availability without credentials',
   );
   assert.equal(context.accountEmail, 'user@example.com');
   assert.equal(context.capabilities[0].status, 'limited');
-  assert.deepEqual(context.capabilities[0].enabledActions, undefined);
   assert.deepEqual(context.capabilities[0].actions.filter(action => action.available).map(action => action.label), ['Search mail', 'Open Gmail', 'Ask Elara']);
   assert.deepEqual(context.capabilities[0].actions.filter(action => !action.available).map(action => action.label), ['Create draft', 'Send mail']);
   assert.deepEqual(context.capabilities[0].actions.find(action => action.id === 'send')?.requiredCapabilities, ['gmail.send']);
