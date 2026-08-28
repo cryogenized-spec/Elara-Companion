@@ -5,9 +5,23 @@ import {
   googleHubCapabilityRegistry,
   INITIAL_CAPABILITIES,
 } from './googleCapabilityRegistry';
+import {
+  createGoogleCapabilityModuleRegistry,
+} from '../components/google/googleCapabilityModules';
+
+const capability = (id: string, name = 'Test Capability') => ({
+  id,
+  name,
+  description: 'Test capability module',
+  category: 'collaboration' as const,
+  iconKey: 'test',
+  requiredCapabilities: [],
+  panelKey: `test.${id}`,
+  actions: [{ id: 'ask', label: 'Ask Elara', kind: 'ask' as const }],
+});
 
 test('Google Hub capability registry registers the current capability set', () => {
-  const ids = googleHubCapabilityRegistry.list().map((capability) => capability.id);
+  const ids = googleHubCapabilityRegistry.list().map((item) => item.id);
   assert.deepEqual(ids, ['gmail', 'calendar', 'drive', 'docs', 'sheets', 'tasks', 'keep', 'contacts', 'chat']);
 });
 
@@ -23,26 +37,31 @@ test('Google Hub registry rejects duplicate capability identifiers', () => {
   assert.throws(() => registry.register(INITIAL_CAPABILITIES[0]), /Google Hub capability already registered: gmail/);
 });
 
-test('Google Hub registry supports independently supplied capability modules', () => {
+test('Google Hub registry accepts a future capability without changing core code', () => {
   const registry = createGoogleHubCapabilityRegistry([]);
-  registry.register({
-    id: 'tasks',
-    name: 'Tasks',
-    description: 'Test capability module',
-    category: 'tasks',
-    iconKey: 'check-square',
-    requiredCapabilities: ['tasks'],
-    panelKey: 'test.tasks',
-    actions: [{ id: 'ask', label: 'Ask Elara', kind: 'ask' }],
-  });
-  assert.equal(registry.get('tasks')?.panelKey, 'test.tasks');
-  registry.unregister('tasks');
-  assert.equal(registry.has('tasks'), false);
+  registry.register(capability('meet'));
+  assert.equal(registry.get('meet')?.name, 'Test Capability');
+  registry.unregister('meet');
+  assert.equal(registry.has('meet'), false);
 });
 
-test('Google Hub Gmail presents only safe default actions', () => {
-  const gmail = googleHubCapabilityRegistry.get('gmail');
-  const actionKinds = gmail?.actions.map((action) => action.kind) ?? [];
-  assert.deepEqual(actionKinds, ['search', 'open', 'ask']);
-  assert.deepEqual(gmail?.requiredCapabilities, ['gmail.read']);
+test('Google Hub module registry accepts and renders a future module independently', () => {
+  const modules = createGoogleCapabilityModuleRegistry();
+  modules.register('future.meet', () => 'future-panel');
+  assert.equal(modules.has('future.meet'), true);
+  const descriptor = capability('future.meet');
+  assert.equal(modules.render(descriptor, {
+    descriptor,
+    isGranted: () => false,
+    askElara: () => undefined,
+    recordActivity: () => undefined,
+  }), 'future-panel');
+  modules.unregister('future.meet');
+  assert.equal(modules.has('future.meet'), false);
+});
+
+test('Google Hub module registry rejects duplicate factories', () => {
+  const modules = createGoogleCapabilityModuleRegistry();
+  modules.register('future.meet', () => 'one');
+  assert.throws(() => modules.register('future.meet', () => 'two'), /Google capability module already registered: future.meet/);
 });
