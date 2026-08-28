@@ -13,9 +13,8 @@ test('legacy Calendar implementation has been removed from the compatibility mod
   const legacySettings = await read('src/components/LegacySettingsModal.tsx');
   const googleApi = await read('src/lib/googleApi.ts');
 
-  assert.match(settings, /GoogleHubModal/);
-  assert.doesNotMatch(settings, /from ['\"]\.\.\/lib\/googleApi['\"]/);
-  assert.doesNotMatch(settings, /googleCalendarContract|CalendarEventItem|getUpcomingCalendarEvents/);
+  assert.match(settings, /LegacySettingsModal/);
+  assert.doesNotMatch(settings, /GoogleHubModal|settingsGoogleService|from ['\"]\.\.\/lib\/googleApi['\"]|googleCalendarContract|CalendarEventItem|getUpcomingCalendarEvents/);
   assert.match(legacySettings, /getUpcomingCalendarEvents/);
   assert.doesNotMatch(googleApi, /export async function getUpcomingCalendarEvents/);
   assert.doesNotMatch(googleApi, /export async function createCalendarEvent/);
