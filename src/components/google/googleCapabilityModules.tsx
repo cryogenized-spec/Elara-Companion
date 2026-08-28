@@ -14,6 +14,7 @@ import { ChatCapabilityPanel } from './ChatCapabilityPanel';
 export interface GoogleHubPanelContext {
   descriptor: GoogleHubCapabilityDescriptor;
   isGranted: (capability: GoogleCapability) => boolean;
+  askElara: (prompt: string) => void;
   recordActivity: (capabilityId: string, action: 'read' | 'create' | 'update' | 'delete' | 'send' | 'open', description: string, reversible?: boolean) => void;
 }
 
@@ -23,15 +24,15 @@ export interface GoogleCapabilityModule {
 }
 
 const panelFactories: Record<GoogleHubCapabilityDescriptor['id'], (context: GoogleHubPanelContext) => React.ReactNode> = {
-  gmail: (context) => <GmailCapabilityPanel canRead={context.isGranted('gmail.read')} canCompose={context.isGranted('gmail.compose')} canSend={context.isGranted('gmail.send')} onActivity={(description) => context.recordActivity('gmail', 'read', description)} />,
-  calendar: (context) => <CalendarCapabilityPanel canRead={context.isGranted('calendar.read')} onActivity={(description) => context.recordActivity('calendar', 'read', description)} />,
-  tasks: (context) => <TasksCapabilityPanel canUse={context.isGranted('tasks')} onActivity={(description, reversible) => context.recordActivity('tasks', 'create', description, reversible)} />,
-  drive: (context) => <DriveCapabilityPanel canRead={context.isGranted('drive.read')} onActivity={(description) => context.recordActivity('drive', 'read', description)} />,
-  docs: (context) => <DocsCapabilityPanel canUse={context.isGranted('docs')} onActivity={(description, reversible) => context.recordActivity('docs', 'update', description, reversible)} />,
-  sheets: (context) => <SheetsCapabilityPanel canRead={context.isGranted('sheets.read')} canWrite={context.isGranted('sheets.write')} onActivity={(description, reversible) => context.recordActivity('sheets', 'update', description, reversible)} />,
-  keep: (context) => <KeepCapabilityPanel canRead={context.isGranted('keep.read')} canWrite={context.isGranted('keep.write')} onActivity={(description, reversible) => context.recordActivity('keep', 'create', description, reversible)} />,
-  contacts: (context) => <ContactsCapabilityPanel canRead={context.isGranted('contacts.read')} onActivity={(description) => context.recordActivity('contacts', 'read', description)} />,
-  chat: (context) => <ChatCapabilityPanel canRead={context.isGranted('chat.read')} canSend={context.isGranted('chat.send')} onActivity={(description) => context.recordActivity('chat', 'read', description)} />,
+  gmail: (context) => <GmailCapabilityPanel canRead={context.isGranted('gmail.read')} canCompose={context.isGranted('gmail.compose')} canSend={context.isGranted('gmail.send')} onActivity={(description) => context.recordActivity('gmail', 'read', description)} onAskElara={context.askElara} />,
+  calendar: (context) => <CalendarCapabilityPanel canRead={context.isGranted('calendar.read')} canWrite={context.isGranted('calendar.write')} onActivity={(description, reversible) => context.recordActivity('calendar', 'create', description, reversible)} onAskElara={context.askElara} />,
+  tasks: (context) => <TasksCapabilityPanel canUse={context.isGranted('tasks')} onActivity={(description, reversible) => context.recordActivity('tasks', 'create', description, reversible)} onAskElara={context.askElara} />,
+  drive: (context) => <DriveCapabilityPanel canRead={context.isGranted('drive.read')} canUpload={context.isGranted('drive.file')} onActivity={(description, reversible) => context.recordActivity('drive', 'create', description, reversible)} onAskElara={context.askElara} />,
+  docs: (context) => <DocsCapabilityPanel canUse={context.isGranted('docs')} onActivity={(description, reversible) => context.recordActivity('docs', 'update', description, reversible)} onAskElara={context.askElara} />,
+  sheets: (context) => <SheetsCapabilityPanel canRead={context.isGranted('sheets.read')} canWrite={context.isGranted('sheets.write')} onActivity={(description, reversible) => context.recordActivity('sheets', 'update', description, reversible)} onAskElara={context.askElara} />,
+  keep: (context) => <KeepCapabilityPanel canRead={context.isGranted('keep.read')} canWrite={context.isGranted('keep.write')} onActivity={(description, reversible) => context.recordActivity('keep', 'create', description, reversible)} onAskElara={context.askElara} />,
+  contacts: (context) => <ContactsCapabilityPanel canRead={context.isGranted('contacts.read')} onActivity={(description) => context.recordActivity('contacts', 'read', description)} onAskElara={context.askElara} />,
+  chat: (context) => <ChatCapabilityPanel canRead={context.isGranted('chat.read')} canSend={context.isGranted('chat.send')} canManage={context.isGranted('chat.manage')} onActivity={(description) => context.recordActivity('chat', 'read', description)} onAskElara={context.askElara} />,
 };
 
 export function createGoogleCapabilityModule(descriptor: GoogleHubCapabilityDescriptor): GoogleCapabilityModule {
