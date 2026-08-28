@@ -62,6 +62,7 @@ const defaultStateStore: ModelResilienceStateStore = {
 const DEFAULT_FAILOVER_CODES = new Set([
   'API_RATE_LIMIT_RPM_429',
   'API_QUOTA_DAILY_429',
+  'MODEL_NOT_FOUND_404',
   'SERVER_ERROR_500',
   'BAD_GATEWAY_502',
   'SERVICE_UNAVAILABLE_503',
