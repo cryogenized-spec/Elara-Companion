@@ -14,6 +14,7 @@ const SENSITIVE = 'Authorization: Bearer super-secret-token';
 test('Pass 24 diagnostic events are structured, bounded, and secret-free', () => {
   const sanitized = sanitizeResilienceDiagnosticEvent({
     kind: 'ERROR',
+    provider: 'google',
     preferredModel: 'gemini-3.7-flash',
     actualModel: 'gemini-3.6-flash',
     errorCode: 'API_RATE_LIMIT_RPM_429',
@@ -23,15 +24,16 @@ test('Pass 24 diagnostic events are structured, bounded, and secret-free', () =>
 
   assert.equal(sanitized.preferredModel, 'gemini-3.7-flash');
   assert.equal(sanitized.httpStatus, 429);
+  assert.equal(sanitized.provider, 'google');
   assert.ok(!sanitized.message?.includes('Authorization:'));
   assert.ok(!sanitized.message?.includes('super-secret-token'));
 });
 
 test('Pass 24 diagnostics share one canonical event history', () => {
   clearResilienceDiagnosticHistory();
-  emitResilienceDiagnostic({ kind: 'REQUEST', preferredModel: 'gemini-3.7-flash', actualModel: 'gemini-3.7-flash', attempt: 1 });
-  emitResilienceDiagnostic({ kind: 'ERROR', preferredModel: 'gemini-3.7-flash', actualModel: 'gemini-3.7-flash', errorCode: 'API_RATE_LIMIT_RPM_429', httpStatus: 429, fallbackAllowed: true });
-  emitResilienceDiagnostic({ kind: 'ROUTE', preferredModel: 'gemini-3.7-flash', actualModel: 'gemini-3.7-flash', fallbackTarget: 'gemini-3.6-flash', fallbackAllowed: true });
+  emitResilienceDiagnostic({ kind: 'REQUEST', provider: 'google', preferredModel: 'gemini-3.7-flash', actualModel: 'gemini-3.7-flash', attempt: 1 });
+  emitResilienceDiagnostic({ kind: 'ERROR', provider: 'google', preferredModel: 'gemini-3.7-flash', actualModel: 'gemini-3.7-flash', errorCode: 'API_RATE_LIMIT_RPM_429', httpStatus: 429, fallbackAllowed: true });
+  emitResilienceDiagnostic({ kind: 'ROUTE', provider: 'google', preferredModel: 'gemini-3.7-flash', actualModel: 'gemini-3.7-flash', fallbackTarget: 'gemini-3.6-flash', fallbackAllowed: true });
 
   assert.deepEqual(getResilienceDiagnosticHistory().map((event) => event.kind), ['REQUEST', 'ERROR', 'ROUTE']);
 });
@@ -48,6 +50,7 @@ test('Pass 24 diagnostic failure classes come from the canonical API classifier'
   const error = classifyApiError(Object.assign(new Error('HTTP 429'), { status: 429 }), 'gemini-3.7-flash');
   emitResilienceDiagnostic({
     kind: 'ERROR',
+    provider: 'google',
     preferredModel: 'gemini-3.7-flash',
     actualModel: 'gemini-3.7-flash',
     errorCode: error.code,
