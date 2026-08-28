@@ -30,6 +30,7 @@ export const googleIdentity = {
   requestCapabilityAuthorization: requestGoogleCapabilityAuthorization,
   revoke: revokeGoogleBaseAuthorization,
   setCustomClientId: setCustomGoogleClientId,
+  getAccountEmail,
 };
 
 export const googleCapabilities = {
@@ -37,6 +38,18 @@ export const googleCapabilities = {
   isGranted: isGoogleCapabilityGranted,
   getGrantedScopes: getGrantedGoogleScopes,
 };
+
+/** Provider-backed identity lookup. Credentials remain inside the provider layer. */
+async function getAccountEmail(): Promise<string | null> {
+  const token = getGoogleIdentityAccessToken();
+  if (!token) return null;
+  const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) return null;
+  const payload = await response.json() as { email?: string };
+  return payload.email || null;
+}
 
 /** Application-facing Google credential access. This is the only canonical token source. */
 export function getGoogleAgentAccessToken(): string {
