@@ -13,7 +13,7 @@ test('Google Hub composition exposes all registered capability ids with complete
   const state = createGoogleHubAuthorizationState(
     capabilities,
     () => true,
-    (capability) => capability === 'gmail.read',
+    (capability) => capability === 'gmail.read' || capability === 'gmail.send',
     () => 1,
   ).snapshot();
 
