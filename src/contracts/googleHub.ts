@@ -1,13 +1,11 @@
 import type { GoogleCapability } from './index';
 import type { GoogleHubAuthorizationStateContract, GoogleHubAuthorizationSnapshot, GoogleHubAuthorizationStatus } from './googleHubAuthorization';
 
-export type GoogleHubCategory =
-  | 'communication' | 'scheduling' | 'files' | 'documents' | 'data' | 'tasks' | 'notes' | 'people' | 'collaboration';
+export type GoogleHubCategory = 'communication' | 'scheduling' | 'files' | 'documents' | 'data' | 'tasks' | 'notes' | 'people' | 'collaboration';
 
-export type GoogleHubCapabilityId =
-  | 'gmail' | 'calendar' | 'drive' | 'docs' | 'sheets' | 'tasks' | 'keep' | 'contacts' | 'chat';
-
-export type GoogleHubCapabilityStatus = 'enabled' | 'available' | 'unavailable' | 'error';
+/** Runtime-extensible identifier. The registry is the authority for known capabilities. */
+export type GoogleHubCapabilityId = string;
+export type GoogleHubCapabilityStatus = 'enabled' | 'limited' | 'needs-access' | 'unavailable' | 'error';
 
 export interface GoogleHubCapabilityAction {
   id: string;
@@ -17,7 +15,6 @@ export interface GoogleHubCapabilityAction {
   destructive?: boolean;
 }
 
-/** Provider-neutral descriptor used by the Google Hub composition layer. */
 export interface GoogleHubCapabilityDescriptor {
   id: GoogleHubCapabilityId;
   name: string;
@@ -25,6 +22,7 @@ export interface GoogleHubCapabilityDescriptor {
   category: GoogleHubCategory;
   iconKey: string;
   requiredCapabilities: readonly GoogleCapability[];
+  actionRequirements?: Partial<Record<string, readonly GoogleCapability[]>>;
   permissionDescription?: string;
   dataAccessDescription?: string;
   externalUrl?: string;
@@ -41,8 +39,4 @@ export interface GoogleHubCapabilityRegistry {
   listByCategory(category: GoogleHubCategory): readonly GoogleHubCapabilityDescriptor[];
 }
 
-export type {
-  GoogleHubAuthorizationStateContract,
-  GoogleHubAuthorizationSnapshot,
-  GoogleHubAuthorizationStatus,
-};
+export type { GoogleHubAuthorizationStateContract, GoogleHubAuthorizationSnapshot, GoogleHubAuthorizationStatus };
