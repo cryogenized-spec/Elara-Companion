@@ -11,8 +11,8 @@ import {
 } from './modelHealth';
 
 export const DEFAULT_FALLBACK_MODELS = [
+  'gemini-3.7-flash',
   'gemini-3.6-flash',
-  'gemini-3.5-flash',
   'gemini-3.5-flash-lite',
 ] as const;
 
@@ -62,6 +62,10 @@ const DEFAULT_FAILOVER_CODES = new Set([
   'BAD_GATEWAY_502',
   'SERVICE_UNAVAILABLE_503',
   'GATEWAY_TIMEOUT_504',
+  // Unknown provider/SDK failures are retryable by default. More specific
+  // auth, safety, validation, and context failures are classified separately
+  // and therefore remain intentionally non-failover cases.
+  'UNKNOWN_API_ERROR',
 ]);
 
 function shouldFailOver(error: ClassifiedApiError, configuredCodes?: string[]): boolean {
