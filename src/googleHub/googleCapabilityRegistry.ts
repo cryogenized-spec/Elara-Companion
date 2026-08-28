@@ -23,17 +23,17 @@ function validateCapability(definition: GoogleCapabilityDefinition): GoogleCapab
     throw new Error(`Google capability '${id}' has an invalid authorization mode.`);
   }
 
-  const required = [...definition.authorization.requiredCapabilities];
-  if (required.length === 0) throw new Error(`Google capability '${id}' must declare at least one required capability.`);
+  const requiredPermissions = [...definition.authorization.requiredPermissions];
+  if (requiredPermissions.length === 0) throw new Error(`Google capability '${id}' must declare at least one required permission.`);
 
-  const seenCapabilities = new Set<string>();
-  for (const capability of required) {
-    if (seenCapabilities.has(capability)) {
-      throw new Error(`Google capability '${id}' declares '${capability}' more than once.`);
+  const seenPermissions = new Set<string>();
+  for (const permission of requiredPermissions) {
+    if (seenPermissions.has(permission)) {
+      throw new Error(`Google capability '${id}' declares '${permission}' more than once.`);
     }
-    seenCapabilities.add(capability);
-    if (getGoogleCapabilityScopes(capability).length === 0) {
-      throw new Error(`Google capability '${id}' references unmapped capability '${capability}'.`);
+    seenPermissions.add(permission);
+    if (getGoogleCapabilityScopes(permission).length === 0) {
+      throw new Error(`Google capability '${id}' references unmapped capability '${permission}'.`);
     }
   }
 
@@ -47,9 +47,9 @@ function validateCapability(definition: GoogleCapabilityDefinition): GoogleCapab
     if (!action.label.trim() || !action.description.trim()) {
       throw new Error(`Action '${actionId}' in capability '${id}' must have label and description.`);
     }
-    for (const actionCapability of action.requiredCapabilities || []) {
-      if (getGoogleCapabilityScopes(actionCapability).length === 0) {
-        throw new Error(`Action '${actionId}' in capability '${id}' references unmapped capability '${actionCapability}'.`);
+    for (const permission of action.requiredPermissions || []) {
+      if (getGoogleCapabilityScopes(permission).length === 0) {
+        throw new Error(`Action '${actionId}' in capability '${id}' references unmapped capability '${permission}'.`);
       }
     }
   }
@@ -59,11 +59,11 @@ function validateCapability(definition: GoogleCapabilityDefinition): GoogleCapab
     id,
     authorization: {
       ...definition.authorization,
-      requiredCapabilities: [...required],
+      requiredPermissions,
     },
     actions: definition.actions.map((action) => ({
       ...action,
-      requiredCapabilities: action.requiredCapabilities ? [...action.requiredCapabilities] : undefined,
+      requiredPermissions: action.requiredPermissions ? [...action.requiredPermissions] : undefined,
     })),
   };
 }
@@ -105,11 +105,11 @@ export class GoogleCapabilityRegistry {
       ...capability,
       authorization: {
         ...capability.authorization,
-        requiredCapabilities: [...capability.authorization.requiredCapabilities],
+        requiredPermissions: [...capability.authorization.requiredPermissions],
       },
       actions: capability.actions.map((action) => ({
         ...action,
-        requiredCapabilities: action.requiredCapabilities ? [...action.requiredCapabilities] : undefined,
+        requiredPermissions: action.requiredPermissions ? [...action.requiredPermissions] : undefined,
       })),
     }));
   }
@@ -124,7 +124,7 @@ export class GoogleCapabilityRegistry {
   }
 
   getRequiredCapabilities(id: string): GoogleCapability[] {
-    return [...(this.get(id)?.authorization.requiredCapabilities || [])];
+    return [...(this.get(id)?.authorization.requiredPermissions || [])];
   }
 
   getRequiredScopes(id: string): string[] {
@@ -135,8 +135,8 @@ export class GoogleCapabilityRegistry {
     const capability = this.get(id);
     if (!capability) return false;
     const granted = new Set(grantedScopes.split(/[\s,]+/).map((scope) => scope.trim()).filter(Boolean));
-    return capability.authorization.requiredCapabilities.every((requiredCapability) =>
-      getGoogleCapabilityScopes(requiredCapability).every((scope) => granted.has(scope)),
+    return capability.authorization.requiredPermissions.every((permission) =>
+      getGoogleCapabilityScopes(permission).every((scope) => granted.has(scope)),
     );
   }
 
