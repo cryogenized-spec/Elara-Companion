@@ -41,15 +41,15 @@ test('authorization requires every permission group declared by a capability', (
   assert.equal(registry.isAuthorized('missing', calendarScopes[0]), false);
 });
 
-test('mutation actions declare their stronger capabilities and confirmation policy', () => {
+test('mutation actions declare their stronger permissions and confirmation policy', () => {
   const registry = workspace();
   const gmailSend = registry.get('gmail')?.actions.find((action) => action.id === 'gmail.send');
   const calendarCreate = registry.get('calendar')?.actions.find((action) => action.id === 'calendar.create');
 
-  assert.deepEqual(gmailSend?.requiredCapabilities, ['gmail.send']);
+  assert.deepEqual(gmailSend?.requiredPermissions, ['gmail.send']);
   assert.equal(gmailSend?.effect, 'external-write');
   assert.equal(gmailSend?.confirmation, 'user');
-  assert.deepEqual(calendarCreate?.requiredCapabilities, ['calendar.write']);
+  assert.deepEqual(calendarCreate?.requiredPermissions, ['calendar.write']);
   assert.equal(calendarCreate?.confirmation, 'user');
 });
 
@@ -68,7 +68,7 @@ test('registry rejects duplicate capability ids and globally duplicate action id
   );
 });
 
-test('registry rejects unmapped policy capabilities instead of silently accepting drift', () => {
+test('registry rejects unmapped policy permissions instead of silently accepting drift', () => {
   const registry = new GoogleCapabilityRegistry();
   assert.throws(
     () => registry.register({
@@ -80,7 +80,7 @@ test('registry rejects unmapped policy capabilities instead of silently acceptin
       category: 'test',
       iconKey: 'bug',
       panelKey: 'broken',
-      authorization: { mode: 'capability', requiredCapabilities: ['not-a-real-capability' as never] },
+      authorization: { mode: 'capability', requiredPermissions: ['not-a-real-capability' as never] },
       actions: [],
     }),
     /unmapped capability/,
