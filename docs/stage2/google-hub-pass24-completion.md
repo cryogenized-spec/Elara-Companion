@@ -25,4 +25,4 @@ Only routing metadata is emitted. Model identifiers, classifications, HTTP statu
 
 Pass 24 coverage lives in `src/lib/resilienceDiagnosticsPass24.test.ts` and `src/lib/modelResiliencePass24.test.ts`, alongside the existing Pass 23 reliability suite. The tests cover the default-off diagnostic setting, all four levels, canonical-event provenance, structured fallback telemetry, and credential redaction.
 
-Repository CI must pass on the final branch head before merge.
+Repository CI must pass on the final branch head before merge. Final verification is required on the exact PR head.
