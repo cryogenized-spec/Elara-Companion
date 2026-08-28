@@ -69,6 +69,7 @@ const DEFAULT_FAILOVER_CODES = new Set([
 ]);
 
 export function isFailoverEligible(error: ClassifiedApiError, configuredCodes?: string[]): boolean {
+  if ((error as any).failoverOverride === false) return false;
   if (configuredCodes) return new Set(configuredCodes).has(error.code);
   return DEFAULT_FAILOVER_CODES.has(error.code);
 }
@@ -129,13 +130,14 @@ export async function runWithModelResilience<T>(
   const retryableCodes = options.retryableErrorCodes ? new Set(options.retryableErrorCodes) : undefined;
 
   while (true) {
+    const skipUnhealthy = options.skipUnhealthyFallbackModels !== false;
     const selection = selectRuntimeModel({
       preferredModel,
       fallbackModels,
       state,
       now: Date.now(),
       autoRestorePreferredModel: options.autoRestorePreferredModel,
-      skipUnhealthyFallbackModels: options.skipUnhealthyFallbackModels === true,
+      skipUnhealthyFallbackModels: skipUnhealthy,
     });
 
     const selectedModel = selection.model;
@@ -193,7 +195,7 @@ export async function runWithModelResilience<T>(
         state,
         now: Date.now(),
         autoRestorePreferredModel: options.autoRestorePreferredModel,
-        skipUnhealthyFallbackModels: options.skipUnhealthyFallbackModels === true,
+        skipUnhealthyFallbackModels: skipUnhealthy,
       });
       if (nextSelection.model.trim().toLowerCase() === normalized) {
         throw error;
