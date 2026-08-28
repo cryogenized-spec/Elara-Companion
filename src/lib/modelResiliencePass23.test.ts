@@ -31,6 +31,7 @@ test('Pass 23 default fallback eligibility is explicit and excludes auth, permis
   assert.equal(isFailoverEligible(errorFor(429)), true);
   assert.equal(isFailoverEligible(errorFor(500)), true);
   assert.equal(isFailoverEligible(errorFor(503)), true);
+  assert.equal(isFailoverEligible(errorFor(404)), true);
   assert.equal(isFailoverEligible(errorFor(401)), false);
   assert.equal(isFailoverEligible(errorFor(403)), false);
   assert.equal(isFailoverEligible(errorFor(400)), false);
@@ -67,25 +68,18 @@ test('Pass 23 falls back in preference order and does not rewrite that order', a
 
   assert.equal(result.context.model, 'gemini-3.6-flash');
   assert.deepEqual(calls, ['gemini-3.7-flash', 'gemini-3.6-flash']);
-  assert.deepEqual(['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'], [
-    'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash',
-  ]);
 });
 
 test('Pass 23 only skips a cooling next tier when the policy explicitly allows it', () => {
   const now = 1000;
-  const failedSecond = recordModelFailure(
-    createModelHealthState(),
-    'gemini-3.6-flash',
-    errorFor(503),
-    now,
-    60_000,
-  );
+  let state = createModelHealthState();
+  state = recordModelFailure(state, 'gemini-3.7-flash', errorFor(503), now, 60_000);
+  state = recordModelFailure(state, 'gemini-3.6-flash', errorFor(503), now, 60_000);
 
   const keepTierTwo = selectRuntimeModel({
     preferredModel: 'gemini-3.7-flash',
     fallbackModels: ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'],
-    state: failedSecond,
+    state,
     now,
     skipUnhealthyFallbackModels: false,
   });
@@ -94,7 +88,7 @@ test('Pass 23 only skips a cooling next tier when the policy explicitly allows i
   const skipTierTwo = selectRuntimeModel({
     preferredModel: 'gemini-3.7-flash',
     fallbackModels: ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'],
-    state: failedSecond,
+    state,
     now,
     skipUnhealthyFallbackModels: true,
   });
