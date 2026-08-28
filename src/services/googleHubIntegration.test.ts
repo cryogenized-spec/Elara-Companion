@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { GOOGLE_HUB_CAPABILITIES, createGoogleCapabilityRegistry } from '../googleHub';
+import { createGoogleHubCapabilityRegistry } from './googleCapabilityRegistry';
 import { createGoogleHubAuthorizationState } from './googleHubAuthorizationService';
 import { createGoogleActivityRecorder } from './googleActivityService';
 
 test('Google Hub integration matrix stays registry-driven and token-free', () => {
-  const registry = createGoogleCapabilityRegistry();
-  const descriptors = registry.getAll();
+  const registry = createGoogleHubCapabilityRegistry();
+  const descriptors = registry.list();
   assert.equal(descriptors.length, 9);
   assert.deepEqual(descriptors.map(item => item.id), ['gmail', 'calendar', 'drive', 'docs', 'sheets', 'tasks', 'keep', 'contacts', 'chat']);
 
@@ -24,6 +24,4 @@ test('Google Hub integration matrix stays registry-driven and token-free', () =>
   activity.record({ id: '1', timestamp: 42, capabilityId: 'gmail', action: 'read', description: 'Read mail', reversible: false, external: false });
   assert.equal(activity.list(1)[0].capabilityId, 'gmail');
   assert.equal(Object.prototype.hasOwnProperty.call(activity.list(1)[0], 'accessToken'), false);
-
-  assert.equal(GOOGLE_HUB_CAPABILITIES.length, 9);
 });
