@@ -74,6 +74,8 @@ export interface ModelSelectionInput {
   state: ModelHealthState;
   now?: number;
   autoRestorePreferredModel?: boolean;
+  /** Explicit policy switch allowing a cooling-down next preference to be skipped. Defaults on. */
+  skipUnhealthyFallbackModels?: boolean;
 }
 
 export interface ModelSelectionResult {
@@ -88,13 +90,15 @@ export function selectRuntimeModel(input: ModelSelectionInput): ModelSelectionRe
   const preferredKey = normalizeModelId(preferred);
   const preferredCooling = isModelCoolingDown(input.state, preferred, now);
   const autoRestore = input.autoRestorePreferredModel !== false;
+  const skipUnhealthyFallbacks = input.skipUnhealthyFallbackModels !== false;
 
-  // Healthy preferred model is always the primary choice.
   if (!preferredCooling) {
     if (!autoRestore && input.state.models[preferredKey]) {
       const fallbacks = [...new Set(input.fallbackModels.map(normalizeModelId).filter(Boolean))]
         .filter((model) => model !== preferredKey);
-      const fallback = fallbacks.find((model) => !isModelCoolingDown(input.state, model, now));
+      const fallback = skipUnhealthyFallbacks
+        ? fallbacks.find((model) => !isModelCoolingDown(input.state, model, now))
+        : fallbacks[0];
       if (fallback) return { model: fallback, usedFallback: true, probingPreferred: false };
     }
 
@@ -107,10 +111,11 @@ export function selectRuntimeModel(input: ModelSelectionInput): ModelSelectionRe
 
   const fallbacks = [...new Set(input.fallbackModels.map(normalizeModelId).filter(Boolean))]
     .filter((model) => model !== preferredKey);
-  const fallback = fallbacks.find((model) => !isModelCoolingDown(input.state, model, now));
+  const fallback = skipUnhealthyFallbacks
+    ? fallbacks.find((model) => !isModelCoolingDown(input.state, model, now))
+    : fallbacks[0];
   if (fallback) return { model: fallback, usedFallback: true, probingPreferred: false };
 
-  // All fallbacks are unhealthy; probe the preferred model rather than inventing another route.
   return { model: preferred, usedFallback: false, probingPreferred: true };
 }
 
