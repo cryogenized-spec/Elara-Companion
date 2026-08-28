@@ -7,6 +7,7 @@ import { setupChatRoutes } from './server/routes/chat';
 import { setupMemoryRoutes } from './server/routes/memory';
 import { setupAudioRoutes } from './server/routes/audio';
 import { setupWorkspaceRoutes } from './server/routes/workspace';
+import { setupDiagnosticsRoutes } from './server/routes/diagnostics';
 import { serverLockbox } from './server/services/lockbox';
 import { requireBackendAccess, serverCors } from './server/middleware/serverAuth';
 
@@ -21,18 +22,20 @@ async function startServer() {
   // Public, read-only discovery endpoints.
   setupConfigRoutes(app);
 
-  // AI, memory, audio, and Workspace mutation endpoints require the explicit
-  // backend trust boundary in production. Local development remains usable.
+  // AI, memory, audio, Workspace, and diagnostics mutation endpoints require
+  // the explicit backend trust boundary in production. Local development remains usable.
   app.use('/api/chat', requireBackendAccess);
   app.use('/api/memory', requireBackendAccess);
   app.use('/api/audio', requireBackendAccess);
   app.use('/api/google-chat', requireBackendAccess);
   app.use('/api/chat/webhook', requireBackendAccess);
   app.use('/api/chat/proactive', requireBackendAccess);
+  app.use('/api/diagnostics', requireBackendAccess);
   setupChatRoutes(app);
   setupMemoryRoutes(app);
   setupAudioRoutes(app);
   setupWorkspaceRoutes(app);
+  setupDiagnosticsRoutes(app);
 
   // Vite middleware for development
   if (serverLockbox.runtime('NODE_ENV', 'development') !== 'production') {
