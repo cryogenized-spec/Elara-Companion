@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation complete on the Pass 25 baseline. Reports are generated on demand from structured persisted routing telemetry. No routing preference or fallback policy is modified by report generation.
+COMPLETE — verified by repository CI on the final Pass 26 implementation head. Reports are generated on demand from structured persisted routing telemetry. No routing preference or fallback policy is modified by report generation.
 
 ## User-facing flow
 
@@ -48,6 +48,10 @@ Pass 26 does not introduce a second report archive. The generated report is a tr
 `src/lib/resilienceAnalysisPass26.test.ts` covers period resolution, event-window filtering, policy capture, required report-section separation, uncertainty rules in the analysis prompt, and removal of raw diagnostic message text from the analysis payload.
 
 The existing Pass 24/25 suites remain the source of truth for diagnostic event production, persistence and model-health derivation.
+
+## Verification evidence
+
+The preceding exact implementation head `63977ca0f60c47758a1dc5fba8fdf1ca608ce37a` passed GitHub Actions run **#905**. The completion-record-only update on top of that verified tree requires a new exact-head CI gate before merge; this document will be considered fully sealed only after that next run is green.
 
 ## Explicit non-automatic behaviour
 
