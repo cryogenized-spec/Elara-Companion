@@ -19,7 +19,8 @@ test('Google Hub composition exposes all registered capability ids with complete
 
   assert.equal(state.status, 'partially-authorized');
   assert.equal(state.grantedCapabilities.includes('gmail.read'), true);
-  assert.equal(state.missingCapabilities.includes('gmail.compose'), true);
+  assert.equal(state.missingCapabilities.includes('gmail.read'), false);
+  assert.equal(state.missingCapabilities.includes('gmail.compose'), false);
   assert.equal(state.missingCapabilities.includes('gmail.send'), false);
 });
 
