@@ -76,7 +76,7 @@ test('Pass 26 keeps local evidence, inference and external evidence distinct', (
   assert.match(prompt, /EXTERNAL EVIDENCE/);
   assert.match(prompt, /RECOMMENDATION/);
   assert.match(prompt, /do not claim causation from correlation/);
-  assert.match(prompt, /must not claim that any change has been applied/);
+  assert.match(prompt, /MUST NOT claim that any change has been applied/);
 });
 
 test('Pass 26 removes raw diagnostic message text from the analysis prompt payload', () => {
