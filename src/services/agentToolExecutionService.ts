@@ -1,6 +1,7 @@
 import { executeAgentTool, type AgentToolExecution } from '../lib/agentToolRegistry';
 import { publishApplicationEvent } from '../events/applicationEventBus';
 import { recordLiveToolActivity } from '../lib/thinkingLiveRuntime';
+import { googleActivityRecorder, recordGoogleToolActivity } from './googleActivityService';
 import type { Workspace } from '../types';
 
 export async function executeAgentToolCall(
@@ -19,6 +20,8 @@ export async function executeAgentToolCall(
       result: execution.result,
     });
   }
+
+  recordGoogleToolActivity(googleActivityRecorder, toolName, execution.result);
 
   if (execution.createdArtifactId) {
     const artifact = execution.updatedWorkspace.artifacts.find((item) => item.id === execution.createdArtifactId);

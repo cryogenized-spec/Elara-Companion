@@ -50,49 +50,39 @@ export function sanitizeActivityEvent(event: GoogleActivityEvent): GoogleActivit
   };
 }
 
-function loadPersisted(): GoogleActivityEvent[] {
-  if (typeof localStorage === 'undefined') return [];
+function parseStored(raw: string | null): GoogleActivityEvent[] {
+  if (!raw) return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((event) => event && typeof event === 'object').map((event) => sanitizeActivityEvent(event as GoogleActivityEvent)).slice(0, MAX_EVENTS) : [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((event) => event && typeof event === 'object').map((event) => sanitizeActivityEvent(event as GoogleActivityEvent)).slice(0, MAX_EVENTS)
+      : [];
   } catch {
     return [];
   }
 }
 
-function persist(events: readonly GoogleActivityEvent[]): void {
-  if (typeof localStorage === 'undefined') return;
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(events.slice(0, MAX_EVENTS).map(sanitizeActivityEvent))); } catch { /* best-effort persistence */ }
-}
-
 export function createGoogleActivityRecorder(initialStorage?: Storage | null): GoogleActivityRecorder {
   const storage = initialStorage === undefined ? (typeof localStorage === 'undefined' ? null : localStorage) : initialStorage;
-  const load = (): GoogleActivityEvent[] => {
-    if (!storage) return [];
-    try {
-      const raw = storage.getItem(STORAGE_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed.filter((event) => event && typeof event === 'object').map((event) => sanitizeActivityEvent(event as GoogleActivityEvent)).slice(0, MAX_EVENTS) : [];
-    } catch { return []; }
-  };
-  const save = (events: readonly GoogleActivityEvent[]): void => {
+  const events: GoogleActivityEvent[] = storage ? parseStored(storage.getItem(STORAGE_KEY)) : [];
+
+  const persist = (): void => {
     if (!storage) return;
     try { storage.setItem(STORAGE_KEY, JSON.stringify(events.slice(0, MAX_EVENTS).map(sanitizeActivityEvent))); } catch { /* best-effort persistence */ }
   };
-  const events: GoogleActivityEvent[] = storage ? load() : loadPersisted();
+
   return {
     record(event) {
       events.unshift(sanitizeActivityEvent(event));
       if (events.length > MAX_EVENTS) events.length = MAX_EVENTS;
-      save(events);
+      persist();
     },
     list(limit = 50) {
       return events.slice(0, Math.max(0, limit)).map(event => ({ ...event, ...(event.resource ? { resource: { ...event.resource } } : {}) }));
     },
     clear() {
       events.length = 0;
-      save(events);
+      persist();
     },
   };
 }
@@ -106,6 +96,50 @@ export function inferActivityAction(description: string, fallback: GoogleActivit
   if (/\b(opened|open|inspected|inspect)\b/.test(text)) return 'open';
   if (/\b(read|searched|search|found|listed|list|loaded|refreshed)\b/.test(text)) return 'read';
   return fallback;
+}
+
+export function recordGoogleToolActivity(recorder: GoogleActivityRecorder, toolName: string, result: unknown): void {
+  if (!result || typeof result !== 'object' || (result as { success?: boolean }).success !== true || !toolName) return;
+  const value = result as Record<string, any>;
+  if (!toolName.includes('google') && !toolName.includes('gmail') && !toolName.includes('calendar') && !toolName.includes('keep')) return;
+  const capabilityId = toolName.includes('gmail') ? 'gmail'
+    : toolName.includes('calendar') ? 'calendar'
+    : toolName.includes('drive') ? 'drive'
+    : toolName.includes('doc') ? 'docs'
+    : toolName.includes('sheet') ? 'sheets'
+    : toolName.includes('task') ? 'tasks'
+    : toolName.includes('keep') ? 'keep'
+    : toolName.includes('contact') ? 'contacts'
+    : toolName.includes('chat') ? 'chat'
+    : 'google';
+  const action = toolName.includes('send') ? 'send'
+    : toolName.includes('create') ? 'create'
+    : toolName.includes('update') || toolName.includes('write') || toolName.includes('append') ? 'update'
+    : toolName.includes('delete') || toolName.includes('remove') ? 'delete'
+    : toolName.includes('open') ? 'open'
+    : 'read';
+  const label = capabilityId === 'gmail' ? 'Gmail' : capabilityId === 'calendar' ? 'Google Calendar' : capabilityId === 'drive' ? 'Google Drive' : capabilityId === 'docs' ? 'Google Docs' : capabilityId === 'sheets' ? 'Google Sheets' : capabilityId === 'tasks' ? 'Google Tasks' : capabilityId === 'keep' ? 'Google Keep' : capabilityId === 'contacts' ? 'Google Contacts' : capabilityId === 'chat' ? 'Google Chat' : 'Google';
+  const operation = value.operation || action;
+  const description = operation === 'search' || operation === 'range_read' || operation === 'list' || action === 'read'
+    ? `Read ${label} data`
+    : operation === 'create' ? `Created ${label} item`
+    : operation === 'delete' ? `Deleted ${label} item`
+    : operation === 'write_range' || operation === 'append_rows' || action === 'update' ? `Updated ${label} data`
+    : operation === 'send' ? `Sent ${label} message`
+    : `Used ${label}`;
+  const id = value.messageId || value.eventId || value.documentId || value.spreadsheetId || value.noteName || value.fileId || value.taskId;
+  const url = value.htmlLink || value.spreadsheetUrl || value.documentUrl || value.webViewLink;
+  recorder.record({
+    id: `gha_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    timestamp: Date.now(),
+    capabilityId,
+    action,
+    description,
+    reversible: action === 'update' || action === 'create',
+    external: true,
+    consequential: action === 'create' || action === 'update' || action === 'delete' || action === 'send',
+    ...(id ? { resource: { type: capabilityId, id: String(id), ...(url ? { url: String(url) } : {}) } } : {}),
+  });
 }
 
 export const googleActivityRecorder = createGoogleActivityRecorder();
