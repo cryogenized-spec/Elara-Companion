@@ -96,10 +96,28 @@ const INITIAL_CAPABILITIES: readonly GoogleHubCapabilityDescriptor[] = [
   },
 ];
 
+const CATEGORIES = new Set<GoogleHubCategory>(['communication', 'scheduling', 'files', 'documents', 'data', 'tasks', 'notes', 'people', 'collaboration']);
+
+function validateDescriptor(descriptor: GoogleHubCapabilityDescriptor): void {
+  if (!descriptor.id.trim()) throw new Error('Google Hub capability id must not be empty');
+  if (!descriptor.name.trim()) throw new Error(`Google Hub capability name must not be empty: ${descriptor.id}`);
+  if (!CATEGORIES.has(descriptor.category)) throw new Error(`Unknown Google Hub capability category: ${descriptor.category}`);
+  if (!descriptor.panelKey.trim()) throw new Error(`Google Hub capability panelKey must not be empty: ${descriptor.id}`);
+  const actionIds = new Set<string>();
+  descriptor.actions.forEach((action) => {
+    if (!action.id.trim()) throw new Error(`Google Hub action id must not be empty: ${descriptor.id}`);
+    if (actionIds.has(action.id)) throw new Error(`Duplicate Google Hub action: ${descriptor.id}.${action.id}`);
+    actionIds.add(action.id);
+  });
+  Object.keys(descriptor.actionRequirements ?? {}).forEach((actionId) => {
+    if (!actionIds.has(actionId)) throw new Error(`Google Hub action requirement has no declared action: ${descriptor.id}.${actionId}`);
+  });
+}
+
 class DefaultGoogleHubCapabilityRegistry implements GoogleHubCapabilityRegistry {
   private readonly capabilities = new Map<GoogleHubCapabilityId, GoogleHubCapabilityDescriptor>();
   constructor(initial: readonly GoogleHubCapabilityDescriptor[] = INITIAL_CAPABILITIES) { initial.forEach((descriptor) => this.register(descriptor)); }
-  register(descriptor: GoogleHubCapabilityDescriptor): void { if (this.capabilities.has(descriptor.id)) throw new Error(`Google Hub capability already registered: ${descriptor.id}`); this.capabilities.set(descriptor.id, descriptor); }
+  register(descriptor: GoogleHubCapabilityDescriptor): void { validateDescriptor(descriptor); if (this.capabilities.has(descriptor.id)) throw new Error(`Google Hub capability already registered: ${descriptor.id}`); this.capabilities.set(descriptor.id, descriptor); }
   unregister(id: GoogleHubCapabilityId): void { this.capabilities.delete(id); }
   get(id: GoogleHubCapabilityId): GoogleHubCapabilityDescriptor | undefined { return this.capabilities.get(id); }
   has(id: GoogleHubCapabilityId): boolean { return this.capabilities.has(id); }
