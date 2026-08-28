@@ -1,33 +1,36 @@
 # Google Hub — Final UX Completion
 
+Branch: `feature/google-hub-completion`
+
 This branch completes the four gaps identified by the post-Pass-10 audit.
 
 ## Completed
 
 ### 1. Full original UX surface
-- Gmail now exposes practical search filters: from, to, after, before, unread, attachment.
-- Calendar now exposes Today, Tomorrow, Next 7 days, upcoming refresh, lightweight event creation, and direct Calendar access.
-- Drive now exposes search, inspection, upload, and direct Drive access.
-- Tasks now exposes list/refresh, creation, completion, and direct Google Tasks access.
-- Existing Docs, Sheets, Keep, Contacts, and Chat panels remain modular and provider-backed.
+- Gmail exposes practical search filters: from, to, after, before, unread, attachment.
+- Calendar exposes Today, Tomorrow, Next 7 days, upcoming refresh, lightweight event creation, and direct Calendar access.
+- Drive exposes search, inspection, upload, and direct Drive access.
+- Tasks exposes list/refresh, creation, completion, and direct Google Tasks access.
+- Docs, Sheets, Keep, Contacts, and Chat remain modular and provider-backed.
 
 ### 2. Google Hub as the user-facing Google system
 - Google Hub is the dedicated sidebar entry point.
-- The old standalone Google capability settings panel has been removed.
-- The Hub owns account, services, activity, and permissions presentation.
-- Legacy Google UI code remains inside the historical SettingsModal implementation for now as dormant code; it is not the canonical Google entry point. Further physical source deletion should be handled only after confirming unrelated Settings workspace behaviour is preserved.
+- The old standalone `GoogleCapabilitySettingsPanel` is absent from the completion branch.
+- The historical Google-heavy Settings implementation has been moved to `LegacySettingsModal.tsx` and is no longer exposed as the Settings workspace tab.
+- `SettingsModal.tsx` is now a compatibility shell that preserves unrelated Settings while suppressing the retired Google Workspace tab.
+- Google account/services/activity/permissions presentation now lives in the dedicated Hub.
 
 ### 3. Rich AI/context bridge
-- Added `googleHubContextService.ts` to build a credential-free structured Google context envelope.
-- The envelope includes account identity, authorization state, granted/missing capability state, action-level availability, and recent activity.
-- Hub-level and service-level Ask Elara actions now inject that structured context into the normal chat route through the existing `elara:ask` event bridge.
-- Consequential writes remain subject to the existing Google tool confirmation policy.
+- `googleHubContextService.ts` builds a credential-free structured Google context envelope.
+- Context includes account identity, authorization state, granted/missing capabilities, action-level availability, and recent activity.
+- Hub-level and service-level Ask Elara actions inject that context into the normal `elara:ask` chat route.
+- Consequential actions remain subject to the existing confirmation policy.
 
 ### 4. Fine-grained capability status
-- Capability descriptors now declare optional per-action requirements.
-- Service cards distinguish `Ready`, `Limited`, and `Needs access`.
-- Permissions show action-level availability instead of treating the whole service as one permission switch.
-- Enabling a capability requests the union of its base and action-specific requirements.
+- Capability descriptors declare per-action requirements.
+- Service cards distinguish Ready, Limited, and Needs access.
+- Permissions expose action-level access and explain what/why/data.
+- Enabling a service requests the union of its declared base and action requirements.
 
 ## Architectural invariant
 
@@ -37,4 +40,4 @@ The Hub never receives or stores an access token.
 
 ## Verification
 
-Repository source review completed. GitHub Actions reports no workflow run for the final branch head, and the current execution environment cannot install repository dependencies from GitHub. Therefore no local or CI TypeScript/lint/build pass is claimed here.
+Source-level repository review completed. GitHub currently reports no workflow runs/statuses for the final branch head, and the current execution environment cannot install repository dependencies from GitHub. Therefore no successful local or CI TypeScript/lint/build execution is claimed.
