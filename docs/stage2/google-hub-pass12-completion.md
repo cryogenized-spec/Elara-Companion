@@ -102,13 +102,17 @@ Complete the original user-facing capability UX across the nine Google Hub capab
 
 ## Implementation changes in Pass 12
 
-- `GmailCapabilityPanel.tsx`: added the direct Open Gmail entry point while preserving search filters and separate compose/send gates.
-- `TasksCapabilityPanel.tsx`: added explicit Today/Upcoming/All views.
-- `KeepCapabilityPanel.tsx`: added note search/filtering in the Hub UI.
-- `SheetsCapabilityPanel.tsx`: added the Ask Elara entry point and recent spreadsheet workflow.
-- `ContactsCapabilityPanel.tsx`: added Open Contacts and Ask Elara entry points.
-- `googleCapabilityModules.tsx`: wired Ask Elara consistently into all registered panels.
-- `googleCapabilityRegistry.test.ts`: added the complete Pass 12 action acceptance matrix.
+- `GmailCapabilityPanel.tsx`: practical mail filtering, inspection, direct Gmail entry point, compose/send gates.
+- `CalendarCapabilityPanel.tsx`: Today/Tomorrow/Next 7 days, availability, event creation, direct Calendar entry point.
+- `DriveCapabilityPanel.tsx`: provider search, inspection, upload, work-with-file context, direct Drive entry point.
+- `DocsCapabilityPanel.tsx`: search/open/create/update/work-with-document, direct Docs entry point.
+- `SheetsCapabilityPanel.tsx`: recent spreadsheet workflow, range inspection, write/create, work-with-sheet, direct Sheets entry point, Ask Elara.
+- `TasksCapabilityPanel.tsx`: Today/Upcoming/All filtering, create/complete, direct Tasks entry point, Ask Elara.
+- `KeepCapabilityPanel.tsx`: search/recent, create/delete, Pin to Elara, work-with-note, direct Keep entry point, Ask Elara.
+- `ContactsCapabilityPanel.tsx`: search/list, direct Contacts entry point, Ask Elara.
+- `ChatCapabilityPanel.tsx`: spaces/messages/send/manage, direct Chat entry point, Ask Elara.
+- `googleCapabilityModules.tsx`: consistent Ask Elara wiring for registered panels.
+- `googleCapabilityRegistry.test.ts`: complete Pass 12 action acceptance matrix.
 
 ## Verification
 
@@ -116,6 +120,4 @@ Source-level acceptance review completed against the Pass 12 specification. The 
 
 A dependency-backed TypeScript/lint/test/build execution is still not available in the current environment; no green CI/local execution is claimed without actual execution evidence.
 
-## Definition of done
-
-Pass 12 is considered source-complete only when every checked item above remains present and the repository's automated TypeScript/lint/test/build verification can execute successfully in an environment with the project dependencies available.
+Pass 13 adds a canonical capability-state projector and exhaustive authorization/action-state tests so the UX truth and agent truth cannot drift independently.
