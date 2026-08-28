@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { LegacySettingsModal } from './LegacySettingsModal';
+import { SettingsModal as LegacySettingsModal } from './LegacySettingsModal';
 import type { ElaraSettings } from '../types';
 
 interface SettingsModalProps {
@@ -17,11 +17,9 @@ interface SettingsModalProps {
 
 /**
  * Canonical application Settings entry point.
- *
  * Google Workspace is intentionally not exposed from Settings; its user-facing
- * surface is the dedicated Google Hub. The historical settings implementation
- * is retained under LegacySettingsModal solely to preserve unrelated settings
- * behavior during migration.
+ * surface is the dedicated Google Hub. The historical implementation remains
+ * quarantined under LegacySettingsModal so unrelated settings are preserved.
  */
 export const SettingsModal: React.FC<SettingsModalProps> = (props) => {
   const hostRef = useRef<HTMLDivElement>(null);
