@@ -12,9 +12,7 @@ import type { GoogleHubCapabilityDescriptor } from '../../contracts/googleHub';
 
 interface GoogleHubModalProps { isOpen: boolean; onClose: () => void; onAskElara?: (prompt: string) => void; }
 
-function dispatchAsk(prompt: string): void {
-  window.dispatchEvent(new CustomEvent('elara:ask', { detail: { prompt } }));
-}
+function dispatchAsk(prompt: string): void { window.dispatchEvent(new CustomEvent('elara:ask', { detail: { prompt } })); }
 
 export function GoogleHubModal({ isOpen, onClose, onAskElara }: GoogleHubModalProps) {
   const capabilities = useMemo(() => googleHubCapabilityRegistry.list(), []);
@@ -55,21 +53,24 @@ export function GoogleHubModal({ isOpen, onClose, onAskElara }: GoogleHubModalPr
   const askElara = (request: string) => {
     const structured = buildGoogleHubAgentContext(capabilities, authorization, accountEmail, activity);
     const prompt = buildGoogleHubAgentPrompt(request, structured);
-    if (onAskElara) onAskElara(prompt);
-    else dispatchAsk(prompt);
+    if (onAskElara) onAskElara(prompt); else dispatchAsk(prompt);
   };
 
   const enableCapability = async (descriptor: GoogleHubCapabilityDescriptor) => {
     try {
       if (!authorization.authorized) await googleIdentity.requestBaseAuthorization(true);
-      for (const capability of descriptor.requiredCapabilities.filter((item) => !isGranted(item))) await googleIdentity.requestCapabilityAuthorization(googleCapabilities.getScopes(capability), false);
+      const requested = new Set<GoogleCapability>(descriptor.requiredCapabilities);
+      Object.values(descriptor.actionRequirements ?? {}).forEach((requirements) => requirements?.forEach((capability) => requested.add(capability)));
+      for (const capability of requested) {
+        if (!isGranted(capability)) await googleIdentity.requestCapabilityAuthorization(googleCapabilities.getScopes(capability), false);
+      }
       refresh();
     } catch (error) { console.warn('Google capability authorization failed:', error); refresh(); }
   };
 
   const revokeAll = async () => { await googleIdentity.revoke(); setAccountEmail(undefined); refresh(); };
-
   void activityTick;
+
   return <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-2 backdrop-blur-md sm:p-4" role="dialog" aria-modal="true" aria-label="Google Hub">
     <div className="flex h-[96vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0b0b0b] shadow-2xl">
       <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-5"><div className="min-w-0"><p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">Elara</p><h2 className="text-base font-semibold text-white">Google Hub</h2></div><div className="flex items-center gap-2"><button type="button" onClick={() => askElara('Use my connected Google data to help me. Inspect relevant enabled capabilities first and explain what you find before taking consequential actions.')} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-white/75 hover:bg-white/[0.06]"><MessageCircle className="h-4 w-4" /> Ask Elara</button><button type="button" onClick={onClose} className="rounded-lg p-2 text-white/45 hover:bg-white/[0.06] hover:text-white" aria-label="Close Google Hub"><X className="h-5 w-5" /></button></div></div>
