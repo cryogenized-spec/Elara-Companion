@@ -31,6 +31,16 @@ function safeModel(model?: string): string | undefined {
   return model.replace(/[^a-zA-Z0-9._:-]/g, '').slice(0, 120);
 }
 
+function safeMessage(message?: string): string | undefined {
+  if (!message) return undefined;
+  return message
+    .replace(/[\r\n\t]/g, ' ')
+    .replace(/authorization\s*:\s*bearer\s+[^\s,;]+/gi, 'authorization: [redacted]')
+    .replace(/(api[_ -]?key|access[_ -]?token|oauth[_ -]?token|cookie|secret)\s*[=:]\s*[^\s,;]+/gi, '$1=[redacted]')
+    .replace(/"(?:apiKey|accessToken|refreshToken|clientSecret|authorization|cookie)"\s*:\s*"[^"]*"/gi, '"$1":"[redacted]"')
+    .slice(0, 240);
+}
+
 export function sanitizeResilienceDiagnosticEvent(
   event: Omit<ResilienceDiagnosticEvent, 'id' | 'timestamp'>,
 ): ResilienceDiagnosticEvent {
@@ -41,7 +51,7 @@ export function sanitizeResilienceDiagnosticEvent(
     preferredModel: safeModel(event.preferredModel),
     actualModel: safeModel(event.actualModel),
     fallbackTarget: safeModel(event.fallbackTarget),
-    message: event.message?.replace(/[\r\n\t]/g, ' ').slice(0, 240),
+    message: safeMessage(event.message),
   };
 }
 
