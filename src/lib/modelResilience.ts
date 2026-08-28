@@ -9,7 +9,7 @@ import {
   recordModelSuccess,
   selectRuntimeModel,
 } from './modelHealth';
-import { emitResilienceDiagnostic } from './resilienceDiagnostics';
+import { emitResilienceDiagnostic, getResilienceSessionId } from './resilienceDiagnostics';
 
 export const DEFAULT_FALLBACK_MODELS = [
   'gemini-3.7-flash',
@@ -27,6 +27,9 @@ export interface ModelResiliencePolicy {
   retryableErrorCodes?: string[];
   failoverErrorCodes?: string[];
   skipUnhealthyFallbackModels?: boolean;
+  provider?: string;
+  sessionId?: string;
+  conversationId?: string;
 }
 
 export interface ModelResilienceContext {
@@ -79,6 +82,11 @@ function preferenceRank(preferenceOrder: string[], model: string): number | unde
   return index >= 0 ? index + 1 : undefined;
 }
 
+function createRequestId(): string {
+  const random = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+  return `request-${random}`;
+}
+
 export function buildModelResiliencePolicy(settings?: ReliabilitySettings): ModelResiliencePolicy {
   if (!settings) {
     return {
@@ -89,6 +97,7 @@ export function buildModelResiliencePolicy(settings?: ReliabilitySettings): Mode
       cooldownMs: DEFAULT_MODEL_COOLDOWN_MS,
       autoRestorePreferredModel: true,
       skipUnhealthyFallbackModels: true,
+      provider: 'google',
     };
   }
 
@@ -108,6 +117,7 @@ export function buildModelResiliencePolicy(settings?: ReliabilitySettings): Mode
     retryableErrorCodes: settings.retryableErrorCodes,
     failoverErrorCodes: settings.failoverErrorCodes,
     skipUnhealthyFallbackModels: true,
+    provider: 'google',
   };
 }
 
@@ -126,6 +136,9 @@ export async function runWithModelResilience<T>(
   const failoverEnabled = options.failoverEnabled !== false;
   const cooldownMs = options.cooldownMs ?? DEFAULT_MODEL_COOLDOWN_MS;
   const attemptedModels = new Set<string>();
+  const requestId = options.requestId || createRequestId();
+  const sessionId = options.sessionId || getResilienceSessionId();
+  const provider = options.provider || 'google';
   let state = stateStore.get();
   const retryableCodes = options.retryableErrorCodes ? new Set(options.retryableErrorCodes) : undefined;
 
@@ -150,8 +163,14 @@ export async function runWithModelResilience<T>(
     try {
       const result = await runWithRetry(
         async (attempt) => {
+          const attemptStartedAt = Date.now();
           emitResilienceDiagnostic({
             kind: 'REQUEST',
+            outcome: 'success',
+            provider,
+            sessionId,
+            conversationId: options.conversationId,
+            requestId,
             preferredModel,
             actualModel: selectedModel,
             preferenceRank: preferenceRank(preferenceOrder, selectedModel),
@@ -160,22 +179,32 @@ export async function runWithModelResilience<T>(
 
           try {
             const turn = await executeTurn(selectedModel, attempt);
+            const latencyMs = Date.now() - attemptStartedAt;
             state = recordModelSuccess(state, selectedModel);
             stateStore.set(state);
             emitResilienceDiagnostic({
               kind: selection.probingPreferred ? 'RECOVERY' : 'SUCCESS',
+              outcome: selection.probingPreferred ? 'recovery' : 'success',
+              provider,
+              sessionId,
+              conversationId: options.conversationId,
+              requestId,
               preferredModel,
               actualModel: selectedModel,
               preferenceRank: preferenceRank(preferenceOrder, selectedModel),
               attempt,
+              latencyMs,
               message: selection.probingPreferred ? 'Preferred model recovered.' : 'Model execution succeeded.',
             });
             return turn;
           } catch (error) {
             const classified = getErrorFromThrown(error, selectedModel);
+            const latencyMs = Date.now() - attemptStartedAt;
+            (error as any).__elaraResilienceLatencyMs = latencyMs;
             if (retryableCodes && !retryableCodes.has(classified.code)) {
               throw Object.assign(new Error(classified.message), {
                 apiError: { ...classified, retryable: false },
+                __elaraResilienceLatencyMs: latencyMs,
               });
             }
             throw error;
@@ -187,18 +216,29 @@ export async function runWithModelResilience<T>(
           onRetry: ({ attempt, nextAttempt, delayMs, error }) => {
             emitResilienceDiagnostic({
               kind: 'RETRY',
+              outcome: 'retry',
+              provider,
+              sessionId,
+              conversationId: options.conversationId,
+              requestId,
               preferredModel,
               actualModel: selectedModel,
               preferenceRank: preferenceRank(preferenceOrder, selectedModel),
               attempt,
               errorCode: error.code,
               httpStatus: error.httpStatus,
+              retryAfterMs: error.retryAfterMs,
               retryDelayMs: delayMs,
               retrying: true,
               message: `Retrying ${selectedModel}.`,
             });
             emitResilienceDiagnostic({
               kind: 'POLICY',
+              outcome: 'retry',
+              provider,
+              sessionId,
+              conversationId: options.conversationId,
+              requestId,
               preferredModel,
               actualModel: selectedModel,
               preferenceRank: preferenceRank(preferenceOrder, selectedModel),
@@ -222,32 +262,67 @@ export async function runWithModelResilience<T>(
       };
     } catch (error) {
       const classified = getErrorFromThrown(error, selectedModel);
-      const cooldownUntil = Date.now() + cooldownMs;
-      state = recordModelFailure(state, selectedModel, classified, Date.now(), cooldownMs);
+      const latencyMs = typeof (error as any)?.__elaraResilienceLatencyMs === 'number' ? (error as any).__elaraResilienceLatencyMs : undefined;
+      const failedAt = Date.now();
+      const cooldownUntil = failedAt + cooldownMs;
+      state = recordModelFailure(state, selectedModel, classified, failedAt, cooldownMs);
       stateStore.set(state);
 
       const fallbackAllowed = failoverEnabled && isFailoverEligible(classified, options.failoverErrorCodes);
       emitResilienceDiagnostic({
         kind: 'ERROR',
+        outcome: fallbackAllowed ? 'fallback' : 'failure',
+        provider,
+        sessionId,
+        conversationId: options.conversationId,
+        requestId,
         preferredModel,
         actualModel: selectedModel,
         preferenceRank: preferenceRank(preferenceOrder, selectedModel),
         errorCode: classified.code,
         httpStatus: classified.httpStatus,
+        retryAfterMs: classified.retryAfterMs,
+        fallbackEligible: isFailoverEligible(classified),
         fallbackAllowed,
+        cooldownApplied: true,
         cooldownUntil,
+        latencyMs,
         message: classified.message,
       });
       emitResilienceDiagnostic({
         kind: 'POLICY',
+        outcome: fallbackAllowed ? 'fallback' : 'failure',
+        provider,
+        sessionId,
+        conversationId: options.conversationId,
+        requestId,
         preferredModel,
         actualModel: selectedModel,
         preferenceRank: preferenceRank(preferenceOrder, selectedModel),
         errorCode: classified.code,
         httpStatus: classified.httpStatus,
+        retryAfterMs: classified.retryAfterMs,
+        fallbackEligible: isFailoverEligible(classified),
         fallbackAllowed,
+        cooldownApplied: true,
         cooldownUntil,
+        latencyMs,
         message: fallbackAllowed ? 'Fallback allowed by configured failure conditions.' : 'Fallback not allowed by configured failure conditions.',
+      });
+      emitResilienceDiagnostic({
+        kind: 'COOLDOWN',
+        outcome: 'cooldown',
+        provider,
+        sessionId,
+        conversationId: options.conversationId,
+        requestId,
+        preferredModel,
+        actualModel: selectedModel,
+        preferenceRank: preferenceRank(preferenceOrder, selectedModel),
+        errorCode: classified.code,
+        cooldownApplied: true,
+        cooldownUntil,
+        message: `Cooldown applied until ${new Date(cooldownUntil).toISOString()}.`,
       });
 
       if (!fallbackAllowed) throw error;
@@ -264,13 +339,22 @@ export async function runWithModelResilience<T>(
 
       emitResilienceDiagnostic({
         kind: 'ROUTE',
+        outcome: 'fallback',
+        provider,
+        sessionId,
+        conversationId: options.conversationId,
+        requestId,
         preferredModel,
         actualModel: selectedModel,
         preferenceRank: preferenceRank(preferenceOrder, selectedModel),
         errorCode: classified.code,
         httpStatus: classified.httpStatus,
+        retryAfterMs: classified.retryAfterMs,
+        fallbackEligible: true,
         fallbackAllowed: true,
+        fallbackTaken: true,
         fallbackTarget: nextSelection.model,
+        cooldownApplied: true,
         cooldownUntil,
         message: `${selectedModel} → ${nextSelection.model}`,
       });
