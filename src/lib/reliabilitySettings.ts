@@ -71,13 +71,18 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number)
   return Math.min(max, Math.max(min, numeric));
 }
 
-function normalizeModelList(value: unknown, fallback: string[] = DEFAULT_RELIABILITY_SETTINGS.fallbackModels): string[] {
+function normalizeStringList(value: unknown, fallback: string[] = []): string[] {
   if (!Array.isArray(value)) return [...fallback];
   const normalized = value
     .filter((model): model is string => typeof model === 'string')
     .map((model) => model.trim().toLowerCase())
-    .filter((model) => AVAILABLE_FALLBACKS.has(model));
+    .filter(Boolean);
   return [...new Set(normalized)];
+}
+
+function normalizeFallbackModelList(value: unknown): string[] {
+  return normalizeStringList(value, DEFAULT_RELIABILITY_SETTINGS.fallbackModels)
+    .filter((model) => AVAILABLE_FALLBACKS.has(model));
 }
 
 function normalizeErrorCodes(value: unknown, fallback: ElaraApiErrorCode[]): ElaraApiErrorCode[] {
@@ -96,8 +101,8 @@ export function normalizeReliabilitySettings(value: Partial<ReliabilitySettings>
   if (!retryableErrorCodes.includes('UNKNOWN_API_ERROR')) retryableErrorCodes.push('UNKNOWN_API_ERROR');
   if (!failoverErrorCodes.includes('UNKNOWN_API_ERROR')) failoverErrorCodes.push('UNKNOWN_API_ERROR');
 
-  const preferredModelOrder = normalizeModelList(raw.preferredModelOrder, DEFAULT_RELIABILITY_SETTINGS.preferredModelOrder);
-  const fallbackModels = normalizeModelList(raw.fallbackModels);
+  const preferredModelOrder = normalizeStringList(raw.preferredModelOrder, DEFAULT_RELIABILITY_SETTINGS.preferredModelOrder);
+  const fallbackModels = normalizeFallbackModelList(raw.fallbackModels);
 
   return {
     preferredModelOrder: preferredModelOrder.length ? preferredModelOrder : [...DEFAULT_RELIABILITY_SETTINGS.preferredModelOrder],
