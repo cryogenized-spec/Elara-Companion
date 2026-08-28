@@ -1,5 +1,6 @@
 import type { GoogleCapability } from '../contracts';
 import type { GoogleHubAuthorizationSnapshot, GoogleHubCapabilityDescriptor } from '../contracts/googleHub';
+import { projectGoogleHubCapabilityStates } from './googleHubCapabilityState';
 
 export interface GoogleHubAgentContext {
   provider: 'google';
@@ -12,7 +13,7 @@ export interface GoogleHubAgentContext {
     id: string;
     name: string;
     category: string;
-    status: 'enabled' | 'limited' | 'needs-access';
+    status: 'enabled' | 'limited' | 'needs-access' | 'unavailable' | 'error';
     enabledActions: readonly string[];
     blockedActions: readonly string[];
   }[];
@@ -29,30 +30,11 @@ export function buildGoogleHubAgentContext(
   accountEmail?: string,
   activity: readonly { service: string; description: string; timestamp: number }[] = [],
 ): GoogleHubAgentContext {
-  const granted = new Set(authorization.grantedCapabilities);
-  const capabilityState = capabilities.map((descriptor) => {
-    const baseEnabled = descriptor.requiredCapabilities.length > 0
-      && descriptor.requiredCapabilities.every((capability) => granted.has(capability));
-    const actionPairs = descriptor.actions.map((action) => {
-      const requirements = descriptor.actionRequirements?.[action.id] ?? descriptor.requiredCapabilities;
-      const available = action.kind === 'open'
-        || action.kind === 'ask'
-        || action.kind === 'enable'
-        || requirements.length === 0
-        || requirements.every((capability) => granted.has(capability));
-      return [action.label, available] as const;
-    });
-    return {
-      id: descriptor.id,
-      name: descriptor.name,
-      category: descriptor.category,
-      status: baseEnabled
-        ? (actionPairs.some(([, available]) => !available) ? 'limited' : 'enabled')
-        : 'needs-access',
-      enabledActions: actionPairs.filter(([, available]) => available).map(([label]) => label),
-      blockedActions: actionPairs.filter(([, available]) => !available).map(([label]) => label),
-    };
-  });
+  const capabilityState = projectGoogleHubCapabilityStates(
+    capabilities,
+    authorization.grantedCapabilities,
+    authorization.authorized,
+  );
 
   return {
     provider: 'google',
@@ -63,7 +45,14 @@ export function buildGoogleHubAgentContext(
       grantedCapabilities: authorization.grantedCapabilities,
       missingCapabilities: authorization.missingCapabilities,
     },
-    capabilities: capabilityState,
+    capabilities: capabilityState.map((state, index) => ({
+      id: state.id,
+      name: capabilities[index].name,
+      category: capabilities[index].category,
+      status: state.status,
+      enabledActions: state.enabledActions,
+      blockedActions: state.blockedActions,
+    })),
     recentActivity: activity.slice(0, 20).map((entry) => ({
       service: entry.service,
       description: entry.description,
