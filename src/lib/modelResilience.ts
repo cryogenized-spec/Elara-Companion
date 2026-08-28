@@ -27,6 +27,8 @@ export interface ModelResiliencePolicy {
   autoRestorePreferredModel?: boolean;
   retryableErrorCodes?: string[];
   failoverErrorCodes?: string[];
+  /** Explicitly permits skipping a cooling-down next-preference tier in favour of a later tier. */
+  skipUnhealthyFallbackModels?: boolean;
 }
 
 export interface ModelResilienceContext {
@@ -85,7 +87,7 @@ export function buildModelResiliencePolicy(settings?: ReliabilitySettings): Mode
       failoverEnabled: true,
       cooldownMs: DEFAULT_MODEL_COOLDOWN_MS,
       autoRestorePreferredModel: true,
-      retryableErrorCodes: DEFAULT_RETRY_POLICY ? undefined : undefined,
+      skipUnhealthyFallbackModels: true,
     };
   }
 
@@ -104,6 +106,7 @@ export function buildModelResiliencePolicy(settings?: ReliabilitySettings): Mode
     autoRestorePreferredModel: settings.autoRestorePreferredModel,
     retryableErrorCodes: settings.retryableErrorCodes,
     failoverErrorCodes: settings.failoverErrorCodes,
+    skipUnhealthyFallbackModels: true,
   };
 }
 
@@ -132,6 +135,7 @@ export async function runWithModelResilience<T>(
       state,
       now: Date.now(),
       autoRestorePreferredModel: options.autoRestorePreferredModel,
+      skipUnhealthyFallbackModels: options.skipUnhealthyFallbackModels === true,
     });
 
     const selectedModel = selection.model;
@@ -189,6 +193,7 @@ export async function runWithModelResilience<T>(
         state,
         now: Date.now(),
         autoRestorePreferredModel: options.autoRestorePreferredModel,
+        skipUnhealthyFallbackModels: options.skipUnhealthyFallbackModels === true,
       });
       if (nextSelection.model.trim().toLowerCase() === normalized) {
         throw error;
