@@ -1,11 +1,14 @@
 import type { GoogleCapability } from '../contracts';
-import type { GoogleHubCapabilityDescriptor, GoogleHubCapabilityStatus } from '../contracts/googleHub';
+import type { GoogleHubCapabilityAction, GoogleHubCapabilityDescriptor, GoogleHubCapabilityStatus } from '../contracts/googleHub';
 
 export interface GoogleHubActionAvailability {
   id: string;
   label: string;
+  kind: GoogleHubCapabilityAction['kind'];
   available: boolean;
   requiredCapabilities: readonly GoogleCapability[];
+  requiresConfirmation: boolean;
+  destructive: boolean;
 }
 
 export interface GoogleHubCapabilityState {
@@ -22,7 +25,7 @@ function requirementsFor(descriptor: GoogleHubCapabilityDescriptor, actionId: st
   return descriptor.actionRequirements?.[actionId] ?? descriptor.requiredCapabilities;
 }
 
-function isNonProviderAction(kind: GoogleHubCapabilityDescriptor['actions'][number]['kind']): boolean {
+function isControlAction(kind: GoogleHubCapabilityAction['kind']): boolean {
   return kind === 'open' || kind === 'ask' || kind === 'enable';
 }
 
@@ -36,12 +39,20 @@ export function projectGoogleHubCapabilityState(
   const missingBaseCapabilities = descriptor.requiredCapabilities.filter((capability) => !grantedCapabilities.has(capability));
   const actions = descriptor.actions.map((action) => {
     const requiredCapabilities = requirementsFor(descriptor, action.id);
-    const available = isNonProviderAction(action.kind)
+    const available = isControlAction(action.kind)
       || requiredCapabilities.length === 0
       || requiredCapabilities.every((capability) => grantedCapabilities.has(capability));
-    return { id: action.id, label: action.label, available, requiredCapabilities };
+    return {
+      id: action.id,
+      label: action.label,
+      kind: action.kind,
+      available,
+      requiredCapabilities,
+      requiresConfirmation: Boolean(action.requiresConfirmation),
+      destructive: Boolean(action.destructive),
+    };
   });
-  const actionable = actions.filter((action) => !isNonProviderAction(descriptor.actions.find((candidate) => candidate.id === action.id)?.kind ?? 'open'));
+  const actionable = actions.filter((action) => !isControlAction(action.kind));
   const status: GoogleHubCapabilityStatus = !authorized
     ? 'unavailable'
     : !baseEnabled
