@@ -1,6 +1,7 @@
 import React from 'react';
 import type { GoogleCapability } from '../../contracts';
 import type { GoogleHubCapabilityDescriptor, GoogleHubCapabilityId } from '../../contracts/googleHub';
+import type { GoogleHubSelectedResource } from '../../services/googleHubContextService';
 import { GmailCapabilityPanel } from './GmailCapabilityPanel';
 import { CalendarCapabilityPanel } from './CalendarCapabilityPanel';
 import { TasksCapabilityPanel } from './TasksCapabilityPanel';
@@ -14,7 +15,7 @@ import { ChatCapabilityPanel } from './ChatCapabilityPanel';
 export interface GoogleHubPanelContext {
   descriptor: GoogleHubCapabilityDescriptor;
   isGranted: (capability: GoogleCapability) => boolean;
-  askElara: (prompt: string) => void;
+  askElara: (prompt: string, selectedResource?: GoogleHubSelectedResource) => void;
   recordActivity: (capabilityId: string, action: 'read' | 'create' | 'update' | 'delete' | 'send' | 'open', description: string, reversible?: boolean) => void;
 }
 export interface GoogleCapabilityModule { descriptor: GoogleHubCapabilityDescriptor; renderPanel: (context: GoogleHubPanelContext) => React.ReactNode; }
