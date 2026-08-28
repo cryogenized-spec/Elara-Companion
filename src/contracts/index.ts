@@ -6,6 +6,7 @@ import type {
   Workspace,
   WorkspaceArtifact,
 } from '../types';
+import type { GoogleCapability } from '../lib/googleCapabilityPolicy';
 
 /** Stable application contract for conversation ownership. */
 export interface ConversationContract {
@@ -36,14 +37,8 @@ export interface WorkspaceContract {
   saveAgentArtifact(name: string, content: string, type?: string, artifactId?: string): WorkspaceArtifact;
 }
 
-/** Canonical Google capabilities. This type belongs to the application contract, not the OAuth implementation. */
-export type GoogleCapability =
-  | 'gmail.read' | 'gmail.compose' | 'gmail.send' | 'gmail.modify'
-  | 'calendar.read' | 'calendar.write' | 'tasks'
-  | 'docs' | 'drive.read' | 'drive.file'
-  | 'sheets.read' | 'sheets.write'
-  | 'keep.read' | 'keep.write'
-  | 'contacts.read' | 'chat.read' | 'chat.send' | 'chat.manage';
+/** Canonical Google capability type. The OAuth policy is its single source of truth. */
+export type { GoogleCapability };
 
 /** Stable external-state contract for Google identity/capabilities. */
 export interface GoogleContract {
