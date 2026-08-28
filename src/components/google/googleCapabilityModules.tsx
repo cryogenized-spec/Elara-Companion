@@ -16,7 +16,13 @@ export interface GoogleHubPanelContext {
   descriptor: GoogleHubCapabilityDescriptor;
   isGranted: (capability: GoogleCapability) => boolean;
   askElara: (prompt: string, selectedResource?: GoogleHubSelectedResource) => void;
-  recordActivity: (capabilityId: string, action: 'read' | 'create' | 'update' | 'delete' | 'send' | 'open', description: string, reversible?: boolean) => void;
+  recordActivity: (
+    capabilityId: string,
+    actionOrDescription: 'read' | 'create' | 'update' | 'delete' | 'send' | 'open' | string,
+    descriptionOrReversible?: string | boolean,
+    reversible?: boolean,
+    resource?: { type: string; id: string; url?: string },
+  ) => void;
 }
 export interface GoogleCapabilityModule { descriptor: GoogleHubCapabilityDescriptor; renderPanel: (context: GoogleHubPanelContext) => React.ReactNode; }
 export type GoogleCapabilityModuleFactory = (context: GoogleHubPanelContext) => React.ReactNode;
@@ -35,15 +41,15 @@ export const googleCapabilityModuleRegistry = createGoogleCapabilityModuleRegist
 
 const askFor = (context: GoogleHubPanelContext) => (prompt: string) => context.askElara(prompt, { capabilityId: context.descriptor.id, resourceType: 'capability', resourceId: context.descriptor.id, name: context.descriptor.name });
 
-googleCapabilityModuleRegistry.register('gmail', c => <GmailCapabilityPanel canRead={c.isGranted('gmail.read')} canCompose={c.isGranted('gmail.compose')} canSend={c.isGranted('gmail.send')} onActivity={d=>c.recordActivity('gmail','read',d)} onAskElara={askFor(c)}/>);
-googleCapabilityModuleRegistry.register('calendar', c => <CalendarCapabilityPanel canRead={c.isGranted('calendar.read')} canWrite={c.isGranted('calendar.write')} onActivity={(d,r)=>c.recordActivity('calendar','create',d,r)} onAskElara={askFor(c)}/>);
-googleCapabilityModuleRegistry.register('tasks', c => <TasksCapabilityPanel canUse={c.isGranted('tasks')} onActivity={(d,r)=>c.recordActivity('tasks','create',d,r)} onAskElara={askFor(c)}/>);
-googleCapabilityModuleRegistry.register('drive', c => <DriveCapabilityPanel canRead={c.isGranted('drive.read')} canUpload={c.isGranted('drive.file')} onActivity={(d,r)=>c.recordActivity('drive','create',d,r)} onAskElara={askFor(c)}/>);
-googleCapabilityModuleRegistry.register('docs', c => <DocsCapabilityPanel canUse={c.isGranted('docs')} onActivity={(d,r)=>c.recordActivity('docs','update',d,r)} onAskElara={askFor(c)}/>);
-googleCapabilityModuleRegistry.register('sheets', c => <SheetsCapabilityPanel canRead={c.isGranted('sheets.read')} canWrite={c.isGranted('sheets.write')} onActivity={(d,r)=>c.recordActivity('sheets','update',d,r)} onAskElara={askFor(c)}/>);
-googleCapabilityModuleRegistry.register('keep', c => <KeepCapabilityPanel canRead={c.isGranted('keep.read')} canWrite={c.isGranted('keep.write')} onActivity={(d,r)=>c.recordActivity('keep','create',d,r)} onAskElara={askFor(c)}/>);
-googleCapabilityModuleRegistry.register('contacts', c => <ContactsCapabilityPanel canRead={c.isGranted('contacts.read')} onActivity={d=>c.recordActivity('contacts','read',d)} onAskElara={askFor(c)}/>);
-googleCapabilityModuleRegistry.register('chat', c => <ChatCapabilityPanel canRead={c.isGranted('chat.read')} canSend={c.isGranted('chat.send')} canManage={c.isGranted('chat.manage')} onActivity={d=>c.recordActivity('chat','read',d)} onAskElara={askFor(c)}/>);
+googleCapabilityModuleRegistry.register('gmail', c => <GmailCapabilityPanel canRead={c.isGranted('gmail.read')} canCompose={c.isGranted('gmail.compose')} canSend={c.isGranted('gmail.send')} onActivity={d=>c.recordActivity('gmail',d)} onAskElara={askFor(c)}/>);
+googleCapabilityModuleRegistry.register('calendar', c => <CalendarCapabilityPanel canRead={c.isGranted('calendar.read')} canWrite={c.isGranted('calendar.write')} onActivity={(d,r)=>c.recordActivity('calendar',d,r)} onAskElara={askFor(c)}/>);
+googleCapabilityModuleRegistry.register('tasks', c => <TasksCapabilityPanel canUse={c.isGranted('tasks')} onActivity={(d,r)=>c.recordActivity('tasks',d,r)} onAskElara={askFor(c)}/>);
+googleCapabilityModuleRegistry.register('drive', c => <DriveCapabilityPanel canRead={c.isGranted('drive.read')} canUpload={c.isGranted('drive.file')} onActivity={(d,r)=>c.recordActivity('drive',d,r)} onAskElara={askFor(c)}/>);
+googleCapabilityModuleRegistry.register('docs', c => <DocsCapabilityPanel canUse={c.isGranted('docs')} onActivity={(d,r)=>c.recordActivity('docs',d,r)} onAskElara={askFor(c)}/>);
+googleCapabilityModuleRegistry.register('sheets', c => <SheetsCapabilityPanel canRead={c.isGranted('sheets.read')} canWrite={c.isGranted('sheets.write')} onActivity={(d,r)=>c.recordActivity('sheets',d,r)} onAskElara={askFor(c)}/>);
+googleCapabilityModuleRegistry.register('keep', c => <KeepCapabilityPanel canRead={c.isGranted('keep.read')} canWrite={c.isGranted('keep.write')} onActivity={(d,r)=>c.recordActivity('keep',d,r)} onAskElara={askFor(c)}/>);
+googleCapabilityModuleRegistry.register('contacts', c => <ContactsCapabilityPanel canRead={c.isGranted('contacts.read')} onActivity={d=>c.recordActivity('contacts',d)} onAskElara={askFor(c)}/>);
+googleCapabilityModuleRegistry.register('chat', c => <ChatCapabilityPanel canRead={c.isGranted('chat.read')} canSend={c.isGranted('chat.send')} canManage={c.isGranted('chat.manage')} onActivity={d=>c.recordActivity('chat',d)} onAskElara={askFor(c)}/>);
 
 export function createGoogleCapabilityModule(descriptor: GoogleHubCapabilityDescriptor): GoogleCapabilityModule { return { descriptor, renderPanel: context => googleCapabilityModuleRegistry.render(descriptor, context) }; }
 export function createGoogleCapabilityModules(descriptors: readonly GoogleHubCapabilityDescriptor[]): readonly GoogleCapabilityModule[] { return descriptors.map(createGoogleCapabilityModule); }
