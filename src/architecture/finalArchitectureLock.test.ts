@@ -73,17 +73,20 @@ test('canonical reference archive owns historical Keep storage key deliberately'
   assert.match(source, /updateReferenceNote/);
 });
 
-test('Settings UI uses application-owned persistence and capability boundaries', async () => {
-  const source = await readText('src/components/SettingsModal.tsx');
-  assert.doesNotMatch(source, /from ['\"]\.\.\/lib\/db['\"]/);
-  assert.doesNotMatch(source, /from ['\"]\.\.\/lib\/storage['\"]/);
-  assert.doesNotMatch(source, /from ['\"]\.\.\/contracts\/implementations['\"]/);
-  assert.match(source, /settingsPersistence\.loadPersonaSnapshots/);
-  assert.match(source, /settingsPersistence\.savePersonaSnapshots/);
-  assert.match(source, /getSettingsRateLimits/);
-  assert.match(source, /getUpcomingCalendarEvents/);
-  const googleImport = source.match(/import \{[\s\S]*?\} from ['\"]\.\.\/services\/settingsGoogleService['\"]/) ;
-  assert.ok(googleImport, 'SettingsModal must import settingsGoogleService through the canonical boundary');
+test('Settings UI remains application-owned while legacy compatibility is quarantined', async () => {
+  const settings = await readText('src/components/SettingsModal.tsx');
+  const legacy = await readText('src/components/LegacySettingsModal.tsx');
+  assert.match(settings, /LegacySettingsModal/);
+  assert.doesNotMatch(settings, /settingsGoogleService|GoogleCapabilitySettingsPanel|getUpcomingCalendarEvents|listGmailMessages|createGoogleDoc|createGoogleSheet/);
+  assert.doesNotMatch(settings, /from ['\"]\.\.\/lib\/db['\"]/);
+  assert.doesNotMatch(settings, /from ['\"]\.\.\/lib\/storage['\"]/);
+  assert.doesNotMatch(settings, /from ['\"]\.\.\/contracts\/implementations['\"]/);
+  assert.match(legacy, /settingsPersistence\.loadPersonaSnapshots/);
+  assert.match(legacy, /settingsPersistence\.savePersonaSnapshots/);
+  assert.match(legacy, /getSettingsRateLimits/);
+  assert.match(legacy, /getUpcomingCalendarEvents/);
+  const googleImport = legacy.match(/import \{[\s\S]*?\} from ['\"]\.\.\/services\/settingsGoogleService['\"]/) ;
+  assert.ok(googleImport, 'LegacySettingsModal must import settingsGoogleService through the canonical legacy boundary');
   assert.doesNotMatch(googleImport[0], /searchKeepNotes|createKeepNote|updateKeepNote|getKeepNote|deleteKeepNote|listKeepNotes/);
 });
 
