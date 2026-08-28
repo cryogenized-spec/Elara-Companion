@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { runWithModelResilience, type ModelResilienceStateStore } from './modelResilience';
+import { createModelHealthState } from './modelHealth';
 import {
   clearResilienceDiagnosticHistory,
   emitResilienceDiagnostic,
@@ -8,13 +10,21 @@ import {
 } from './resilienceDiagnostics';
 import { deriveModelHealthHistory } from './resilienceModelHealth';
 
-function makeStorage(initial: ReturnType<typeof getResilienceDiagnosticHistory> = []) {
+function makeStorage(initial = []) {
   let state = [...initial];
   return {
     read: () => [...state],
     write: (events: typeof state) => { state = [...events]; },
     clear: () => { state = []; },
     snapshot: () => [...state],
+  };
+}
+
+function makeHealthStore(): ModelResilienceStateStore {
+  let state = createModelHealthState();
+  return {
+    get: () => state,
+    set: (next) => { state = next; },
   };
 }
 
@@ -53,6 +63,51 @@ describe('Pass 25 durable routing history', () => {
     const restoredStorage = makeStorage(storage.snapshot());
     setResilienceDiagnosticStorage(restoredStorage);
     expect(getResilienceDiagnosticHistory()).toEqual([created]);
+  });
+
+  it('keeps a real fallback request trace tied to one request id', async () => {
+    const storage = makeStorage();
+    setResilienceDiagnosticStorage(storage);
+    clearResilienceDiagnosticHistory();
+
+    let calls = 0;
+    await runWithModelResilience(
+      'gemini-3.7-flash',
+      async (model) => {
+        calls += 1;
+        if (model === 'gemini-3.7-flash') {
+          const error = new Error('429 rate limit');
+          (error as any).apiError = {
+            code: 'API_RATE_LIMIT_RPM_429',
+            httpStatus: 429,
+            modelId: model,
+            message: 'rate limited',
+            retryable: false,
+            retryAfterMs: 3000,
+            rawMessage: '429 rate limit',
+          };
+          throw error;
+        }
+        return { value: 'ok' };
+      },
+      {
+        preferenceOrder: ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'],
+        retryPolicy: { maxAttempts: 1, baseDelayMs: 0, maxDelayMs: 0, jitterRatio: 0, honorRetryAfter: false },
+        failoverEnabled: true,
+        failoverErrorCodes: ['API_RATE_LIMIT_RPM_429'],
+        cooldownMs: 60_000,
+      },
+      makeHealthStore(),
+    );
+
+    const history = getResilienceDiagnosticHistory();
+    const requestIds = new Set(history.map((event) => event.requestId));
+    expect(calls).toBe(2);
+    expect(requestIds.size).toBe(1);
+    expect(history.some((event) => event.kind === 'REQUEST' && event.actualModel === 'gemini-3.7-flash' && event.preferenceRank === 1)).toBe(true);
+    expect(history.some((event) => event.kind === 'ERROR' && event.httpStatus === 429 && event.retryAfterMs === 3000)).toBe(true);
+    expect(history.some((event) => event.kind === 'ROUTE' && event.fallbackTaken && event.fallbackTarget === 'gemini-3.6-flash')).toBe(true);
+    expect(history.some((event) => event.kind === 'SUCCESS' && event.actualModel === 'gemini-3.6-flash' && typeof event.latencyMs === 'number')).toBe(true);
   });
 
   it('uses an allow-list so secret-shaped unknown properties are not persisted', () => {
