@@ -1,4 +1,5 @@
 import type { ElaraApiErrorCode } from './apiError';
+import type { ResilienceDiagnosticLevel } from './resilienceDiagnostics';
 import type { RetryPolicy } from './retryPolicy';
 
 export const RELIABILITY_FALLBACK_MODELS = [
@@ -9,7 +10,6 @@ export const RELIABILITY_FALLBACK_MODELS = [
 ] as const;
 
 export interface ReliabilitySettings {
-  /** Ordered user preference. Independent from temporary runtime failover state. */
   preferredModelOrder: string[];
   autoRetryEnabled: boolean;
   maxAttempts: number;
@@ -22,8 +22,8 @@ export interface ReliabilitySettings {
   cooldownMs: number;
   autoRestorePreferredModel: boolean;
   retryableErrorCodes: ElaraApiErrorCode[];
-  /** Explicit allow-list of failures that may descend to the next preferred model. */
   failoverErrorCodes: ElaraApiErrorCode[];
+  diagnosticLevel: ResilienceDiagnosticLevel;
 }
 
 export const DEFAULT_RELIABILITY_SETTINGS: ReliabilitySettings = {
@@ -57,9 +57,11 @@ export const DEFAULT_RELIABILITY_SETTINGS: ReliabilitySettings = {
     'SERVICE_UNAVAILABLE_503',
     'GATEWAY_TIMEOUT_504',
   ],
+  diagnosticLevel: 'off',
 };
 
 const AVAILABLE_FALLBACKS = new Set<string>(RELIABILITY_FALLBACK_MODELS);
+const DIAGNOSTIC_LEVELS = new Set<ResilienceDiagnosticLevel>(['off', 'basic', 'detailed', 'debug']);
 
 function clampInt(value: unknown, fallback: number, min: number, max: number): number {
   const numeric = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -96,6 +98,9 @@ export function normalizeReliabilitySettings(value: Partial<ReliabilitySettings>
   const failoverErrorCodes = normalizeErrorCodes(raw.failoverErrorCodes, DEFAULT_RELIABILITY_SETTINGS.failoverErrorCodes);
   const preferredModelOrder = normalizeStringList(raw.preferredModelOrder, DEFAULT_RELIABILITY_SETTINGS.preferredModelOrder);
   const fallbackModels = normalizeFallbackModelList(raw.fallbackModels);
+  const diagnosticLevel = typeof raw.diagnosticLevel === 'string' && DIAGNOSTIC_LEVELS.has(raw.diagnosticLevel as ResilienceDiagnosticLevel)
+    ? raw.diagnosticLevel as ResilienceDiagnosticLevel
+    : DEFAULT_RELIABILITY_SETTINGS.diagnosticLevel;
 
   return {
     preferredModelOrder: preferredModelOrder.length ? preferredModelOrder : [...DEFAULT_RELIABILITY_SETTINGS.preferredModelOrder],
@@ -111,6 +116,7 @@ export function normalizeReliabilitySettings(value: Partial<ReliabilitySettings>
     autoRestorePreferredModel: typeof raw.autoRestorePreferredModel === 'boolean' ? raw.autoRestorePreferredModel : DEFAULT_RELIABILITY_SETTINGS.autoRestorePreferredModel,
     retryableErrorCodes,
     failoverErrorCodes,
+    diagnosticLevel,
   };
 }
 
