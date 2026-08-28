@@ -75,7 +75,7 @@ test('Pass 26 keeps local evidence, inference and external evidence distinct', (
   assert.match(prompt, /INFERRED/);
   assert.match(prompt, /EXTERNAL EVIDENCE/);
   assert.match(prompt, /RECOMMENDATION/);
-  assert.match(prompt, /must not claim causation from correlation/);
+  assert.match(prompt, /do not claim causation from correlation/);
   assert.match(prompt, /must not claim that any change has been applied/);
 });
 
