@@ -11,7 +11,7 @@ Make Google capability and permission state truthful and consistent across the a
 - [x] Authorized identity with missing base capability access is represented as needs-access.
 - [x] Authorized identity with base access plus missing optional action permissions is represented as limited.
 - [x] Fully granted capability/action requirements are represented as enabled.
-- [x] Authorization projector continues to distinguish authorized, partially-authorized, and unauthorized identity state.
+- [x] Authorization projector distinguishes authorized, partially-authorized, unauthorized, including valid identity with no optional capability scopes.
 
 ### Action-level truth
 - [x] Every declared action resolves against its explicit `actionRequirements` when present.
@@ -20,13 +20,13 @@ Make Google capability and permission state truthful and consistent across the a
 - [x] Missing base permissions are reported separately from missing optional action permissions.
 
 ### UI truth
-- [x] Google Hub Services state uses the same authorization semantics: Ready, Limited, Needs access, or unavailable when disconnected.
+- [x] Google Hub Services state uses the same semantic states: Ready, Limited, Needs access, and unavailable when disconnected.
 - [x] Capability panels continue to receive explicit per-action permission gates.
 - [x] Permissions surface exposes the capability's base requirements and action-level requirements.
 - [x] Account status remains independent from individual service/action availability.
 
 ### Agent truth
-- [x] Agent context now consumes the canonical `projectGoogleHubCapabilityStates` projector rather than recomputing availability independently.
+- [x] Agent context consumes the canonical `projectGoogleHubCapabilityStates` projector rather than reimplementing availability logic.
 - [x] Agent context reports the same enabled/blocked action labels as the canonical projector.
 - [x] Agent context exposes no access token or credential material.
 
@@ -34,15 +34,16 @@ Make Google capability and permission state truthful and consistent across the a
 
 - Added `src/services/googleHubCapabilityState.ts` as the pure canonical state projector.
 - Updated `src/services/googleHubContextService.ts` to consume the canonical projector.
-- Added `src/services/googleHubCapabilityState.test.ts` covering unauthorized, needs-access, limited, and enabled states plus action requirements.
+- Added `src/services/googleHubCapabilityState.test.ts` covering unauthorized, needs-access, limited, enabled, and action-requirement cases.
 - Expanded `src/services/googleHubContextService.test.ts` to prove unavailable, limited, and fully enabled agent state and preserve the credential-free boundary.
+- Expanded `src/services/googleHubAuthorizationService.test.ts` to explicitly prove a valid Google identity with no capability grants is partial rather than unknown.
 
 ## Verification
 
-Source-level verification completed against the Pass 13 acceptance matrix. Existing `GoogleHub.tsx` uses equivalent all-required-permission semantics for service status and action availability, while the agent path now consumes the canonical projector directly.
+Source-level acceptance review completed against the Pass 13 specification. The existing `GoogleHub.tsx` uses equivalent all-required-permission predicates for service/action availability, while the agent path now consumes the canonical projector directly.
 
-The repository has not produced a successful dependency-backed TypeScript/lint/test/build execution in this environment. GitHub currently has no workflow runs/statuses for the final branch head. Those execution checks remain `NOT EXECUTED`, not `PASS`.
+GitHub currently reports no workflow runs/statuses for the final branch head, and the current environment cannot perform dependency-backed TypeScript/lint/test/build execution. Those execution checks remain `NOT EXECUTED`, not `PASS`.
 
 ## Definition of done
 
-Pass 13 is source-complete when every acceptance item above remains true. Automated TypeScript/lint/test/build execution is still a separate execution requirement for the eventual integration gate; it must not be inferred from source review.
+All source-level Pass 13 acceptance items above are implemented and covered by executable tests. Dependency-backed execution remains an explicit integration-gate requirement and must be verified separately rather than inferred from source review.
