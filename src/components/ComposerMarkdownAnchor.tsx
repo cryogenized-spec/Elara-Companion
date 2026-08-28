@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Maximize2, Minimize2, X } from 'lucide-react';
 import { MarkdownHelpButton } from './MarkdownHelpButton';
+import { ChatModelSelector } from './ChatModelSelector';
 
 const TEXTAREA_SELECTOR = 'footer textarea';
 const PAPERCLIP_SELECTOR = 'footer button[title="Attach image from gallery or take camera photo"]';
@@ -167,6 +168,7 @@ export const ComposerMarkdownAnchor: React.FC = () => {
     <>
       {createPortal(
         <>
+          <ChatModelSelector />
           <MarkdownHelpButton inline />
           <button
             type="button"

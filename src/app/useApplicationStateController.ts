@@ -6,6 +6,8 @@ import { DEFAULT_MEMORY_STATE } from '../lib/memoryStorage';
 import { loadMemoryState, saveMemoryState } from '../services/memoryService';
 import { migrateFromLocalStorage, getDbConversations, getDbFolders, getDbSettings, getDbWorldState, getDbPortrait, setDbConversations, setDbFolders, setDbSettings, setDbWorldState, setDbPortrait } from '../lib/db';
 
+const SETTINGS_CHANGED_EVENT = 'elara-settings-changed';
+
 export type ApplicationState = {
   isLoaded: boolean;
   conversations: Conversation[];
@@ -53,6 +55,16 @@ export function useApplicationStateController(): ApplicationState {
       setIsLoaded(true);
     });
   }, []);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    const handleSettingsChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ settings?: ElaraSettings }>).detail;
+      if (detail?.settings) setSettings(detail.settings);
+    };
+    window.addEventListener(SETTINGS_CHANGED_EVENT, handleSettingsChanged);
+    return () => window.removeEventListener(SETTINGS_CHANGED_EVENT, handleSettingsChanged);
+  }, [isLoaded]);
 
   useEffect(() => { if (isLoaded) void setDbConversations(conversations); }, [conversations, isLoaded]);
   useEffect(() => { if (isLoaded) void setDbFolders(folders); }, [folders, isLoaded]);
