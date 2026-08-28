@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
 import type { Conversation, ElaraSettings, MemoryScratchpadState, Message } from '../../types';
 import { generateUniqueId } from '../../lib/storage';
@@ -16,6 +17,8 @@ export type ChatCommandControllerArgs = {
   abortControllerRef: MutableRefObject<AbortController | null>;
 };
 
+type ElaraAskEvent = CustomEvent<{ prompt?: string }>;
+
 export function useChatCommandController({ conversations, activeConversation, activeId, settings, memoryState, isStreaming, setConversations, setActiveId, setIsStreaming, streamAssistantResponse, abortControllerRef }: ChatCommandControllerArgs) {
   const handleStopStreaming = () => {
     if (abortControllerRef.current) {
@@ -32,7 +35,7 @@ export function useChatCommandController({ conversations, activeConversation, ac
     let currentConvId = activeId;
     if (!currentConvId) {
       const newConv: Conversation = { id: generateUniqueId('conv'), title: text.slice(0, 30) || (image ? 'Image Attachment' : 'New Conversation'), createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
-      setConversations([newConv]);
+      setConversations((prev) => [...prev, newConv]);
       setActiveId(newConv.id);
       currentConvId = newConv.id;
     }
@@ -42,6 +45,15 @@ export function useChatCommandController({ conversations, activeConversation, ac
     setConversations((prev) => prev.map((c) => c.id === currentConvId ? { ...c, updatedAt: Date.now(), messages: [...c.messages, userMsg] } : c));
     streamAssistantResponse(currentConvId, text, existingMessages, image);
   };
+
+  useEffect(() => {
+    const handleAsk = (event: Event) => {
+      const prompt = (event as ElaraAskEvent).detail?.prompt?.trim();
+      if (prompt) handleSendMessage(prompt);
+    };
+    window.addEventListener('elara:ask', handleAsk);
+    return () => window.removeEventListener('elara:ask', handleAsk);
+  });
 
   const handleRegenerate = () => {
     if (!activeConversation || isStreaming) return;
