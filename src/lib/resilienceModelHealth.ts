@@ -15,18 +15,19 @@ export interface ResilienceModelHealthSnapshot {
 
 function deriveModel(events: ResilienceDiagnosticEvent[], model: string, now: number): ResilienceModelHealthSnapshot {
   const relevant = events.filter((event) => event.actualModel === model);
+  const chronological = [...relevant].sort((a, b) => b.timestamp - a.timestamp);
   const failures = relevant.filter((event) => event.kind === 'ERROR' || event.kind === 'COOLDOWN').length;
   const successes = relevant.filter((event) => event.kind === 'SUCCESS' || event.kind === 'RECOVERY').length;
-  const latest = [...relevant].sort((a, b) => b.timestamp - a.timestamp)[0];
-  const latestError = [...relevant].find((event) => event.kind === 'ERROR' || event.kind === 'COOLDOWN');
-  const latestCooldown = [...relevant].find((event) => event.cooldownUntil && event.cooldownUntil > now);
+  const latest = chronological[0];
+  const latestError = chronological.find((event) => event.kind === 'ERROR' || event.kind === 'COOLDOWN');
+  const latestCooldown = chronological.find((event) => event.cooldownUntil && event.cooldownUntil > now);
 
   let health: ResilienceModelHealth = 'healthy';
   if (latest?.errorCode === 'MODEL_NOT_FOUND_404' && (latest.kind === 'ERROR' || latest.kind === 'COOLDOWN')) {
     health = 'unavailable';
   } else if (latestCooldown) {
     health = 'cooling down';
-  } else if (failures > 0 && (!latest || latest.kind !== 'SUCCESS' && latest.kind !== 'RECOVERY')) {
+  } else if (failures > 0 && (!latest || (latest.kind !== 'SUCCESS' && latest.kind !== 'RECOVERY'))) {
     health = 'degraded';
   }
 
