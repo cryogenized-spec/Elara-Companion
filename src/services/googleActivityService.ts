@@ -3,14 +3,13 @@ import type { GoogleActivityActionClass, GoogleActivityEvent, GoogleActivityReco
 const MAX_EVENTS = 200;
 const STORAGE_KEY = 'elara_google_activity_v1';
 const SECRET_KEY_PATTERN = /(access[_-]?token|refresh[_-]?token|authorization|client[_-]?secret|api[_-]?key|password|bearer|credential|oauth[_-]?token)/i;
-const SECRET_VALUE_PATTERN = /\b(?:Bearer\s+)?[A-Za-z0-9_-]{24,}\b/g;
 const SENSITIVE_QUERY_KEYS = new Set(['access_token', 'refresh_token', 'token', 'id_token', 'client_secret', 'api_key', 'key', 'authorization']);
+const SECRET_VALUE_PATTERN = /\b(?:ya29\.|AIza[0-9A-Za-z_-]{20,}|sk-[0-9A-Za-z_-]{20,}|Bearer\s+[A-Za-z0-9._-]{20,})\b/g;
 
 function sanitizeText(value: unknown): string {
   return String(value ?? '')
-    .replace(/https?:\/\/[^\s)]+/gi, (rawUrl) => sanitizeUrl(rawUrl))
     .replace(new RegExp(`\\b${SECRET_KEY_PATTERN.source}\\s*[:=]\\s*[^,;\\s]+`, 'gi'), '[redacted]')
-    .replace(SECRET_VALUE_PATTERN, (value) => SECRET_KEY_PATTERN.test(value) ? '[redacted]' : value);
+    .replace(SECRET_VALUE_PATTERN, '[redacted]');
 }
 
 export function sanitizeUrl(value: unknown): string | undefined {
@@ -37,18 +36,17 @@ export function sanitizeResource(resource?: GoogleActivityResourceReference): Go
 }
 
 export function sanitizeActivityEvent(event: GoogleActivityEvent): GoogleActivityEvent {
-  const capabilityId = sanitizeText(event.capabilityId).trim();
-  const description = sanitizeText(event.description).trim();
+  const resource = sanitizeResource(event.resource);
   return {
     id: sanitizeText(event.id).trim(),
     timestamp: Number.isFinite(event.timestamp) ? event.timestamp : Date.now(),
-    capabilityId,
+    capabilityId: sanitizeText(event.capabilityId).trim(),
     action: event.action,
-    description: description || 'Google operation',
+    description: sanitizeText(event.description).trim() || 'Google operation',
     reversible: Boolean(event.reversible),
     external: Boolean(event.external),
     consequential: Boolean(event.consequential),
-    ...(sanitizeResource(event.resource) ? { resource: sanitizeResource(event.resource) } : {}),
+    ...(resource ? { resource } : {}),
   };
 }
 
@@ -57,11 +55,7 @@ function loadPersisted(): GoogleActivityEvent[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((event) => event && typeof event === 'object')
-      .map((event) => sanitizeActivityEvent(event as GoogleActivityEvent))
-      .slice(0, MAX_EVENTS);
+    return Array.isArray(parsed) ? parsed.filter((event) => event && typeof event === 'object').map((event) => sanitizeActivityEvent(event as GoogleActivityEvent)).slice(0, MAX_EVENTS) : [];
   } catch {
     return [];
   }
