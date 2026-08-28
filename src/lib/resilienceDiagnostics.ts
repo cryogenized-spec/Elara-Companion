@@ -127,7 +127,7 @@ function safeMessage(message?: string): string | undefined {
 
 export function setResilienceDiagnosticStorage(nextStorage: ResilienceDiagnosticStorage): void {
   storage = nextStorage;
-  history = storage.read().slice(-MAX_EVENTS);
+  history = storage.read().filter(isDiagnosticEvent).slice(-MAX_EVENTS);
   eventId = history.reduce((max, event) => Math.max(max, event.id), 0);
 }
 
@@ -142,20 +142,35 @@ export function resetResilienceSession(): void {
 export function sanitizeResilienceDiagnosticEvent(
   event: Omit<ResilienceDiagnosticEvent, 'id' | 'timestamp' | 'timezone' | 'sessionId'> & Partial<Pick<ResilienceDiagnosticEvent, 'sessionId'>>,
 ): ResilienceDiagnosticEvent {
-  return {
-    ...event,
+  const sanitized: ResilienceDiagnosticEvent = {
     id: ++eventId,
     timestamp: Date.now(),
     timezone: currentTimezone(),
-    sessionId: safeId(event.sessionId) || sessionId,
+    kind: event.kind,
+    outcome: event.outcome,
     provider: safeId(event.provider) || 'google',
+    sessionId: safeId(event.sessionId) || sessionId,
     conversationId: safeId(event.conversationId),
     requestId: safeId(event.requestId),
     preferredModel: safeModel(event.preferredModel),
     actualModel: safeModel(event.actualModel),
+    preferenceRank: event.preferenceRank,
+    attempt: event.attempt,
+    errorCode: event.errorCode,
+    httpStatus: event.httpStatus,
+    retryAfterMs: event.retryAfterMs,
+    retryDelayMs: event.retryDelayMs,
+    retrying: event.retrying,
+    fallbackEligible: event.fallbackEligible,
+    fallbackAllowed: event.fallbackAllowed,
+    fallbackTaken: event.fallbackTaken,
     fallbackTarget: safeModel(event.fallbackTarget),
+    cooldownApplied: event.cooldownApplied,
+    cooldownUntil: event.cooldownUntil,
+    latencyMs: event.latencyMs,
     message: safeMessage(event.message),
   };
+  return sanitized;
 }
 
 export function emitResilienceDiagnostic(
