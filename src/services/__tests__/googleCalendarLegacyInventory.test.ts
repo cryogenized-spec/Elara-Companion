@@ -8,14 +8,15 @@ async function read(path: string): Promise<string> {
   return readFile(new URL(path, repoRoot), 'utf8');
 }
 
-test('legacy Calendar implementation has been removed from the compatibility module and Settings', async () => {
+test('legacy Calendar implementation has been removed from the compatibility module and the canonical Settings entry point', async () => {
   const settings = await read('src/components/SettingsModal.tsx');
+  const legacySettings = await read('src/components/LegacySettingsModal.tsx');
   const googleApi = await read('src/lib/googleApi.ts');
 
+  assert.match(settings, /GoogleHubModal/);
   assert.doesNotMatch(settings, /from ['\"]\.\.\/lib\/googleApi['\"]/);
-  assert.doesNotMatch(settings, /googleCalendarContract/);
-  assert.doesNotMatch(settings, /CalendarEventItem/);
-  assert.match(settings, /getUpcomingCalendarEvents/);
+  assert.doesNotMatch(settings, /googleCalendarContract|CalendarEventItem|getUpcomingCalendarEvents/);
+  assert.match(legacySettings, /getUpcomingCalendarEvents/);
   assert.doesNotMatch(googleApi, /export async function getUpcomingCalendarEvents/);
   assert.doesNotMatch(googleApi, /export async function createCalendarEvent/);
   assert.doesNotMatch(googleApi, /case ['\"]get_calendar_events['\"]:/);
