@@ -36,6 +36,7 @@ const panelFactories: Record<GoogleHubCapabilityDescriptor['id'], (context: Goog
 
 export function createGoogleCapabilityModule(descriptor: GoogleHubCapabilityDescriptor): GoogleCapabilityModule {
   const factory = panelFactories[descriptor.id];
+  if (!factory) throw new Error(`No Google capability module registered for ${descriptor.id}`);
   return { descriptor, renderPanel: (context) => factory(context) };
 }
 
