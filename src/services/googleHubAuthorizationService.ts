@@ -27,9 +27,9 @@ export function createGoogleHubAuthorizationState(
     let status: GoogleHubAuthorizationStatus = 'unknown';
     if (authorized && missingCapabilities.length === 0) {
       status = 'authorized';
-    } else if (authorized && grantedCapabilities.length > 0) {
+    } else if (authorized) {
       status = 'partially-authorized';
-    } else if (!authorized) {
+    } else {
       status = 'unauthorized';
     }
 
