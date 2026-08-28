@@ -30,6 +30,7 @@ export interface ModelResiliencePolicy {
   provider?: string;
   sessionId?: string;
   conversationId?: string;
+  requestId?: string;
 }
 
 export interface ModelResilienceContext {
@@ -166,7 +167,6 @@ export async function runWithModelResilience<T>(
           const attemptStartedAt = Date.now();
           emitResilienceDiagnostic({
             kind: 'REQUEST',
-            outcome: 'success',
             provider,
             sessionId,
             conversationId: options.conversationId,
@@ -282,7 +282,7 @@ export async function runWithModelResilience<T>(
         errorCode: classified.code,
         httpStatus: classified.httpStatus,
         retryAfterMs: classified.retryAfterMs,
-        fallbackEligible: isFailoverEligible(classified),
+        fallbackEligible: fallbackAllowed,
         fallbackAllowed,
         cooldownApplied: true,
         cooldownUntil,
@@ -302,7 +302,7 @@ export async function runWithModelResilience<T>(
         errorCode: classified.code,
         httpStatus: classified.httpStatus,
         retryAfterMs: classified.retryAfterMs,
-        fallbackEligible: isFailoverEligible(classified),
+        fallbackEligible: fallbackAllowed,
         fallbackAllowed,
         cooldownApplied: true,
         cooldownUntil,
