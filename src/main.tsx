@@ -11,6 +11,7 @@ import { BackgroundNotificationsControl } from './components/BackgroundNotificat
 import { ComposerDraftRecovery } from './components/ComposerDraftRecovery';
 import { ComposerMarkdownAnchor } from './components/ComposerMarkdownAnchor';
 import { ComposerOutboxRecovery } from './components/ComposerOutboxRecovery';
+import { ResilienceDiagnosticsOverlay } from './components/ResilienceDiagnosticsOverlay';
 import { installBackgroundSafeAbortBoundary } from './lib/backgroundSafeRuntime';
 import { installMobileViewportSync } from './lib/mobileViewport';
 import './index.css';
@@ -33,5 +34,6 @@ createRoot(document.getElementById('root')!).render(
     <ComposerDraftRecovery />
     <ComposerMarkdownAnchor />
     <ComposerOutboxRecovery />
+    <ResilienceDiagnosticsOverlay />
   </StrictMode>,
 );
