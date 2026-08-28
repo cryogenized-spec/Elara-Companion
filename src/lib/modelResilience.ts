@@ -9,6 +9,7 @@ import {
   recordModelSuccess,
   selectRuntimeModel,
 } from './modelHealth';
+import { emitResilienceDiagnostic } from './resilienceDiagnostics';
 
 export const DEFAULT_FALLBACK_MODELS = [
   'gemini-3.7-flash',
@@ -18,16 +19,13 @@ export const DEFAULT_FALLBACK_MODELS = [
 
 export interface ModelResiliencePolicy {
   retryPolicy?: Partial<RetryPolicy>;
-  /** Legacy fallback list retained for compatibility; preferenceOrder is authoritative when supplied. */
   fallbackModels?: string[];
-  /** Ordered user preference used for deterministic 1 → 2 → 3 routing. */
   preferenceOrder?: string[];
   failoverEnabled?: boolean;
   cooldownMs?: number;
   autoRestorePreferredModel?: boolean;
   retryableErrorCodes?: string[];
   failoverErrorCodes?: string[];
-  /** Explicitly permits skipping a cooling-down next-preference tier in favour of a later tier. */
   skipUnhealthyFallbackModels?: boolean;
 }
 
@@ -51,12 +49,8 @@ export interface ModelResilienceStateStore {
 let defaultModelHealthState: ModelHealthState = createModelHealthState();
 
 const defaultStateStore: ModelResilienceStateStore = {
-  get() {
-    return defaultModelHealthState;
-  },
-  set(next) {
-    defaultModelHealthState = next;
-  },
+  get() { return defaultModelHealthState; },
+  set(next) { defaultModelHealthState = next; },
 };
 
 const DEFAULT_FAILOVER_CODES = new Set([
@@ -78,6 +72,11 @@ export function isFailoverEligible(error: ClassifiedApiError, configuredCodes?: 
 function getErrorFromThrown(error: unknown, modelId: string): ClassifiedApiError {
   const attached = (error as any)?.apiError;
   return attached || classifyApiError(error, modelId);
+}
+
+function preferenceRank(preferenceOrder: string[], model: string): number | undefined {
+  const index = preferenceOrder.findIndex((id) => id === model.trim().toLowerCase());
+  return index >= 0 ? index + 1 : undefined;
 }
 
 export function buildModelResiliencePolicy(settings?: ReliabilitySettings): ModelResiliencePolicy {
@@ -151,10 +150,26 @@ export async function runWithModelResilience<T>(
     try {
       const result = await runWithRetry(
         async (attempt) => {
+          emitResilienceDiagnostic({
+            kind: 'REQUEST',
+            preferredModel,
+            actualModel: selectedModel,
+            preferenceRank: preferenceRank(preferenceOrder, selectedModel),
+            attempt,
+          });
+
           try {
             const turn = await executeTurn(selectedModel, attempt);
             state = recordModelSuccess(state, selectedModel);
             stateStore.set(state);
+            emitResilienceDiagnostic({
+              kind: selection.probingPreferred ? 'RECOVERY' : 'SUCCESS',
+              preferredModel,
+              actualModel: selectedModel,
+              preferenceRank: preferenceRank(preferenceOrder, selectedModel),
+              attempt,
+              message: selection.probingPreferred ? 'Preferred model recovered.' : 'Model execution succeeded.',
+            });
             return turn;
           } catch (error) {
             const classified = getErrorFromThrown(error, selectedModel);
@@ -169,6 +184,30 @@ export async function runWithModelResilience<T>(
         {
           policy: options.retryPolicy || DEFAULT_RETRY_POLICY,
           modelId: selectedModel,
+          onRetry: ({ attempt, nextAttempt, delayMs, error }) => {
+            emitResilienceDiagnostic({
+              kind: 'RETRY',
+              preferredModel,
+              actualModel: selectedModel,
+              preferenceRank: preferenceRank(preferenceOrder, selectedModel),
+              attempt,
+              errorCode: error.code,
+              httpStatus: error.httpStatus,
+              retryDelayMs: delayMs,
+              retrying: true,
+              message: `Retrying ${selectedModel}.`,
+            });
+            emitResilienceDiagnostic({
+              kind: 'POLICY',
+              preferredModel,
+              actualModel: selectedModel,
+              preferenceRank: preferenceRank(preferenceOrder, selectedModel),
+              attempt: nextAttempt,
+              errorCode: error.code,
+              fallbackAllowed: false,
+              message: 'Retry permitted by retry policy.',
+            });
+          },
         },
       );
 
@@ -183,12 +222,35 @@ export async function runWithModelResilience<T>(
       };
     } catch (error) {
       const classified = getErrorFromThrown(error, selectedModel);
+      const cooldownUntil = Date.now() + cooldownMs;
       state = recordModelFailure(state, selectedModel, classified, Date.now(), cooldownMs);
       stateStore.set(state);
 
-      if (!failoverEnabled || !isFailoverEligible(classified, options.failoverErrorCodes)) {
-        throw error;
-      }
+      const fallbackAllowed = failoverEnabled && isFailoverEligible(classified, options.failoverErrorCodes);
+      emitResilienceDiagnostic({
+        kind: 'ERROR',
+        preferredModel,
+        actualModel: selectedModel,
+        preferenceRank: preferenceRank(preferenceOrder, selectedModel),
+        errorCode: classified.code,
+        httpStatus: classified.httpStatus,
+        fallbackAllowed,
+        cooldownUntil,
+        message: classified.message,
+      });
+      emitResilienceDiagnostic({
+        kind: 'POLICY',
+        preferredModel,
+        actualModel: selectedModel,
+        preferenceRank: preferenceRank(preferenceOrder, selectedModel),
+        errorCode: classified.code,
+        httpStatus: classified.httpStatus,
+        fallbackAllowed,
+        cooldownUntil,
+        message: fallbackAllowed ? 'Fallback allowed by configured failure conditions.' : 'Fallback not allowed by configured failure conditions.',
+      });
+
+      if (!fallbackAllowed) throw error;
 
       const nextSelection = selectRuntimeModel({
         preferredModel,
@@ -198,9 +260,20 @@ export async function runWithModelResilience<T>(
         autoRestorePreferredModel: options.autoRestorePreferredModel,
         skipUnhealthyFallbackModels: skipUnhealthy,
       });
-      if (nextSelection.model.trim().toLowerCase() === normalized) {
-        throw error;
-      }
+      if (nextSelection.model.trim().toLowerCase() === normalized) throw error;
+
+      emitResilienceDiagnostic({
+        kind: 'ROUTE',
+        preferredModel,
+        actualModel: selectedModel,
+        preferenceRank: preferenceRank(preferenceOrder, selectedModel),
+        errorCode: classified.code,
+        httpStatus: classified.httpStatus,
+        fallbackAllowed: true,
+        fallbackTarget: nextSelection.model,
+        cooldownUntil,
+        message: `${selectedModel} → ${nextSelection.model}`,
+      });
     }
   }
 }
