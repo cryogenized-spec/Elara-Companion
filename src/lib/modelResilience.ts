@@ -18,7 +18,10 @@ export const DEFAULT_FALLBACK_MODELS = [
 
 export interface ModelResiliencePolicy {
   retryPolicy?: Partial<RetryPolicy>;
+  /** Legacy fallback list retained for compatibility; preferenceOrder is authoritative when supplied. */
   fallbackModels?: string[];
+  /** Ordered user preference used for deterministic 1 → 2 → 3 routing. */
+  preferenceOrder?: string[];
   failoverEnabled?: boolean;
   cooldownMs?: number;
   autoRestorePreferredModel?: boolean;
@@ -57,21 +60,15 @@ const defaultStateStore: ModelResilienceStateStore = {
 const DEFAULT_FAILOVER_CODES = new Set([
   'API_RATE_LIMIT_RPM_429',
   'API_QUOTA_DAILY_429',
-  'MODEL_NOT_FOUND_404',
   'SERVER_ERROR_500',
   'BAD_GATEWAY_502',
   'SERVICE_UNAVAILABLE_503',
   'GATEWAY_TIMEOUT_504',
-  // Unknown provider/SDK failures are retryable by default. More specific
-  // auth, safety, validation, and context failures are classified separately
-  // and therefore remain intentionally non-failover cases.
-  'UNKNOWN_API_ERROR',
 ]);
 
-function shouldFailOver(error: ClassifiedApiError, configuredCodes?: string[]): boolean {
-  if ((error as any).failoverOverride === false) return false;
-  const allowed = configuredCodes ? new Set(configuredCodes) : DEFAULT_FAILOVER_CODES;
-  return allowed.has(error.code);
+export function isFailoverEligible(error: ClassifiedApiError, configuredCodes?: string[]): boolean {
+  if (configuredCodes) return new Set(configuredCodes).has(error.code);
+  return DEFAULT_FAILOVER_CODES.has(error.code);
 }
 
 function getErrorFromThrown(error: unknown, modelId: string): ClassifiedApiError {
@@ -84,9 +81,11 @@ export function buildModelResiliencePolicy(settings?: ReliabilitySettings): Mode
     return {
       retryPolicy: DEFAULT_RETRY_POLICY,
       fallbackModels: [...DEFAULT_FALLBACK_MODELS],
+      preferenceOrder: [...DEFAULT_FALLBACK_MODELS],
       failoverEnabled: true,
       cooldownMs: DEFAULT_MODEL_COOLDOWN_MS,
       autoRestorePreferredModel: true,
+      retryableErrorCodes: DEFAULT_RETRY_POLICY ? undefined : undefined,
     };
   }
 
@@ -99,6 +98,7 @@ export function buildModelResiliencePolicy(settings?: ReliabilitySettings): Mode
       honorRetryAfter: settings.honorRetryAfter,
     },
     fallbackModels: settings.fallbackModels,
+    preferenceOrder: settings.preferredModelOrder,
     failoverEnabled: settings.autoFailoverEnabled,
     cooldownMs: settings.cooldownMs,
     autoRestorePreferredModel: settings.autoRestorePreferredModel,
@@ -113,7 +113,12 @@ export async function runWithModelResilience<T>(
   options: ModelResiliencePolicy = {},
   stateStore: ModelResilienceStateStore = defaultStateStore,
 ): Promise<{ value: T; context: ModelResilienceContext }> {
-  const fallbackModels = options.fallbackModels || [...DEFAULT_FALLBACK_MODELS];
+  const preferenceOrder = [
+    ...new Set((options.preferenceOrder || options.fallbackModels || [preferredModel]).map((id) => id.trim().toLowerCase()).filter(Boolean)),
+  ];
+  if (!preferenceOrder.includes(preferredModel.trim().toLowerCase())) preferenceOrder.unshift(preferredModel.trim().toLowerCase());
+
+  const fallbackModels = preferenceOrder;
   const failoverEnabled = options.failoverEnabled !== false;
   const cooldownMs = options.cooldownMs ?? DEFAULT_MODEL_COOLDOWN_MS;
   const attemptedModels = new Set<string>();
@@ -174,7 +179,7 @@ export async function runWithModelResilience<T>(
       state = recordModelFailure(state, selectedModel, classified, Date.now(), cooldownMs);
       stateStore.set(state);
 
-      if (!failoverEnabled || !shouldFailOver(classified, options.failoverErrorCodes)) {
+      if (!failoverEnabled || !isFailoverEligible(classified, options.failoverErrorCodes)) {
         throw error;
       }
 
