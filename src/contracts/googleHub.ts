@@ -2,7 +2,9 @@ import type { GoogleCapability } from './index';
 import type { GoogleHubAuthorizationStateContract, GoogleHubAuthorizationSnapshot, GoogleHubAuthorizationStatus } from './googleHubAuthorization';
 
 export type GoogleHubCategory = 'communication' | 'scheduling' | 'files' | 'documents' | 'data' | 'tasks' | 'notes' | 'people' | 'collaboration';
-export type GoogleHubCapabilityId = 'gmail' | 'calendar' | 'drive' | 'docs' | 'sheets' | 'tasks' | 'keep' | 'contacts' | 'chat';
+
+/** Runtime-extensible identifier. The registry is the authority for known capabilities. */
+export type GoogleHubCapabilityId = string;
 export type GoogleHubCapabilityStatus = 'enabled' | 'limited' | 'needs-access' | 'unavailable' | 'error';
 
 export interface GoogleHubCapabilityAction {
