@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { classifyApiError } from './apiError';
 import { ModelHealthState, createModelHealthState } from './modelHealth';
 import { runWithModelResilience, ModelResilienceStateStore } from './modelResilience';
+import { DEFAULT_RELIABILITY_SETTINGS, normalizeReliabilitySettings } from './reliabilitySettings';
 
 function testStore(initial?: ModelHealthState): ModelResilienceStateStore {
   let state = initial || createModelHealthState();
@@ -46,6 +47,45 @@ test('retries the preferred model up to three attempts before failing over', asy
     'gemini-3.7-flash',
     'gemini-3.6-flash',
   ]);
+});
+
+test('fails over an unclassified Gemini SDK error instead of surfacing a stuck UNKNOWN_API_ERROR', async () => {
+  const store = testStore();
+  const calls: string[] = [];
+  const unknownFailure = Object.assign(new Error('unexpected Gemini SDK response'), {
+    apiError: {
+      code: 'UNKNOWN_API_ERROR' as const,
+      message: 'Gemini returned an unexpected error.',
+      retryable: true,
+      rawMessage: 'unexpected Gemini SDK response',
+    },
+  });
+
+  const result = await runWithModelResilience(
+    'gemini-3.5-flash',
+    async (model) => {
+      calls.push(model);
+      if (model === 'gemini-3.5-flash') throw unknownFailure;
+      return { value: 'recovered-on-fallback' };
+    },
+    { retryPolicy: { ...fastRetry, maxAttempts: 1 }, fallbackModels: ['gemini-3.7-flash'] },
+    store,
+  );
+
+  assert.equal(result.value, 'recovered-on-fallback');
+  assert.equal(result.context.model, 'gemini-3.7-flash');
+  assert.deepEqual(calls, ['gemini-3.5-flash', 'gemini-3.7-flash']);
+});
+
+test('existing stored reliability settings gain UNKNOWN_API_ERROR resilience without losing their choices', () => {
+  const normalized = normalizeReliabilitySettings({
+    ...DEFAULT_RELIABILITY_SETTINGS,
+    retryableErrorCodes: ['NETWORK_ERROR'],
+    failoverErrorCodes: ['MODEL_NOT_FOUND_404'],
+  });
+
+  assert.deepEqual(normalized.retryableErrorCodes, ['NETWORK_ERROR', 'UNKNOWN_API_ERROR']);
+  assert.deepEqual(normalized.failoverErrorCodes, ['MODEL_NOT_FOUND_404', 'UNKNOWN_API_ERROR']);
 });
 
 test('restores the preferred model after its cooldown expires', async () => {

@@ -2,6 +2,7 @@ import type { ElaraApiErrorCode } from './apiError';
 import type { RetryPolicy } from './retryPolicy';
 
 export const RELIABILITY_FALLBACK_MODELS = [
+  'gemini-3.7-flash',
   'gemini-3.6-flash',
   'gemini-3.5-flash',
   'gemini-3.5-flash-lite',
@@ -41,6 +42,7 @@ export const DEFAULT_RELIABILITY_SETTINGS: ReliabilitySettings = {
     'SERVICE_UNAVAILABLE_503',
     'GATEWAY_TIMEOUT_504',
     'NETWORK_ERROR',
+    'UNKNOWN_API_ERROR',
   ],
   failoverErrorCodes: [
     'API_RATE_LIMIT_RPM_429',
@@ -50,6 +52,7 @@ export const DEFAULT_RELIABILITY_SETTINGS: ReliabilitySettings = {
     'BAD_GATEWAY_502',
     'SERVICE_UNAVAILABLE_503',
     'GATEWAY_TIMEOUT_504',
+    'UNKNOWN_API_ERROR',
   ],
 };
 
@@ -81,6 +84,15 @@ function normalizeErrorCodes(value: unknown, fallback: ElaraApiErrorCode[]): Ela
 
 export function normalizeReliabilitySettings(value: Partial<ReliabilitySettings> | null | undefined): ReliabilitySettings {
   const raw = value || {};
+  const retryableErrorCodes = normalizeErrorCodes(raw.retryableErrorCodes, DEFAULT_RELIABILITY_SETTINGS.retryableErrorCodes);
+  const failoverErrorCodes = normalizeErrorCodes(raw.failoverErrorCodes, DEFAULT_RELIABILITY_SETTINGS.failoverErrorCodes);
+
+  // An unclassified provider/SDK failure is still an eligible resilience event.
+  // Keep unknown failures recoverable for existing stored reliability settings,
+  // while more specific auth/safety/validation/context errors remain excluded.
+  if (!retryableErrorCodes.includes('UNKNOWN_API_ERROR')) retryableErrorCodes.push('UNKNOWN_API_ERROR');
+  if (!failoverErrorCodes.includes('UNKNOWN_API_ERROR')) failoverErrorCodes.push('UNKNOWN_API_ERROR');
+
   return {
     autoRetryEnabled: typeof raw.autoRetryEnabled === 'boolean' ? raw.autoRetryEnabled : DEFAULT_RELIABILITY_SETTINGS.autoRetryEnabled,
     maxAttempts: clampInt(raw.maxAttempts, DEFAULT_RELIABILITY_SETTINGS.maxAttempts, 1, 5),
@@ -92,8 +104,8 @@ export function normalizeReliabilitySettings(value: Partial<ReliabilitySettings>
     fallbackModels: normalizeModelList(raw.fallbackModels),
     cooldownMs: clampInt(raw.cooldownMs, DEFAULT_RELIABILITY_SETTINGS.cooldownMs, 0, 15 * 60_000),
     autoRestorePreferredModel: typeof raw.autoRestorePreferredModel === 'boolean' ? raw.autoRestorePreferredModel : DEFAULT_RELIABILITY_SETTINGS.autoRestorePreferredModel,
-    retryableErrorCodes: normalizeErrorCodes(raw.retryableErrorCodes, DEFAULT_RELIABILITY_SETTINGS.retryableErrorCodes),
-    failoverErrorCodes: normalizeErrorCodes(raw.failoverErrorCodes, DEFAULT_RELIABILITY_SETTINGS.failoverErrorCodes),
+    retryableErrorCodes,
+    failoverErrorCodes,
   };
 }
 
