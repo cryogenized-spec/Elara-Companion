@@ -25,6 +25,8 @@ export interface GoogleHubCapabilityDescriptor {
   category: GoogleHubCategory;
   iconKey: string;
   requiredCapabilities: readonly GoogleCapability[];
+  /** Optional finer-grained requirements for individual actions. Defaults to requiredCapabilities. */
+  actionRequirements?: Partial<Record<string, readonly GoogleCapability[]>>;
   permissionDescription?: string;
   dataAccessDescription?: string;
   externalUrl?: string;
