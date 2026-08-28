@@ -9,6 +9,8 @@ export const RELIABILITY_FALLBACK_MODELS = [
 ] as const;
 
 export interface ReliabilitySettings {
+  /** Ordered user preference. Independent from temporary runtime failover state. */
+  preferredModelOrder: string[];
   autoRetryEnabled: boolean;
   maxAttempts: number;
   baseDelayMs: number;
@@ -24,6 +26,7 @@ export interface ReliabilitySettings {
 }
 
 export const DEFAULT_RELIABILITY_SETTINGS: ReliabilitySettings = {
+  preferredModelOrder: [...RELIABILITY_FALLBACK_MODELS],
   autoRetryEnabled: true,
   maxAttempts: 3,
   baseDelayMs: 1000,
@@ -68,13 +71,18 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number)
   return Math.min(max, Math.max(min, numeric));
 }
 
-function normalizeModelList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [...DEFAULT_RELIABILITY_SETTINGS.fallbackModels];
+function normalizeStringList(value: unknown, fallback: string[] = []): string[] {
+  if (!Array.isArray(value)) return [...fallback];
   const normalized = value
     .filter((model): model is string => typeof model === 'string')
     .map((model) => model.trim().toLowerCase())
-    .filter((model) => AVAILABLE_FALLBACKS.has(model));
+    .filter(Boolean);
   return [...new Set(normalized)];
+}
+
+function normalizeFallbackModelList(value: unknown): string[] {
+  return normalizeStringList(value, DEFAULT_RELIABILITY_SETTINGS.fallbackModels)
+    .filter((model) => AVAILABLE_FALLBACKS.has(model));
 }
 
 function normalizeErrorCodes(value: unknown, fallback: ElaraApiErrorCode[]): ElaraApiErrorCode[] {
@@ -93,7 +101,11 @@ export function normalizeReliabilitySettings(value: Partial<ReliabilitySettings>
   if (!retryableErrorCodes.includes('UNKNOWN_API_ERROR')) retryableErrorCodes.push('UNKNOWN_API_ERROR');
   if (!failoverErrorCodes.includes('UNKNOWN_API_ERROR')) failoverErrorCodes.push('UNKNOWN_API_ERROR');
 
+  const preferredModelOrder = normalizeStringList(raw.preferredModelOrder, DEFAULT_RELIABILITY_SETTINGS.preferredModelOrder);
+  const fallbackModels = normalizeFallbackModelList(raw.fallbackModels);
+
   return {
+    preferredModelOrder: preferredModelOrder.length ? preferredModelOrder : [...DEFAULT_RELIABILITY_SETTINGS.preferredModelOrder],
     autoRetryEnabled: typeof raw.autoRetryEnabled === 'boolean' ? raw.autoRetryEnabled : DEFAULT_RELIABILITY_SETTINGS.autoRetryEnabled,
     maxAttempts: clampInt(raw.maxAttempts, DEFAULT_RELIABILITY_SETTINGS.maxAttempts, 1, 5),
     baseDelayMs: clampInt(raw.baseDelayMs, DEFAULT_RELIABILITY_SETTINGS.baseDelayMs, 0, 10000),
@@ -101,7 +113,7 @@ export function normalizeReliabilitySettings(value: Partial<ReliabilitySettings>
     jitterRatio: clampNumber(raw.jitterRatio, DEFAULT_RELIABILITY_SETTINGS.jitterRatio, 0, 1),
     honorRetryAfter: typeof raw.honorRetryAfter === 'boolean' ? raw.honorRetryAfter : DEFAULT_RELIABILITY_SETTINGS.honorRetryAfter,
     autoFailoverEnabled: typeof raw.autoFailoverEnabled === 'boolean' ? raw.autoFailoverEnabled : DEFAULT_RELIABILITY_SETTINGS.autoFailoverEnabled,
-    fallbackModels: normalizeModelList(raw.fallbackModels),
+    fallbackModels,
     cooldownMs: clampInt(raw.cooldownMs, DEFAULT_RELIABILITY_SETTINGS.cooldownMs, 0, 15 * 60_000),
     autoRestorePreferredModel: typeof raw.autoRestorePreferredModel === 'boolean' ? raw.autoRestorePreferredModel : DEFAULT_RELIABILITY_SETTINGS.autoRestorePreferredModel,
     retryableErrorCodes,
