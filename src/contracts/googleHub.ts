@@ -2,26 +2,10 @@ import type { GoogleCapability } from './index';
 import type { GoogleHubAuthorizationStateContract, GoogleHubAuthorizationSnapshot, GoogleHubAuthorizationStatus } from './googleHubAuthorization';
 
 export type GoogleHubCategory =
-  | 'communication'
-  | 'scheduling'
-  | 'files'
-  | 'documents'
-  | 'data'
-  | 'tasks'
-  | 'notes'
-  | 'people'
-  | 'collaboration';
+  | 'communication' | 'scheduling' | 'files' | 'documents' | 'data' | 'tasks' | 'notes' | 'people' | 'collaboration';
 
 export type GoogleHubCapabilityId =
-  | 'gmail'
-  | 'calendar'
-  | 'drive'
-  | 'docs'
-  | 'sheets'
-  | 'tasks'
-  | 'keep'
-  | 'contacts'
-  | 'chat';
+  | 'gmail' | 'calendar' | 'drive' | 'docs' | 'sheets' | 'tasks' | 'keep' | 'contacts' | 'chat';
 
 export type GoogleHubCapabilityStatus = 'enabled' | 'available' | 'unavailable' | 'error';
 
@@ -41,6 +25,8 @@ export interface GoogleHubCapabilityDescriptor {
   category: GoogleHubCategory;
   iconKey: string;
   requiredCapabilities: readonly GoogleCapability[];
+  permissionDescription?: string;
+  dataAccessDescription?: string;
   externalUrl?: string;
   panelKey: string;
   actions: readonly GoogleHubCapabilityAction[];
