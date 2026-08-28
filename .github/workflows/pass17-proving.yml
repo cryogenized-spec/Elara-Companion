@@ -1,0 +1,56 @@
+name: Pass 17 Integration & Runtime Proving
+
+on:
+  push:
+    branches: [hardening/pass17]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pass17-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proving:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: npm test
+        run: npm test
+      - name: npm run lint
+        run: npm run lint
+      - name: npm run build
+        run: npm run build
+      - name: npm run verify:production
+        run: npm run verify:production
+      - name: Background runtime install
+        run: npm ci --no-audit --no-fund
+        working-directory: background-runtime
+      - name: Background runtime typecheck
+        run: npm run typecheck
+        working-directory: background-runtime
+      - name: Built application smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          node dist/server.mjs >/tmp/elara-server.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:3000/ >/tmp/elara-home.html; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/elara-server.log
+          exit 1
