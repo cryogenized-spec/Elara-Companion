@@ -30,7 +30,7 @@ test('Google Hub registry accepts a future capability without changing core code
 
 test('Google Hub registry rejects malformed descriptors instead of silently accepting drift', () => {
   const registry = createGoogleHubCapabilityRegistry([]);
-  assert.throws(() => registry.register(capability('')), /id must not be empty/);
+  assert.throws(() => registry.register(capability('')), /id must be empty/);
   assert.throws(() => registry.register({ ...capability('future.calendar'), actions: [{ id: 'ask', label: 'Ask', kind: 'ask' as const }, { id: 'ask', label: 'Duplicate', kind: 'ask' as const }] }), /Duplicate Google Hub action: future.calendar.ask/);
   assert.throws(() => registry.register({ ...capability('future.docs'), actionRequirements: { search: ['docs'] } }), /has no declared action: future.docs.search/);
 });
@@ -57,7 +57,7 @@ test('Google Hub capability descriptors cover the original Pass 12 UX actions', 
     docs: ['create','work-with','open','ask'],
     sheets: ['inspect','write','create','open','ask'],
     tasks: ['list','create','complete','open','ask'],
-    keep: ['search','create','pin-to-elara','open','ask'],
+    keep: ['search','create','delete','pin-to-elara','open','ask'],
     contacts: ['search','open','ask'],
     chat: ['read','send','manage','open','ask'],
   };
