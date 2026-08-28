@@ -22,6 +22,7 @@ export interface ReliabilitySettings {
   cooldownMs: number;
   autoRestorePreferredModel: boolean;
   retryableErrorCodes: ElaraApiErrorCode[];
+  /** Explicit allow-list of failures that may descend to the next preferred model. */
   failoverErrorCodes: ElaraApiErrorCode[];
 }
 
@@ -50,12 +51,10 @@ export const DEFAULT_RELIABILITY_SETTINGS: ReliabilitySettings = {
   failoverErrorCodes: [
     'API_RATE_LIMIT_RPM_429',
     'API_QUOTA_DAILY_429',
-    'MODEL_NOT_FOUND_404',
     'SERVER_ERROR_500',
     'BAD_GATEWAY_502',
     'SERVICE_UNAVAILABLE_503',
     'GATEWAY_TIMEOUT_504',
-    'UNKNOWN_API_ERROR',
   ],
 };
 
@@ -94,13 +93,6 @@ export function normalizeReliabilitySettings(value: Partial<ReliabilitySettings>
   const raw = value || {};
   const retryableErrorCodes = normalizeErrorCodes(raw.retryableErrorCodes, DEFAULT_RELIABILITY_SETTINGS.retryableErrorCodes);
   const failoverErrorCodes = normalizeErrorCodes(raw.failoverErrorCodes, DEFAULT_RELIABILITY_SETTINGS.failoverErrorCodes);
-
-  // An unclassified provider/SDK failure is still an eligible resilience event.
-  // Keep unknown failures recoverable for existing stored reliability settings,
-  // while more specific auth/safety/validation/context errors remain excluded.
-  if (!retryableErrorCodes.includes('UNKNOWN_API_ERROR')) retryableErrorCodes.push('UNKNOWN_API_ERROR');
-  if (!failoverErrorCodes.includes('UNKNOWN_API_ERROR')) failoverErrorCodes.push('UNKNOWN_API_ERROR');
-
   const preferredModelOrder = normalizeStringList(raw.preferredModelOrder, DEFAULT_RELIABILITY_SETTINGS.preferredModelOrder);
   const fallbackModels = normalizeFallbackModelList(raw.fallbackModels);
 
