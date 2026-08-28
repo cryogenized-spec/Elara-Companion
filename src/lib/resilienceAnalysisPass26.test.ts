@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import assert from 'node:assert/strict';
+import test from 'node:test';
 import { buildDiagnosticsSnapshot, createDiagnosticsAnalysisPrompt, resolveDiagnosticsRange } from './resilienceAnalysis';
 import type { ReliabilitySettings } from './reliabilitySettings';
 import type { ResilienceDiagnosticEvent } from './resilienceDiagnostics';
@@ -18,7 +19,6 @@ const settings: ReliabilitySettings = {
   retryableErrorCodes: ['API_RATE_LIMIT_RPM_429'],
   failoverErrorCodes: ['API_RATE_LIMIT_RPM_429'],
   diagnosticLevel: 'off',
-  skipUnhealthyFallbackModels: true,
 };
 
 function event(overrides: Partial<ResilienceDiagnosticEvent>): ResilienceDiagnosticEvent {
@@ -41,51 +41,49 @@ function event(overrides: Partial<ResilienceDiagnosticEvent>): ResilienceDiagnos
   };
 }
 
-describe('Pass 26 diagnostics analysis', () => {
-  it('resolves the requested periods in local time without losing machine-readable timestamps', () => {
-    const now = Date.UTC(2026, 7, 28, 16, 0);
-    expect(resolveDiagnosticsRange('last-hour', undefined, undefined, now)).toMatchObject({ start: now - 3600000, end: now });
-    const today = resolveDiagnosticsRange('today', undefined, undefined, now);
-    expect(today.start).toBeLessThan(today.end);
-    expect(today.timezone).toBeTypeOf('string');
-  });
+test('Pass 26 resolves diagnostics periods with machine-readable timestamps', () => {
+  const now = Date.UTC(2026, 7, 28, 16, 0);
+  assert.deepEqual(resolveDiagnosticsRange('last-hour', undefined, undefined, now), { period: 'last-hour', start: now - 3600000, end: now, timezone: 'UTC' });
+  const today = resolveDiagnosticsRange('today', undefined, undefined, now);
+  assert.ok(today.start < today.end);
+  assert.equal(typeof today.timezone, 'string');
+});
 
-  it('filters the local event history into the requested analysis window and retains the policy snapshot', () => {
-    const inside = event({ id: 2, timestamp: Date.UTC(2026, 7, 28, 15, 30), kind: 'ERROR', outcome: 'failure', errorCode: 'API_RATE_LIMIT_RPM_429', httpStatus: 429, fallbackEligible: true, fallbackAllowed: true, fallbackTaken: true, fallbackTarget: 'gemini-3.6-flash' });
-    const outside = event({ id: 3, timestamp: Date.UTC(2026, 7, 27, 15, 30) });
-    const range = { period: 'last-30-days' as const, start: Date.UTC(2026, 7, 1), end: Date.UTC(2026, 7, 28, 23, 59), timezone: 'Africa/Johannesburg' };
-    const snapshot = buildDiagnosticsSnapshot(range, settings, [inside, outside]);
-    expect(snapshot.events.map((item) => item.id)).toEqual([2, 3]);
-    expect(snapshot.fallbackFrequency['gemini-3.6-flash']).toBe(1);
-    expect(snapshot.failureClassifications.API_RATE_LIMIT_RPM_429).toBe(1);
-    expect(snapshot.preferenceOrder).toEqual(settings.preferredModelOrder);
-    expect(snapshot.fallbackRules.failoverErrorCodes).toContain('API_RATE_LIMIT_RPM_429');
-  });
+test('Pass 26 filters the local event history and captures fallback policy', () => {
+  const inside = event({ id: 2, timestamp: Date.UTC(2026, 7, 28, 15, 30), kind: 'ERROR', outcome: 'failure', errorCode: 'API_RATE_LIMIT_RPM_429', httpStatus: 429, fallbackEligible: true, fallbackAllowed: true, fallbackTaken: true, fallbackTarget: 'gemini-3.6-flash' });
+  const outside = event({ id: 3, timestamp: Date.UTC(2026, 6, 27, 15, 30) });
+  const range = { period: 'last-30-days' as const, start: Date.UTC(2026, 7, 1), end: Date.UTC(2026, 7, 28, 23, 59), timezone: 'Africa/Johannesburg' };
+  const snapshot = buildDiagnosticsSnapshot(range, settings, [inside, outside]);
+  assert.deepEqual(snapshot.events.map((item) => item.id), [2]);
+  assert.equal(snapshot.fallbackFrequency['gemini-3.6-flash'], 1);
+  assert.equal(snapshot.failureClassifications.API_RATE_LIMIT_RPM_429, 1);
+  assert.deepEqual(snapshot.preferenceOrder, settings.preferredModelOrder);
+  assert.deepEqual(snapshot.fallbackRules.failoverErrorCodes, ['API_RATE_LIMIT_RPM_429']);
+});
 
-  it('builds a prompt that keeps observed, inferred, external evidence and recommendations distinct', () => {
-    const range = { period: 'last-7-days' as const, start: 1, end: 2, timezone: 'Africa/Johannesburg' };
-    const snapshot = buildDiagnosticsSnapshot(range, settings, []);
-    const prompt = createDiagnosticsAnalysisPrompt(snapshot, [{
-      source: 'Google Cloud Service Health',
-      title: 'Google Cloud Service Health',
-      checkedAt: 123,
-      summary: 'No broad severe incidents.',
-      url: 'https://status.cloud.google.com/summary',
-    }]);
-    expect(prompt).toContain('OBSERVED');
-    expect(prompt).toContain('INFERRED');
-    expect(prompt).toContain('EXTERNAL EVIDENCE');
-    expect(prompt).toContain('RECOMMENDATION');
-    expect(prompt).toContain('must not claim causation from correlation');
-    expect(prompt).toContain('must not claim that any change has been applied');
-  });
+test('Pass 26 keeps local evidence, inference and external evidence distinct', () => {
+  const range = { period: 'last-7-days' as const, start: 1, end: 2, timezone: 'Africa/Johannesburg' };
+  const snapshot = buildDiagnosticsSnapshot(range, settings, []);
+  const prompt = createDiagnosticsAnalysisPrompt(snapshot, [{
+    source: 'Google Cloud Service Health',
+    title: 'Google Cloud Service Health',
+    checkedAt: 123,
+    summary: 'No broad severe incidents.',
+    url: 'https://status.cloud.google.com/summary',
+  }]);
+  assert.match(prompt, /OBSERVED/);
+  assert.match(prompt, /INFERRED/);
+  assert.match(prompt, /EXTERNAL EVIDENCE/);
+  assert.match(prompt, /RECOMMENDATION/);
+  assert.match(prompt, /must not claim causation from correlation/);
+  assert.match(prompt, /must not claim that any change has been applied/);
+});
 
-  it('never puts raw diagnostic message text into the analysis prompt payload', () => {
-    const range = { period: 'last-hour' as const, start: 0, end: Date.now(), timezone: 'UTC' };
-    const secretEvent = event({ message: 'apiKey=SUPERSECRET', kind: 'ERROR', outcome: 'failure', errorCode: 'UNKNOWN_API_ERROR' });
-    const snapshot = buildDiagnosticsSnapshot(range, settings, [secretEvent]);
-    const prompt = createDiagnosticsAnalysisPrompt(snapshot);
-    expect(prompt).not.toContain('SUPERSECRET');
-    expect(prompt).toContain('[bounded diagnostic message omitted]');
-  });
+test('Pass 26 removes raw diagnostic message text from the analysis prompt payload', () => {
+  const range = { period: 'last-hour' as const, start: 0, end: Date.now(), timezone: 'UTC' };
+  const secretEvent = event({ message: 'apiKey=SUPERSECRET', kind: 'ERROR', outcome: 'failure', errorCode: 'UNKNOWN_API_ERROR' });
+  const snapshot = buildDiagnosticsSnapshot(range, settings, [secretEvent]);
+  const prompt = createDiagnosticsAnalysisPrompt(snapshot);
+  assert.ok(!prompt.includes('SUPERSECRET'));
+  assert.match(prompt, /bounded diagnostic message omitted/);
 });
