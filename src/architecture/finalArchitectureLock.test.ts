@@ -73,21 +73,21 @@ test('canonical reference archive owns historical Keep storage key deliberately'
   assert.match(source, /updateReferenceNote/);
 });
 
-test('Settings UI remains application-owned while legacy compatibility is quarantined', async () => {
+test('Settings owns no second Google UI or legacy compatibility wrapper', async () => {
   const settings = await readText('src/components/SettingsModal.tsx');
-  const legacy = await readText('src/components/LegacySettingsModal.tsx');
-  assert.match(settings, /LegacySettingsModal/);
-  assert.doesNotMatch(settings, /settingsGoogleService|GoogleCapabilitySettingsPanel|getUpcomingCalendarEvents|listGmailMessages|createGoogleDoc|createGoogleSheet/);
-  assert.doesNotMatch(settings, /from ['\"]\.\.\/lib\/db['\"]/);
-  assert.doesNotMatch(settings, /from ['\"]\.\.\/lib\/storage['\"]/);
-  assert.doesNotMatch(settings, /from ['\"]\.\.\/contracts\/implementations['\"]/);
-  assert.match(legacy, /settingsPersistence\.loadPersonaSnapshots/);
-  assert.match(legacy, /settingsPersistence\.savePersonaSnapshots/);
-  assert.match(legacy, /getSettingsRateLimits/);
-  assert.match(legacy, /getUpcomingCalendarEvents/);
-  const googleImport = legacy.match(/import \{[\s\S]*?\} from ['\"]\.\.\/services\/settingsGoogleService['\"]/) ;
-  assert.ok(googleImport, 'LegacySettingsModal must import settingsGoogleService through the canonical legacy boundary');
-  assert.doesNotMatch(googleImport[0], /searchKeepNotes|createKeepNote|updateKeepNote|getKeepNote|deleteKeepNote|listKeepNotes/);
+  assert.equal(existsSync(join(root, 'src/components/LegacySettingsModal.tsx')), false);
+  assert.equal(existsSync(join(root, 'src/services/settingsGoogleService.ts')), false);
+  assert.equal(existsSync(join(root, 'src/services/settingsCalendarService.ts')), false);
+  assert.doesNotMatch(settings, /LegacySettingsModal|settingsGoogleService|settingsCalendarService|requestGoogleAuth|getUpcomingCalendarEvents|listGmailMessages|createGoogleDoc|createGoogleSheet/);
+  assert.doesNotMatch(settings, /activeTab.*workspace|label=.?["']Workspace["']/i);
+  assert.match(settings, /Google services live in Google Hub/);
+  const components = await collectSourceFiles('src/components');
+  const legacyGoogleConsumers: string[] = [];
+  for (const file of components) {
+    const source = await readText(file);
+    if (/LegacySettingsModal|settingsGoogleService|settingsCalendarService/.test(source)) legacyGoogleConsumers.push(file);
+  }
+  assert.deepEqual(legacyGoogleConsumers, []);
 });
 
 test('OOC UI surface delegates model execution to the application service', async () => {
