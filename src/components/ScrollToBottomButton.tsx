@@ -20,20 +20,12 @@ export const ScrollToBottomButton: React.FC<ScrollToBottomButtonProps> = ({ scro
     const element = scrollContainerRef.current;
     if (!element) return;
 
-    const updateFromPosition = () => {
-      const atBottom = isAtBottom(element);
-      if (atBottom) {
-        setVisible(false);
-      } else {
-        setVisible(true);
-      }
-    };
+    setVisible(!isAtBottom(element));
 
-    updateFromPosition();
-
-    const observer = new ResizeObserver(updateFromPosition);
+    const observer = new ResizeObserver(() => {
+      if (isAtBottom(element)) setVisible(false);
+    });
     observer.observe(element);
-    if (element.firstElementChild instanceof HTMLElement) observer.observe(element.firstElementChild);
 
     return () => observer.disconnect();
   }, [scrollContainerRef]);
@@ -44,18 +36,15 @@ export const ScrollToBottomButton: React.FC<ScrollToBottomButtonProps> = ({ scro
 
     const handleScroll = () => {
       setVisible(false);
-      if (timerRef.current !== null) {
-        window.clearTimeout(timerRef.current);
-      }
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
 
       timerRef.current = window.setTimeout(() => {
         timerRef.current = null;
-        if (!isAtBottom(element)) setVisible(true);
+        setVisible(!isAtBottom(element));
       }, STATIC_DELAY_MS);
     };
 
     element.addEventListener('scroll', handleScroll, { passive: true });
-
     return () => {
       element.removeEventListener('scroll', handleScroll);
       if (timerRef.current !== null) {
@@ -84,7 +73,7 @@ export const ScrollToBottomButton: React.FC<ScrollToBottomButtonProps> = ({ scro
       aria-label="Jump to latest message"
       title="Jump to latest message"
       onClick={handleClick}
-      className={`absolute bottom-24 left-1/2 z-30 -translate-x-1/2 rounded-full border border-amber-400/60 bg-[#14110a]/95 p-2.5 text-amber-300 shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur-md transition-all duration-200 hover:border-amber-300 hover:bg-[#1a160b] hover:text-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-400/50 ${visible ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-2 opacity-0'}`}
+      className={`fixed bottom-28 left-1/2 z-[70] -translate-x-1/2 rounded-full border border-amber-400/60 bg-[#14110a]/95 p-2.5 text-amber-300 shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur-md transition-all duration-200 hover:border-amber-300 hover:bg-[#1a160b] hover:text-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-400/50 ${visible ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-2 opacity-0'}`}
     >
       <ArrowDown className="h-4 w-4" strokeWidth={2.25} />
       <span className="sr-only">Jump to latest message</span>
