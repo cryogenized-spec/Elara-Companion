@@ -1,10 +1,7 @@
 {
   "version": 1,
   "strategy": "incremental_capability_authorization",
-  "initialAuthorization": {
-    "scopes": ["openid", "email", "profile"],
-    "purpose": "Establish Google identity/connection without requesting Workspace data permissions."
-  },
+  "initialAuthorization": {"scopes": ["openid", "email", "profile"], "purpose": "Establish Google identity/connection without requesting Workspace data permissions."},
   "capabilities": {
     "gmail.read": {"scopes": ["https://www.googleapis.com/auth/gmail.readonly"], "risk": "sensitive", "default": false, "usedBy": ["Gmail listing", "Gmail message detail"]},
     "gmail.compose": {"scopes": ["https://www.googleapis.com/auth/gmail.compose"], "risk": "sensitive", "default": false, "usedBy": ["Create Gmail draft"]},
@@ -18,15 +15,12 @@
     "drive.file": {"scopes": ["https://www.googleapis.com/auth/drive.file"], "risk": "non_sensitive_preferred", "default": false, "usedBy": ["Files created or opened by Elara"]},
     "sheets.read": {"scopes": ["https://www.googleapis.com/auth/spreadsheets.readonly"], "risk": "sensitive", "default": false, "usedBy": ["Google Sheets read operations"]},
     "sheets.write": {"scopes": ["https://www.googleapis.com/auth/spreadsheets"], "risk": "sensitive", "default": false, "usedBy": ["Google Sheets write operations"]},
-    "keep.read": {"scopes": ["https://www.googleapis.com/auth/keep.readonly"], "risk": "sensitive", "default": false, "usedBy": ["Google Keep read operations"]},
-    "keep.write": {"scopes": ["https://www.googleapis.com/auth/keep"], "risk": "sensitive_restricted", "default": false, "requiresExplicitEscalation": true, "usedBy": ["Google Keep create/edit/delete operations"]},
     "contacts.read": {"scopes": ["https://www.googleapis.com/auth/contacts.readonly"], "risk": "sensitive", "default": false, "usedBy": ["Google Contacts read operations"]},
     "chat.read": {"scopes": ["https://www.googleapis.com/auth/chat.spaces.readonly", "https://www.googleapis.com/auth/chat.messages.readonly", "https://www.googleapis.com/auth/chat.memberships.readonly"], "risk": "sensitive", "default": false, "usedBy": ["Google Chat space/message/member read operations"]},
     "chat.send": {"scopes": ["https://www.googleapis.com/auth/chat.messages.create"], "risk": "sensitive", "default": false, "usedBy": ["Google Chat message creation"]},
     "chat.manage": {"scopes": ["https://www.googleapis.com/auth/chat.spaces", "https://www.googleapis.com/auth/chat.spaces.create", "https://www.googleapis.com/auth/chat.messages", "https://www.googleapis.com/auth/chat.memberships"], "risk": "sensitive_restricted", "default": false, "requiresExplicitEscalation": true, "usedBy": ["Google Chat space/message/member management when required"]}
   },
   "initialRequestMustNotContain": [
-    "https://www.googleapis.com/auth/keep",
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/gmail.compose",
     "https://www.googleapis.com/auth/gmail.modify",
