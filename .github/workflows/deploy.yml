@@ -21,8 +21,12 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout current repository
         uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          fetch-depth: 1
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -35,7 +39,7 @@ jobs:
 
       - name: Build static site
         env:
-          VITE_BASE_PATH: /Elara-Companion/
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
         run: npx vite build
 
       - name: Setup Pages
