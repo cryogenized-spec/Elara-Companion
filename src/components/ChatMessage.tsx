@@ -6,6 +6,7 @@ import {
   getUserBubbleClasses,
   EmailDraftButton,
 } from './UnifiedChatMessage';
+import { ScrollToBottomButton } from './ScrollToBottomButton';
 
 export { getAssistantBackgroundClasses, getUserBubbleClasses, EmailDraftButton } from './UnifiedChatMessage';
 
@@ -34,9 +35,6 @@ function areHistoricalPropsEqual(previous: ChatMessageProps, next: ChatMessagePr
   if (previous.textBackground !== next.textBackground) return false;
   if (previous.isLastUserMessage !== next.isLastUserMessage) return false;
 
-  // Callback identities are recreated by App on each render. Historical messages
-  // do not need to rerender solely because those function references changed.
-  // The live/last message remains fully reactive to its latest callbacks.
   if (next.isLast) {
     return (
       previous.onRegenerate === next.onRegenerate &&
@@ -52,6 +50,11 @@ function areHistoricalPropsEqual(previous: ChatMessageProps, next: ChatMessagePr
 }
 
 export const ChatMessage = React.memo(
-  (props: ChatMessageProps) => <UnifiedChatMessage {...props} />,
+  (props: ChatMessageProps) => (
+    <>
+      <UnifiedChatMessage {...props} />
+      {props.isLast && <ScrollToBottomButton scrollContainerRef={{ current: document.querySelector<HTMLDivElement>('.touch-scroll') }} />}
+    </>
+  ),
   areHistoricalPropsEqual,
 );
