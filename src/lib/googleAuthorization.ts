@@ -1,6 +1,10 @@
+import { getDbSettings, setDbSettings } from './db';
+
 const DEFAULT_CLIENT_ID = '988991302383-rj8vah445mk9r991k10pc4knk2omk2p4.apps.googleusercontent.com';
 const BASE_SCOPES = ['openid', 'email', 'profile'].join(' ');
 const CUSTOM_CLIENT_ID_KEY = 'elara_custom_google_client_id';
+
+type PersistedGoogleSettings = { googleStayConnected?: boolean; googleGrantedScopes?: string[] };
 
 let tokenClient: any = null;
 let accessToken = '';
@@ -46,14 +50,37 @@ function getClientId(): string {
 
 function getOrigin(): string { return typeof window !== 'undefined' ? window.location.origin : 'unknown'; }
 function clearAuthorizationState(): void { accessToken = ''; grantedScopes = ''; accessTokenExpiresAt = 0; }
-
 export function clearGoogleAuthorizationSession(): void { clearAuthorizationState(); }
+
+async function rememberGrantedScopes(scopeString: string): Promise<void> {
+  try {
+    const settings = await getDbSettings();
+    const persisted = settings as ElaraSettingsWithGooglePersistence;
+    if (persisted.googleStayConnected === false) return;
+    const scopes = [...new Set(`${persisted.googleGrantedScopes?.join(' ') || ''} ${scopeString || ''}`.split(/\s+/).map((scope) => scope.trim()).filter(Boolean))];
+    await setDbSettings({ ...settings, googleGrantedScopes: scopes } as any);
+  } catch (error) {
+    console.warn('Could not persist Google authorization metadata:', error);
+  }
+}
+
+async function clearRememberedScopes(): Promise<void> {
+  try {
+    const settings = await getDbSettings();
+    await setDbSettings({ ...settings, googleGrantedScopes: [] } as any);
+  } catch (error) {
+    console.warn('Could not clear remembered Google scopes:', error);
+  }
+}
+
+type ElaraSettingsWithGooglePersistence = PersistedGoogleSettings;
 
 function applyAuthorizationResponse(response: any, fallbackScopes: string): string {
   accessToken = response?.access_token || '';
   grantedScopes = response?.scope || fallbackScopes || '';
   const expiresInSeconds = Number(response?.expires_in);
   accessTokenExpiresAt = Number.isFinite(expiresInSeconds) && expiresInSeconds > 0 ? Date.now() + (expiresInSeconds * 1000) : 0;
+  void rememberGrantedScopes(grantedScopes);
   return accessToken;
 }
 
@@ -119,9 +146,27 @@ export async function requestGoogleCapabilityAuthorization(scopes: string[], for
   });
 }
 
+export async function restoreGoogleAuthorization(scopes: string[]): Promise<boolean> {
+  const normalized = [...new Set(scopes.map(scope => scope.trim()).filter(Boolean))].filter(Boolean);
+  if (!normalized.length) return false;
+  try {
+    await requestGoogleCapabilityAuthorization(normalized, false);
+    return true;
+  } catch (error) {
+    console.warn('Silent Google authorization restore was unavailable:', error);
+    clearAuthorizationState();
+    return false;
+  }
+}
+
+export async function forgetGoogleConnectionPreference(): Promise<void> {
+  await clearRememberedScopes();
+}
+
 export async function revokeGoogleBaseAuthorization(): Promise<{ success: boolean; message: string }> {
   const token = getGoogleIdentityAccessToken();
   clearAuthorizationState();
+  await clearRememberedScopes();
   if (!token) return { success: true, message: 'Google authorization was already cleared locally.' };
   try {
     const response = await fetch('https://oauth2.googleapis.com/revoke', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: `token=${encodeURIComponent(token)}` });
