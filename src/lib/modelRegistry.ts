@@ -53,11 +53,11 @@ const OUTPUT = { maxOutputTokensMin: 256, maxOutputTokensMax: 65536 };
 export const GEMINI_MODEL_PROFILES: GeminiModelProfile[] = [
   {
     id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', description: 'Latest stable Flash for fast multimodal, general-purpose and agentic work.', isDefault: true,
-    status: 'stable', family: 'gemini-3', supportsThinking: true, thinkingControl: 'level', thinkingLevels: ['minimal', 'low', 'medium', 'high'], ...SAMPLING_DISABLED, ...OUTPUT,
+    status: 'stable', family: 'gemini-3', supportsThinking: true, thinkingControl: 'level', thinkingLevels: ['low', 'medium', 'high'], ...SAMPLING_DISABLED, ...OUTPUT,
   },
   {
     id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash', description: 'Stable Flash for fast multimodal, general-purpose and agentic work.',
-    status: 'stable', family: 'gemini-3', supportsThinking: true, thinkingControl: 'level', thinkingLevels: ['minimal', 'low', 'medium', 'high'], ...SAMPLING_DISABLED, ...OUTPUT,
+    status: 'stable', family: 'gemini-3', supportsThinking: true, thinkingControl: 'level', thinkingLevels: ['low', 'medium', 'high'], ...SAMPLING_DISABLED, ...OUTPUT,
   },
   {
     id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', description: 'Stable Flash for sustained agentic and coding workloads.',
