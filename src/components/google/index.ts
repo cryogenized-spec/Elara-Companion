@@ -7,5 +7,4 @@ export { DocsCapabilityPanel } from './DocsCapabilityPanel';
 export { SheetsCapabilityPanel } from './SheetsCapabilityPanel';
 export { ContactsCapabilityPanel } from './ContactsCapabilityPanel';
 export { ChatCapabilityPanel } from './ChatCapabilityPanel';
-export { KeepCapabilityPanel } from './KeepCapabilityPanel';
 export { SimpleGoogleCapabilityPanel } from './SimpleGoogleCapabilityPanel';
