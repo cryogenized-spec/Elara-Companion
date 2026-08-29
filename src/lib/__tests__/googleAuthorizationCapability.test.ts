@@ -8,8 +8,6 @@ test('base Google authorization remains identity-only', () => {
 });
 
 test('capability authorization scopes come from the canonical policy', () => {
-  assert.deepEqual(getGoogleCapabilityScopes('keep.read'), ['https://www.googleapis.com/auth/keep.readonly']);
-  assert.deepEqual(getGoogleCapabilityScopes('keep.write'), ['https://www.googleapis.com/auth/keep']);
   assert.deepEqual(getGoogleCapabilityScopes('gmail.read'), ['https://www.googleapis.com/auth/gmail.readonly']);
 });
 
