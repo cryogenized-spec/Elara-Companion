@@ -25,6 +25,7 @@ import { PortraitViewerModal } from './components/PortraitViewerModal';
 import { ThoughtLogModal } from './components/ThoughtLogModal';
 import { ElaraPortrait } from './components/ElaraPortrait';
 import { WorkspaceView } from './components/WorkspaceView';
+import { ScrollToBottomButton } from './components/ScrollToBottomButton';
 import { saveAgentArtifact, setActiveArtifact, getWorkspace, saveWorkspace } from './lib/workspaceStorage';
 import { useConversationController } from './features/conversations/useConversationController';
 import { useChatStreamController } from './features/chat/useChatStreamController';
@@ -404,6 +405,8 @@ export default function App() {
               </>
             );
           })()}
+
+          <ScrollToBottomButton scrollContainerRef={scrollContainerRef} />
 
           <div className="relative z-10">
             <MessageComposer
