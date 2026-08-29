@@ -15,6 +15,27 @@ export interface GoogleAuthorizationState {
   grantedScopes: string;
 }
 
+export interface GoogleAuthorizationErrorDetails {
+  kind: 'oauth_error' | 'authorization_rejected' | 'authorization_unavailable';
+  error: string;
+  errorDescription?: string;
+  errorUri?: string;
+  clientId: string;
+  requestedScopes: string[];
+  origin: string;
+  incremental: boolean;
+}
+
+export class GoogleAuthorizationError extends Error {
+  readonly details: GoogleAuthorizationErrorDetails;
+
+  constructor(details: GoogleAuthorizationErrorDetails) {
+    super(details.errorDescription || details.error || 'Google authorization failed.');
+    this.name = 'GoogleAuthorizationError';
+    this.details = details;
+  }
+}
+
 function getClientId(): string {
   if (typeof window !== 'undefined') {
     const custom = localStorage.getItem(CUSTOM_CLIENT_ID_KEY);
@@ -24,6 +45,10 @@ function getClientId(): string {
     ? (import.meta as any).env
     : undefined;
   return env?.VITE_GOOGLE_CLIENT_ID || DEFAULT_CLIENT_ID;
+}
+
+function getOrigin(): string {
+  return typeof window !== 'undefined' ? window.location.origin : 'unknown';
 }
 
 function clearAuthorizationState(): void {
@@ -40,6 +65,22 @@ function applyAuthorizationResponse(response: any, fallbackScopes: string): stri
     ? Date.now() + (expiresInSeconds * 1000)
     : 0;
   return accessToken;
+}
+
+function buildAuthorizationError(response: any, scopes: string[], incremental: boolean): GoogleAuthorizationError {
+  const error = String(response?.error || 'authorization_rejected');
+  const errorDescription = response?.error_description ? String(response.error_description) : undefined;
+  const errorUri = response?.error_uri ? String(response.error_uri) : undefined;
+  return new GoogleAuthorizationError({
+    kind: response?.error ? 'oauth_error' : 'authorization_rejected',
+    error,
+    ...(errorDescription ? { errorDescription } : {}),
+    ...(errorUri ? { errorUri } : {}),
+    clientId: getClientId(),
+    requestedScopes: [...scopes],
+    origin: getOrigin(),
+    incremental,
+  });
 }
 
 export function getGoogleBaseScopes(): string { return BASE_SCOPES; }
@@ -88,10 +129,11 @@ export function initGoogleBaseAuthorization(): void {
 export async function requestGoogleBaseAuthorization(forcePrompt = true): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!tokenClient) initGoogleBaseAuthorization();
-    if (!tokenClient) return reject(new Error('Google Identity Services authorization is not loaded.'));
+    if (!tokenClient) return reject(new GoogleAuthorizationError({ kind: 'authorization_unavailable', error: 'gis_unavailable', clientId: getClientId(), requestedScopes: BASE_SCOPES.split(' '), origin: getOrigin(), incremental: false }));
 
     tokenClient.callback = (response: any) => {
-      if (response?.error) return reject(new Error(response.error_description || response.error || 'Google authorization was rejected.'));
+      if (response?.error) return reject(buildAuthorizationError(response, BASE_SCOPES.split(' '), false));
+      if (!response?.access_token) return reject(buildAuthorizationError({ error: 'missing_access_token', error_description: 'Google Identity Services completed without returning an access token.' }, BASE_SCOPES.split(' '), false));
       resolve(applyAuthorizationResponse(response, BASE_SCOPES));
     };
     tokenClient.requestAccessToken({ prompt: forcePrompt ? 'consent' : '' });
@@ -102,7 +144,7 @@ export async function requestGoogleCapabilityAuthorization(scopes: string[], for
   const normalized = [...new Set(scopes.map(scope => scope.trim()).filter(Boolean))];
   if (!normalized.length) return requestGoogleBaseAuthorization(forcePrompt);
   if (typeof window === 'undefined' || !(window as any).google?.accounts?.oauth2) {
-    throw new Error('Google Identity Services authorization is not loaded.');
+    throw new GoogleAuthorizationError({ kind: 'authorization_unavailable', error: 'gis_unavailable', clientId: getClientId(), requestedScopes: normalized, origin: getOrigin(), incremental: true });
   }
   const client = (window as any).google.accounts.oauth2.initTokenClient({
     client_id: getClientId(),
@@ -112,7 +154,8 @@ export async function requestGoogleCapabilityAuthorization(scopes: string[], for
   });
   return new Promise((resolve, reject) => {
     client.callback = (response: any) => {
-      if (response?.error) return reject(new Error(response.error_description || response.error || 'Google capability authorization was rejected.'));
+      if (response?.error) return reject(buildAuthorizationError(response, normalized, true));
+      if (!response?.access_token) return reject(buildAuthorizationError({ error: 'missing_access_token', error_description: 'Google Identity Services completed without returning an access token.' }, normalized, true));
       resolve(applyAuthorizationResponse(response, grantedScopes));
     };
     client.requestAccessToken({ prompt: forcePrompt ? 'consent' : '' });
