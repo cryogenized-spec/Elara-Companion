@@ -5,9 +5,11 @@ import { DEFAULT_WORLD_STATE } from '../constants/defaultWorldState';
 import { DEFAULT_MEMORY_STATE } from '../lib/memoryStorage';
 import { loadMemoryState, saveMemoryState } from '../services/memoryService';
 import { migrateFromLocalStorage, getDbConversations, getDbFolders, getDbSettings, getDbWorldState, getDbPortrait, setDbConversations, setDbFolders, setDbSettings, setDbWorldState, setDbPortrait } from '../lib/db';
-import { requestGoogleBaseAuthorization } from '../lib/googleAuthorization';
+import { requestGoogleBaseAuthorization, restoreGoogleAuthorization } from '../lib/googleAuthorization';
 
 const SETTINGS_CHANGED_EVENT = 'elara-settings-changed';
+type GooglePersistedSettings = ElaraSettings & { googleGrantedScopes?: string[] };
+
 export type ApplicationState = {
   isLoaded: boolean; conversations: Conversation[]; folders: Folder[]; activeId: string | null; settings: ElaraSettings; worldState: WorldState; memoryState: MemoryScratchpadState; customPortrait: string | null;
   setConversations: Dispatch<SetStateAction<Conversation[]>>; setFolders: Dispatch<SetStateAction<Folder[]>>; setActiveId: Dispatch<SetStateAction<string | null>>; setSettings: Dispatch<SetStateAction<ElaraSettings>>; setWorldState: Dispatch<SetStateAction<WorldState>>; setMemoryState: Dispatch<SetStateAction<MemoryScratchpadState>>; setCustomPortrait: Dispatch<SetStateAction<string | null>>;
@@ -26,11 +28,16 @@ export function useApplicationStateController(): ApplicationState {
 
   useEffect(() => {
     void migrateFromLocalStorage().then(async () => {
-      setFolders(await getDbFolders()); setSettings(await getDbSettings()); setWorldState(await getDbWorldState()); setMemoryState(await loadMemoryState()); setCustomPortrait(await getDbPortrait());
+      const loadedSettings = await getDbSettings();
+      setFolders(await getDbFolders()); setSettings(loadedSettings); setWorldState(await getDbWorldState()); setMemoryState(await loadMemoryState()); setCustomPortrait(await getDbPortrait());
       const loadedConvs = await getDbConversations();
       if (loadedConvs.length > 0) { setConversations(loadedConvs); setActiveId(loadedConvs[0].id); }
       else { const initialConv: Conversation = { id: generateUniqueId('conv'), title: 'New Conversation', messages: [], createdAt: Date.now(), updatedAt: Date.now() }; setConversations([initialConv]); setActiveId(initialConv.id); }
       setIsLoaded(true);
+      const googleSettings = loadedSettings as GooglePersistedSettings;
+      if (googleSettings.googleStayConnected !== false && Array.isArray(googleSettings.googleGrantedScopes) && googleSettings.googleGrantedScopes.length > 0) {
+        window.setTimeout(() => { void restoreGoogleAuthorization(googleSettings.googleGrantedScopes || []); }, 250);
+      }
     });
   }, []);
 
