@@ -12,7 +12,7 @@ import type { GoogleHubCapabilityDescriptor } from '../../contracts/googleHub';
 
 interface GoogleHubModalProps { isOpen: boolean; onClose: () => void; onAskElara?: (prompt: string) => void; }
 function dispatchAsk(prompt: string): void { window.dispatchEvent(new CustomEvent('elara:ask', { detail: { prompt } })); }
-const SERVICE_NAMES: Record<string, string> = { gmail: 'Gmail', calendar: 'Google Calendar', drive: 'Google Drive', docs: 'Google Docs', sheets: 'Google Sheets', tasks: 'Google Tasks', keep: 'Google Keep', contacts: 'Google Contacts', chat: 'Google Chat' };
+const SERVICE_NAMES: Record<string, string> = { gmail: 'Gmail', calendar: 'Google Calendar', drive: 'Google Drive', docs: 'Google Docs', sheets: 'Google Sheets', tasks: 'Google Tasks', contacts: 'Google Contacts', chat: 'Google Chat' };
 
 export function GoogleHubModal({ isOpen, onClose, onAskElara }: GoogleHubModalProps) {
   const capabilities = useMemo(() => googleHubCapabilityRegistry.list(), []);
