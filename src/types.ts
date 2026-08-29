@@ -2,11 +2,7 @@ export type Role = 'user' | 'assistant' | 'model';
 
 export interface ThoughtStep { id: string; step_title: string; summary: string; timestamp: number; }
 export interface CanvasData { title: string; content: string; artifactId?: string; }
-export interface Message {
-  id: string; role: Role; content: string; timestamp: number; image?: string; isError?: boolean; errorMessage?: string;
-  isStreaming?: boolean; isThinking?: boolean; thoughts?: ThoughtStep[]; rawThoughts?: string; currentThoughtSentence?: string;
-  thoughtDurationMs?: number; canvases?: CanvasData[]; artifactIds?: string[]; backgroundJobId?: string;
-}
+export interface Message { id: string; role: Role; content: string; timestamp: number; image?: string; isError?: boolean; errorMessage?: string; isStreaming?: boolean; isThinking?: boolean; thoughts?: ThoughtStep[]; rawThoughts?: string; currentThoughtSentence?: string; thoughtDurationMs?: number; canvases?: CanvasData[]; artifactIds?: string[]; backgroundJobId?: string; }
 export interface Folder { id: string; name: string; isExpanded?: boolean; }
 export interface Conversation { id: string; title: string; createdAt: number; updatedAt: number; messages: Message[]; model?: string; temperature?: number; maxOutputTokens?: number; folderId?: string; }
 
@@ -31,6 +27,8 @@ export interface ElaraSettings {
   voiceSettings?: VoiceSettings;
   /** Canonical user-owned retry/failover policy. Runtime health remains temporary and is never persisted here. */
   reliabilitySettings?: ReliabilitySettings;
+  /** When true, silently reacquire a short-lived Google access token on app startup when previously authorized. Defaults on. */
+  googleStayConnected?: boolean;
   speechLanguage?: string; speechAutoSend?: boolean; speechAutoCapitalize?: boolean; speechPauseTimeout?: number;
 }
 
@@ -54,89 +52,13 @@ export type MemorySource = 'user' | 'elara' | 'conversation' | 'artifact' | 'sys
 export type MemoryConfidence = 'certain' | 'likely' | 'uncertain';
 export type MemoryImportance = 'low' | 'normal' | 'important' | 'core';
 export type MemoryCategory = 'User' | 'Elara' | 'Relationship' | 'Home' | 'Work' | 'Projects' | 'Preferences' | 'People' | 'Places' | 'Experiences' | 'Observations' | 'Plans' | 'Other';
-
-/** Pass 1 memory architecture resolution. Optional for backwards compatibility. */
 export type MemoryResolution = 'core' | 'contextual' | 'episodic' | 'observation' | 'synthesized';
-/** Pass 1 memory lifecycle state. Optional for backwards compatibility. */
 export type MemoryState = 'active' | 'stale' | 'archived' | 'superseded' | 'conflicted';
-
-export interface MemoryLink {
-  type: 'conversation' | 'artifact' | 'memory';
-  id: string;
-  label?: string;
-}
-
-export interface MemoryItem {
-  id: string;
-  content: string;
-  kind?: MemoryKind;
-  lifecycle?: MemoryLifecycle;
-  source?: MemorySource;
-  confidence: MemoryConfidence;
-  importance: MemoryImportance;
-  isPrivate: boolean;
-  category: MemoryCategory;
-  createdAt: string;
-  updatedAt: string;
-  eventDate?: string;
-  expiresAt?: string;
-  lastRecalledAt?: string;
-  reinforcementCount?: number;
-  pinned?: boolean;
-  tags?: string[];
-  sourceConversationId?: string;
-  sourceArtifactId?: string;
-  relatedMemoryIds?: string[];
-  links?: MemoryLink[];
-
-  /** Pass 1 additive architecture metadata. */
-  resolution?: MemoryResolution;
-  state?: MemoryState;
-  lastObservedAt?: string;
-  retrievalCount?: number;
-  evidenceCount?: number;
-  evidenceMemoryIds?: string[];
-  supersedesMemoryId?: string;
-  supersededByMemoryId?: string;
-  conflictMemoryIds?: string[];
-}
-
-export interface MemoryScratchpadState {
-  memories: MemoryItem[];
-  lastMaintenanceAt?: string;
-  autoMaintenanceEnabled: boolean;
-  schemaVersion?: number;
-}
-
+export interface MemoryLink { type: 'conversation' | 'artifact' | 'memory'; id: string; label?: string; }
+export interface MemoryItem { id: string; content: string; kind?: MemoryKind; lifecycle?: MemoryLifecycle; source?: MemorySource; confidence: MemoryConfidence; importance: MemoryImportance; isPrivate: boolean; category: MemoryCategory; createdAt: string; updatedAt: string; eventDate?: string; expiresAt?: string; lastRecalledAt?: string; reinforcementCount?: number; pinned?: boolean; tags?: string[]; sourceConversationId?: string; sourceArtifactId?: string; relatedMemoryIds?: string[]; links?: MemoryLink[]; resolution?: MemoryResolution; state?: MemoryState; lastObservedAt?: string; retrievalCount?: number; evidenceCount?: number; evidenceMemoryIds?: string[]; supersedesMemoryId?: string; supersededByMemoryId?: string; conflictMemoryIds?: string[]; }
+export interface MemoryScratchpadState { memories: MemoryItem[]; lastMaintenanceAt?: string; autoMaintenanceEnabled: boolean; schemaVersion?: number; }
 export type MemoryActionType = 'ADD' | 'CREATE' | 'UPDATE' | 'MERGE' | 'DELETE' | 'NO_ACTION';
-export interface MemoryAction {
-  type: MemoryActionType;
-  targetId?: string;
-  mergeTargetIds?: string[];
-  memory?: {
-    content: string;
-    kind?: MemoryKind;
-    lifecycle?: MemoryLifecycle;
-    source?: MemorySource;
-    confidence: MemoryConfidence;
-    importance: MemoryImportance;
-    isPrivate: boolean;
-    category: MemoryCategory;
-    eventDate?: string;
-    expiresAt?: string;
-    sourceArtifactId?: string;
-    relatedMemoryIds?: string[];
-    tags?: string[];
-    links?: MemoryLink[];
-    resolution?: MemoryResolution;
-    state?: MemoryState;
-    evidenceMemoryIds?: string[];
-    supersedesMemoryId?: string;
-    supersededByMemoryId?: string;
-    conflictMemoryIds?: string[];
-  };
-  reason?: string;
-}
+export interface MemoryAction { type: MemoryActionType; targetId?: string; mergeTargetIds?: string[]; memory?: { content: string; kind?: MemoryKind; lifecycle?: MemoryLifecycle; source?: MemorySource; confidence: MemoryConfidence; importance: MemoryImportance; isPrivate: boolean; category: MemoryCategory; eventDate?: string; expiresAt?: string; sourceArtifactId?: string; relatedMemoryIds?: string[]; tags?: string[]; links?: MemoryLink[]; resolution?: MemoryResolution; state?: MemoryState; evidenceMemoryIds?: string[]; supersedesMemoryId?: string; supersededByMemoryId?: string; conflictMemoryIds?: string[]; }; reason?: string; }
 
 export const AVAILABLE_MODELS: GeminiModelOption[] = [
   { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', description: 'Latest stable Flash for fast multimodal, general-purpose and agentic work.', isDefault: true },
@@ -151,7 +73,7 @@ export const AVAILABLE_MODELS: GeminiModelOption[] = [
   { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', description: 'Stable advanced reasoning model for complex tasks.' },
 ];
 
-export type ArtifactProvider = 'local' | 'google_docs' | 'google_sheets' | 'google_keep';
+export type ArtifactProvider = 'local' | 'google_docs' | 'google_sheets';
 export type SyncStatus = 'unlinked' | 'linked' | 'local_ahead' | 'remote_ahead' | 'synchronized' | 'conflict' | 'error';
 export type RevisionSource = 'user' | 'agent' | 'google_sync' | 'restore' | 'system';
 export interface ArtifactRevision { id: string; artifactId: string; revisionNumber: number; content: string; createdAt: number; author: 'user' | 'agent' | 'system'; source: RevisionSource; contentHash: string; }
