@@ -4,6 +4,7 @@ import { getModelProfile } from '../lib/modelRegistry';
 import { agentToolDeclarations, getAgentToolDeclarations } from '../lib/agentToolRegistry';
 import { buildWorkspaceContextPrompt } from '../lib/workspaceTools';
 import { TEXT_PROCESSING_POLICY } from '../constants/textProcessingPolicy';
+import type { AgentToolDeclaration } from '../tools/toolPluginTypes';
 import type { ToolExposurePolicy } from '../security/toolExposurePolicy';
 
 /** Full BLOCK_NONE safety settings for every Gemini call. Never omit or override. */
@@ -51,6 +52,28 @@ export function normalizeModel(model: string, fallback = 'gemini-3.7-flash'): st
   return model.replace(/^models\//, '').trim() || fallback;
 }
 
+/**
+ * Tool declarations carry Elara-internal authorization metadata (capabilities,
+ * effects, plugin information, etc.). Those fields belong to the application
+ * boundary and must never be serialized into the provider's FunctionDeclaration.
+ * Gemini's GenerateContent API accepts provider-defined declaration fields only.
+ */
+export function toGeminiFunctionDeclaration(declaration: AgentToolDeclaration): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  if (typeof declaration.name === 'string' && declaration.name.trim()) result.name = declaration.name.trim();
+  if (typeof declaration.description === 'string') result.description = declaration.description;
+  if (declaration.parameters !== undefined) result.parameters = declaration.parameters;
+  if (declaration.parametersJsonSchema !== undefined) result.parametersJsonSchema = declaration.parametersJsonSchema;
+  if (declaration.behavior !== undefined) result.behavior = declaration.behavior;
+  if (declaration.response !== undefined) result.response = declaration.response;
+  if (declaration.responseJsonSchema !== undefined) result.responseJsonSchema = declaration.responseJsonSchema;
+  return result;
+}
+
+export function toGeminiFunctionDeclarations(declarations: AgentToolDeclaration[]): Record<string, unknown>[] {
+  return declarations.map(toGeminiFunctionDeclaration);
+}
+
 export function buildRuntimeConfig(options: RuntimeConfigOptions): any {
   const model = normalizeModel(options.model);
   const profile = getModelProfile(model);
@@ -84,7 +107,10 @@ export function buildRuntimeConfig(options: RuntimeConfigOptions): any {
   }
 
   if (options.enableTools !== false) {
-    config.tools = [{ functionDeclarations: options.toolExposure ? getAgentToolDeclarations(options.toolExposure) : agentToolDeclarations }];
+    const declarations = options.toolExposure
+      ? getAgentToolDeclarations(options.toolExposure)
+      : agentToolDeclarations;
+    config.tools = [{ functionDeclarations: toGeminiFunctionDeclarations(declarations) }];
   }
   return config;
 }
