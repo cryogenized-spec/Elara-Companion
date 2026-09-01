@@ -5,6 +5,20 @@ import { buildModelResiliencePolicy } from './modelResilience';
 import { emitResilienceStatus } from './resilienceStatus';
 import { processGeminiResponseStream } from '../services/geminiStreamProcessor';
 
+const requestIdsByContents = new WeakMap<object, string>();
+
+function getStableRequestId(contents: any[]): string | undefined {
+  if (!contents || (typeof contents !== 'object' && typeof contents !== 'function')) return undefined;
+  const existing = requestIdsByContents.get(contents);
+  if (existing) return existing;
+  const random = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2);
+  const requestId = `request-${random}`;
+  requestIdsByContents.set(contents, requestId);
+  return requestId;
+}
+
 export interface ResilientStreamTurnResult {
   model: string;
   usedFallback: boolean;
@@ -59,7 +73,7 @@ export async function runResilientGeminiStreamTurn(
     {
       ...policy,
       conversationId: options.conversationId ?? policy?.conversationId,
-      requestId: options.requestId ?? policy?.requestId,
+      requestId: options.requestId ?? policy?.requestId ?? getStableRequestId(options.contents),
     },
     options.stateStore,
   );
