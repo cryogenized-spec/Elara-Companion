@@ -1,0 +1,1 @@
+Pass 3 — complete Google Tasks adapter and task authorization semantics.
