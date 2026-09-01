@@ -1,0 +1,1 @@
+Pass 7 removes the retired Chat GenerateContent runtime and all migration-only compatibility stories. Unrelated generation APIs remain outside this purge unless they are part of the retired Chat agent path.
