@@ -31,16 +31,16 @@ test('chat title service uses the backend provider when no BYOK key is supplied'
   }
 });
 
-test('chat title service returns null for an unsuccessful backend response', async () => {
+test('chat title service returns a deterministic fallback for an unsuccessful backend response', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response('', { status: 503 });
 
   try {
     const title = await generateChatConversationTitle({
-      userMessage: 'Hello',
+      userMessage: 'Hello New Conversation',
       assistantResponse: 'Hi',
     });
-    assert.equal(title, null);
+    assert.equal(title, 'Hello New Conversation');
   } finally {
     globalThis.fetch = originalFetch;
   }
