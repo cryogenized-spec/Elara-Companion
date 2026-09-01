@@ -1,4 +1,3 @@
-import { googleIdentity, googleCapabilities } from './googleWorkspaceService';
 import {
   CalendarEventItem,
   createCalendarEventWithToken,
@@ -8,23 +7,28 @@ import {
 
 export type { CalendarEventItem } from '../infrastructure/googleCalendarApi';
 
+export type CalendarTokenCapability = 'calendar.read' | 'calendar.write';
+export type CalendarTokenProvider = (capability: CalendarTokenCapability) => Promise<string>;
+
+let calendarTokenProvider: CalendarTokenProvider | null = null;
+
+export function setCalendarTokenProvider(provider: CalendarTokenProvider | null): void {
+  calendarTokenProvider = provider;
+}
+
 async function getCalendarToken(
-  capability: 'calendar.read' | 'calendar.write',
+  capability: CalendarTokenCapability,
   passedToken?: string,
 ): Promise<string> {
   if (passedToken?.trim()) return passedToken.trim();
-  const grantedScopes = googleCapabilities.getGrantedScopes();
-  if (!googleIdentity.isAuthorized() || !googleCapabilities.isGranted(grantedScopes, capability)) {
-    const scopes = googleCapabilities.getScopes(capability);
-    const result = await googleIdentity.requestCapabilityAuthorization(scopes, false);
-    if (!result) throw new Error('Google Calendar authorization was not granted.');
+  if (!calendarTokenProvider) {
+    throw new Error('Google Calendar authorization provider is not configured.');
   }
-  const token = googleIdentity.getAccessToken();
-  if (!token) throw new Error('Google Calendar authorization is required.');
-  return token;
+  const token = await calendarTokenProvider(capability);
+  if (!token?.trim()) throw new Error('Google Calendar authorization is required.');
+  return token.trim();
 }
 
-/** Canonical Calendar application service. It owns authorization policy and delegates REST mechanics to shared infrastructure. */
 export async function getUpcomingCalendarEvents(maxResults = 10, passedToken?: string): Promise<{ items: CalendarEventItem[] }> {
   return getUpcomingCalendarEventsWithToken(await getCalendarToken('calendar.read', passedToken), maxResults);
 }

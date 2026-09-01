@@ -77,8 +77,9 @@ test('shared calendar infrastructure preserves explicit token on writes', async 
   }
 });
 
-test('background Google tools contain no direct Calendar REST implementation', async () => {
+test('background Google tools use the canonical Calendar service and contain no direct Calendar REST implementation', async () => {
   const source = await readFile(new URL('../../../background-runtime/src/googleTools.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /calendar\/v3\/calendars\/primary\/events/);
-  assert.match(source, /getUpcomingCalendarEventsWithToken/);
+  assert.match(source, /from ['\"]\.\.\/\.\.\/src\/services\/googleCalendarService['\"]/);
+  assert.match(source, /getUpcomingCalendarEvents\(/);
 });
