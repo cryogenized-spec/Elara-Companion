@@ -5,7 +5,7 @@ import { buildModelResiliencePolicy } from './modelResilience';
 import { emitResilienceStatus } from './resilienceStatus';
 import { emitResilienceDiagnostic } from './resilienceDiagnostics';
 import { processGeminiResponseStream } from '../services/geminiStreamProcessor';
-import { countGeminiRequestTokens, type GeminiRequestUsageTelemetry } from './geminiRequestTelemetry';
+import { countGeminiRequestTokens, type GeminiRequestTokenMeasurement, type GeminiRequestUsageTelemetry } from './geminiRequestTelemetry';
 
 const requestIdsByContents = new WeakMap<object, string>();
 
@@ -28,7 +28,7 @@ export interface ResilientStreamTurnResult {
   attempts: number;
   functionCalls: any[];
   modelParts: any[];
-  tokenMeasurement?: ReturnType<typeof countGeminiRequestTokens> extends Promise<infer T> ? T : never;
+  tokenMeasurement?: GeminiRequestTokenMeasurement;
   usage?: GeminiRequestUsageTelemetry;
 }
 
@@ -143,7 +143,7 @@ export async function runResilientGeminiStreamTurn(
     model: result.context.model,
     usedFallback: result.context.usedFallback,
     probingPreferred: result.context.probingPreferred,
-    attempts: result.attempts,
+    attempts: result.context.attempts,
     functionCalls: result.value.functionCalls,
     modelParts: result.value.modelParts,
     tokenMeasurement: result.value.tokenMeasurement,
