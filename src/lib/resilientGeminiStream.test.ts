@@ -34,10 +34,10 @@ test('leaves ordinary user and model history untouched', () => {
   ]);
 });
 
-test('rejects reconstructed Gemini 3 function calls without a thought signature', () => {
+test('rejects the first current-turn Gemini 3 function call without a thought signature', () => {
   const malformed: any[] = [
     { role: 'user', parts: [{ text: 'do it' }] },
-    { role: 'model', parts: [{ functionCall: { name: 'list_google_tasks', args: {} } }] },
+    { role: 'model', parts: [{ functionCall: { name: 'list_google_tasks', args: {}, id: 'call-1' } }] },
   ];
 
   assert.throws(
@@ -46,9 +46,82 @@ test('rejects reconstructed Gemini 3 function calls without a thought signature'
   );
 });
 
+test('accepts parallel Gemini 3 function calls when only the first call has the signature', () => {
+  const contents: any[] = [
+    { role: 'user', parts: [{ text: 'do both' }] },
+    {
+      role: 'model',
+      parts: [
+        { functionCall: { name: 'foo', args: {}, id: 'call-1' }, thoughtSignature: 'sig-1' },
+        { functionCall: { name: 'bar', args: {}, id: 'call-2' } },
+      ],
+    },
+    {
+      role: 'user',
+      parts: [
+        { functionResponse: { name: 'foo', response: { ok: true }, id: 'call-1' } },
+        { functionResponse: { name: 'bar', response: { ok: true }, id: 'call-2' } },
+      ],
+    },
+  ];
+
+  assert.doesNotThrow(() => validateGeminiToolHistory(contents, 'gemini-3.7-flash'));
+});
+
+test('requires a signature on a later sequential Gemini 3 function-call turn', () => {
+  const contents: any[] = [
+    { role: 'user', parts: [{ text: 'do two steps' }] },
+    { role: 'model', parts: [{ functionCall: { name: 'foo', args: {}, id: 'call-1' }, thoughtSignature: 'sig-1' }] },
+    { role: 'user', parts: [{ functionResponse: { name: 'foo', response: { ok: true }, id: 'call-1' } }] },
+    { role: 'model', parts: [{ functionCall: { name: 'bar', args: {}, id: 'call-2' } }] },
+  ];
+
+  assert.throws(
+    () => validateGeminiToolHistory(contents, 'gemini-3.7-flash'),
+    (error: any) => error?.apiError?.code === 'INVALID_REQUEST_400',
+  );
+});
+
+test('rejects mismatched Gemini 3 function-response IDs', () => {
+  const contents: any[] = [
+    { role: 'user', parts: [{ text: 'do it' }] },
+    { role: 'model', parts: [{ functionCall: { name: 'foo', args: {}, id: 'call-1' }, thoughtSignature: 'sig-1' }] },
+    { role: 'user', parts: [{ functionResponse: { name: 'foo', response: { ok: true }, id: 'wrong-id' } }] },
+  ];
+
+  assert.throws(
+    () => validateGeminiToolHistory(contents, 'gemini-3.7-flash'),
+    (error: any) => error?.apiError?.code === 'INVALID_REQUEST_400',
+  );
+});
+
+test('rejects Gemini 3 function calls without IDs', () => {
+  const contents: any[] = [
+    { role: 'user', parts: [{ text: 'do it' }] },
+    { role: 'model', parts: [{ functionCall: { name: 'foo', args: {} }, thoughtSignature: 'sig-1' }] },
+  ];
+
+  assert.throws(
+    () => validateGeminiToolHistory(contents, 'gemini-3.7-flash'),
+    (error: any) => error?.apiError?.code === 'INVALID_REQUEST_400',
+  );
+});
+
+test('does not retroactively validate older Gemini 3 tool turns', () => {
+  const contents: any[] = [
+    { role: 'user', parts: [{ text: 'old turn' }] },
+    { role: 'model', parts: [{ functionCall: { name: 'old_tool', args: {}, id: 'old-call' } }] },
+    { role: 'user', parts: [{ functionResponse: { name: 'old_tool', response: { ok: true }, id: 'old-call' } }] },
+    { role: 'user', parts: [{ text: 'new turn' }] },
+    { role: 'model', parts: [{ functionCall: { name: 'new_tool', args: {}, id: 'new-call' }, thoughtSignature: 'new-sig' }] },
+  ];
+
+  assert.doesNotThrow(() => validateGeminiToolHistory(contents, 'gemini-3.7-flash'));
+});
+
 test('accepts signed Gemini 3 function calls and does not impose validation on non-Gemini-3 models', () => {
   assert.doesNotThrow(() => validateGeminiToolHistory([
-    { role: 'model', parts: [{ functionCall: { name: 'foo', args: {} }, thoughtSignature: 'sig-2' }] },
+    { role: 'model', parts: [{ functionCall: { name: 'foo', args: {}, id: 'call-1' }, thoughtSignature: 'sig-2' }] },
   ], 'gemini-3.7-flash'));
   assert.doesNotThrow(() => validateGeminiToolHistory([
     { role: 'model', parts: [{ functionCall: { name: 'foo', args: {} } }] },
