@@ -5,7 +5,7 @@ export type GoogleAuthorizationDecision =
   | { allowed: false; errorCode: 'GOOGLE_AUTH_REQUIRED' | 'GOOGLE_ACTION_CONFIRMATION_REQUIRED'; message: string; requiresUserAuth?: boolean };
 
 const DESTRUCTIVE_TOOLS = new Set(['disconnect_google_workspace']);
-const WRITE_PREFIXES = ['create_', 'update_', 'write_', 'append_', 'batch_update_', 'send_', 'post_', 'sync_to_', 'sync_from_'];
+const WRITE_PREFIXES = ['create_', 'update_', 'write_', 'append_', 'batch_update_', 'send_', 'post_', 'sync_to_', 'sync_from_', 'complete_', 'move_', 'reorder_'];
 const DESTRUCTIVE_PREFIXES = ['delete_'];
 
 export function classifyGoogleAction(toolName: string): GoogleActionClass {
