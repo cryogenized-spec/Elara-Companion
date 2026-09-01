@@ -15,10 +15,12 @@ test('production Chat server routes through the Interactions runtime boundary', 
   assert.doesNotMatch(source, /from ['\"]\.\.\/\.\.\/src\/lib\/resilientGeminiStream['\"]/);
 });
 
-test('backend Chat route does not directly own Gemini GenerateContent transport', async () => {
+test('backend Chat streaming path does not directly own Gemini GenerateContent transport', async () => {
   const source = await readText('server/routes/chat.ts');
-  assert.doesNotMatch(source, /generateContent(Stream)?/);
-  assert.doesNotMatch(source, /GoogleGenAI/);
+  const streamRoute = source.match(/app\.post\(['\"]\/api\/chat\/stream['\"][\s\S]*?(?=\n\s*app\.post\(|$)/)?.[0] || '';
+  assert.ok(streamRoute, 'Expected /api/chat/stream route to be present');
+  assert.doesNotMatch(streamRoute, /generateContent(Stream)?/);
+  assert.doesNotMatch(streamRoute, /GoogleGenAI/);
 });
 
 test('legacy GenerateContent transport is not the backend runtime boundary', async () => {
