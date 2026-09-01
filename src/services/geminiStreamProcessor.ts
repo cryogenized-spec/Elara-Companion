@@ -75,6 +75,11 @@ function createChunkBatcher(onChunk: (chunk: StreamChunk) => void) {
   return { enqueue, flush };
 }
 
+function hasThoughtSignature(part: any): boolean {
+  return typeof part?.thoughtSignature === 'string' && part.thoughtSignature.length > 0
+    || typeof part?.thought_signature === 'string' && part.thought_signature.length > 0;
+}
+
 export async function processGeminiResponseStream(
   options: ProcessGeminiStreamOptions,
 ): Promise<ProcessGeminiStreamResult> {
@@ -96,22 +101,26 @@ export async function processGeminiResponseStream(
       const safetyRatings = candidate?.safetyRatings;
       const parts = candidate?.content?.parts;
 
-      if (parts && parts.length > 0) {
+      if (Array.isArray(parts) && parts.length > 0) {
         for (const part of parts) {
+          // Preserve the exact provider part, including empty-text signature
+          // parts and any non-text/non-function-call content. Gemini 3 requires
+          // signature-bearing parts to be replayed exactly as received.
+          modelParts.push(part);
+
           if ((part as any).thought && part.text) {
             emittedOutput = true;
             batcher.enqueue({ thoughtText: part.text, thoughtType: 'summary' });
-            modelParts.push(part);
           } else if ((part as any).functionCall) {
             emittedOutput = true;
             batcher.flush();
-            const functionCall = (part as any).functionCall;
-            functionCalls.push(functionCall);
-            modelParts.push(part);
+            functionCalls.push((part as any).functionCall);
           } else if (part.text) {
             emittedOutput = true;
             batcher.enqueue({ text: part.text, finishReason, safetyRatings });
-            modelParts.push(part);
+          } else if (hasThoughtSignature(part)) {
+            // Signature-only chunks are deliberately silent in the UI, but the
+            // original part remains in modelParts for exact history replay.
           }
         }
       } else if (chunk.text) {
