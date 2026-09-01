@@ -24,6 +24,8 @@ export interface ResilientStreamTurnOptions {
   policy?: ModelResiliencePolicy;
   reliabilitySettings?: ReliabilitySettings;
   stateStore?: ModelResilienceStateStore;
+  conversationId?: string;
+  requestId?: string;
 }
 
 export async function runResilientGeminiStreamTurn(
@@ -54,7 +56,11 @@ export async function runResilientGeminiStreamTurn(
         emittedOutput: streamResult.emittedOutput,
       };
     },
-    policy,
+    {
+      ...policy,
+      conversationId: options.conversationId ?? policy?.conversationId,
+      requestId: options.requestId ?? policy?.requestId,
+    },
     options.stateStore,
   );
 
