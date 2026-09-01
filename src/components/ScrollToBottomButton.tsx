@@ -14,7 +14,7 @@ function isAtBottom(element: HTMLDivElement): boolean {
 
 export const ScrollToBottomButton: React.FC<ScrollToBottomButtonProps> = ({ scrollContainerRef }) => {
   const [visible, setVisible] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const element = scrollContainerRef.current;
