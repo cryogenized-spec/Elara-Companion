@@ -46,6 +46,25 @@ function safeTextPart(part: any): any | null {
   return null;
 }
 
+function serializeFunctionResult(value: unknown): Array<{ type: 'text'; text: string }> {
+  let text: string;
+  try {
+    text = JSON.stringify(value ?? {}) ?? '{}';
+  } catch {
+    text = JSON.stringify({ error: 'Function result could not be serialized.' });
+  }
+  return [{ type: 'text', text }];
+}
+
+function buildFunctionResultStep(name: unknown, id: unknown, result: unknown): any {
+  return {
+    type: 'function_result',
+    name: String(name || ''),
+    call_id: String(id || ''),
+    result: serializeFunctionResult(result),
+  };
+}
+
 function buildInitialInteractionHistory(contents: any[]): any[] {
   const history: any[] = [];
   for (const content of contents || []) {
@@ -55,7 +74,7 @@ function buildInitialInteractionHistory(contents: any[]): any[] {
       if (functionResponses.length > 0) {
         for (const part of functionResponses) {
           const fr = part.functionResponse;
-          history.push({ type: 'function_result', name: String(fr.name || ''), call_id: String(fr.id || ''), result: fr.response ?? {} });
+          history.push(buildFunctionResultStep(fr.name, fr.id, fr.response));
         }
         continue;
       }
@@ -90,7 +109,7 @@ function appendNewFunctionResults(contents: any[], state: InteractionState): any
     for (const part of Array.isArray(content?.parts) ? content.parts : []) {
       if (!part?.functionResponse) continue;
       const fr = part.functionResponse;
-      results.push({ type: 'function_result', name: String(fr.name || ''), call_id: String(fr.id || ''), result: fr.response ?? {} });
+      results.push(buildFunctionResultStep(fr.name, fr.id, fr.response));
     }
   }
   state.processedContentCount = contents.length;
