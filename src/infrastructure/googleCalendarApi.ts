@@ -9,6 +9,14 @@ export interface CalendarEventItem {
   status?: string;
 }
 
+export interface CalendarEventPatch {
+  summary?: string;
+  description?: string | null;
+  start?: { dateTime?: string; date?: string; timeZone?: string };
+  end?: { dateTime?: string; date?: string; timeZone?: string };
+  location?: string | null;
+}
+
 function authHeaders(token: string) {
   return { Authorization: `Bearer ${token}` };
 }
@@ -27,6 +35,11 @@ async function parseGoogleApiError(res: Response, prefix: string): Promise<strin
   }
 }
 
+function positiveLimit(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(1, Math.min(Math.floor(value), 2500));
+}
+
 function normalizeEvent(event: any): CalendarEventItem {
   return {
     id: event.id,
@@ -40,17 +53,50 @@ function normalizeEvent(event: any): CalendarEventItem {
   };
 }
 
+async function listCalendarEvents(
+  token: string,
+  initialParams: URLSearchParams,
+  maxResults: number,
+): Promise<CalendarEventItem[]> {
+  const target = positiveLimit(maxResults, 50);
+  const items: CalendarEventItem[] = [];
+  let pageToken = '';
+
+  do {
+    const params = new URLSearchParams(initialParams);
+    params.set('maxResults', String(Math.min(target, 2500)));
+    if (pageToken) params.set('pageToken', pageToken);
+
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`,
+      { headers: authHeaders(token) },
+    );
+    if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to fetch calendar events'));
+
+    const data: any = await res.json();
+    const page = (data.items || []).map(normalizeEvent);
+    for (const event of page) {
+      if (items.length >= target) break;
+      items.push(event);
+    }
+
+    if (items.length >= target) break;
+    pageToken = data.nextPageToken || '';
+  } while (pageToken);
+
+  return items;
+}
+
 export async function getUpcomingCalendarEventsWithToken(
   token: string,
   maxResults = 10,
 ): Promise<{ items: CalendarEventItem[] }> {
-  const res = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(new Date().toISOString())}&maxResults=${maxResults}&singleEvents=true&orderBy=startTime`,
-    { headers: authHeaders(token) },
-  );
-  if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to fetch calendar events'));
-  const data: any = await res.json();
-  return { items: (data.items || []).map(normalizeEvent) };
+  const params = new URLSearchParams({
+    timeMin: new Date().toISOString(),
+    singleEvents: 'true',
+    orderBy: 'startTime',
+  });
+  return { items: await listCalendarEvents(token, params, maxResults) };
 }
 
 export async function getCalendarEventsRangeWithToken(
@@ -67,13 +113,31 @@ export async function getCalendarEventsRangeWithToken(
   if (end <= start) throw new Error('endTime must be after startTime.');
   const timeMin = start.toISOString();
   const timeMax = end.toISOString();
+  const params = new URLSearchParams({
+    timeMin,
+    timeMax,
+    singleEvents: 'true',
+    orderBy: 'startTime',
+  });
+  return {
+    startTime: timeMin,
+    endTime: timeMax,
+    items: await listCalendarEvents(token, params, maxResults),
+  };
+}
+
+export async function getCalendarEventWithToken(
+  token: string,
+  eventId: string,
+): Promise<CalendarEventItem> {
+  const id = String(eventId || '').trim();
+  if (!id) throw new Error('eventId is required.');
   const res = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&maxResults=${maxResults}&singleEvents=true&orderBy=startTime`,
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(id)}`,
     { headers: authHeaders(token) },
   );
-  if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to fetch calendar events'));
-  const data: any = await res.json();
-  return { startTime: timeMin, endTime: timeMax, items: (data.items || []).map(normalizeEvent) };
+  if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to fetch calendar event'));
+  return normalizeEvent(await res.json());
 }
 
 export async function createCalendarEventWithToken(
@@ -98,6 +162,43 @@ export async function createCalendarEventWithToken(
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to create calendar event'));
-  const data: any = await res.json();
-  return normalizeEvent(data);
+  return normalizeEvent(await res.json());
+}
+
+export async function patchCalendarEventWithToken(
+  token: string,
+  eventId: string,
+  patch: CalendarEventPatch,
+): Promise<CalendarEventItem> {
+  const id = String(eventId || '').trim();
+  if (!id) throw new Error('eventId is required.');
+  if (!patch || typeof patch !== 'object') throw new Error('patch is required.');
+
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(token),
+      body: JSON.stringify(patch),
+    },
+  );
+  if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to update calendar event'));
+  return normalizeEvent(await res.json());
+}
+
+export async function deleteCalendarEventWithToken(
+  token: string,
+  eventId: string,
+): Promise<void> {
+  const id = String(eventId || '').trim();
+  if (!id) throw new Error('eventId is required.');
+
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(id)}`,
+    {
+      method: 'DELETE',
+      headers: authHeaders(token),
+    },
+  );
+  if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to delete calendar event'));
 }
