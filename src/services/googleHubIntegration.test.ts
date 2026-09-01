@@ -7,8 +7,8 @@ import { createGoogleActivityRecorder } from './googleActivityService';
 test('Google Hub integration matrix stays registry-driven and token-free', () => {
   const registry = createGoogleHubCapabilityRegistry();
   const descriptors = registry.list();
-  assert.equal(descriptors.length, 9);
-  assert.deepEqual(descriptors.map(item => item.id), ['gmail', 'calendar', 'drive', 'docs', 'sheets', 'tasks', 'keep', 'contacts', 'chat']);
+  assert.equal(descriptors.length, 8);
+  assert.deepEqual(descriptors.map(item => item.id), ['gmail', 'calendar', 'drive', 'docs', 'sheets', 'tasks', 'contacts', 'chat']);
 
   const authorization = createGoogleHubAuthorizationState(
     descriptors,
