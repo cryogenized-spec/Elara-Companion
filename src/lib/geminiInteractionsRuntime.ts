@@ -180,8 +180,8 @@ export async function runResilientGeminiInteractionTurn(options: InteractionRunt
       const streamedCalls = new Map<string, { id: string; name: string; args: string }>();
       let completedSteps: any[] = [];
 
-      const stream = await options.ai.interactions.create(request);
-      for await (const event of stream as AsyncIterable<any>) {
+      const stream = await options.ai.interactions.create(request) as any;
+      for await (const event of stream) {
         if (options.signal?.aborted) throw options.signal.reason || new DOMException('Aborted', 'AbortError');
         switch (event?.event_type) {
           case 'interaction.created': interactionId = String(event?.interaction?.id || ''); if (interactionId) state.interactionIds.add(interactionId); break;
