@@ -66,7 +66,7 @@ export function buildConversationContents(
     const parts: any[] = [];
     if (image) {
       const parsed = parseRuntimeDataUrl(image);
-      if (parsed) parts.push({ inlineData: { mimeType: parsed.mimeType, data: parsed.data });
+      if (parsed) parts.push({ inlineData: { mimeType: parsed.mimeType, data: parsed.data } });
     }
     parts.push({ text: message || 'Please look at this image and share your thoughts as Elara.' });
     contents.push({ role: 'user', parts });
