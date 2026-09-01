@@ -106,7 +106,7 @@ export async function runResilientGeminiStreamTurn(
       const tokenMeasurement = await countGeminiRequestTokens(options.ai, model, providerContents, config);
 
       emitResilienceDiagnostic({
-        kind: 'REQUEST',
+        kind: 'METRIC',
         provider: 'google',
         conversationId: options.conversationId,
         requestId,
