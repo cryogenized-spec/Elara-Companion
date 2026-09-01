@@ -9,11 +9,10 @@ export {
   type ChatHistoryMessage,
 } from '../../src/runtime/chatRuntimePrimitives';
 
-export { runResilientGeminiStreamTurn } from '../../src/lib/resilientGeminiStream';
+export { runResilientGeminiInteractionTurn } from '../../src/lib/geminiInteractionsRuntime';
 
 /**
  * Server-side Chat runtime boundary. Routes depend on this adapter rather than
- * importing legacy runtime modules directly. The remaining resilience helper
- * is intentionally isolated here until its implementation is physically moved
- * into the runtime layer.
+ * importing provider-specific implementations directly. Interactions is the
+ * sole model/tool transport exposed to the production Chat route.
  */
