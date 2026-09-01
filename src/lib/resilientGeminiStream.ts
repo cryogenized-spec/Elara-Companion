@@ -21,6 +21,19 @@ function getStableRequestId(contents: any[]): string | undefined {
   return requestId;
 }
 
+/**
+ * Gemini GenerateContent uses role=user for functionResponse content. Some
+ * legacy Elara callers still construct role=tool blocks, so normalize them at
+ * the single provider boundary before countTokens and generation. This keeps
+ * both paths identical and prevents a stale caller from bypassing the fix.
+ */
+export function normalizeGeminiToolHistory(contents: any[]): any[] {
+  for (const content of contents) {
+    if (content?.role === 'tool') content.role = 'user';
+  }
+  return contents;
+}
+
 export interface ResilientStreamTurnResult {
   model: string;
   usedFallback: boolean;
@@ -55,11 +68,11 @@ export async function runResilientGeminiStreamTurn(
     options.preferredModel,
     async (model) => {
       const config = options.buildConfig(model);
-      const tokenMeasurement = await countGeminiRequestTokens(options.ai, model, options.contents, config);
+      const providerContents = normalizeGeminiToolHistory(options.contents);
+      const tokenMeasurement = await countGeminiRequestTokens(options.ai, model, providerContents, config);
 
       emitResilienceDiagnostic({
         kind: 'REQUEST',
-        outcome: 'success',
         provider: 'google',
         conversationId: options.conversationId,
         requestId,
@@ -74,7 +87,7 @@ export async function runResilientGeminiStreamTurn(
 
       const responseStream = await options.ai.models.generateContentStream({
         model,
-        contents: options.contents,
+        contents: providerContents,
         config,
       });
 
