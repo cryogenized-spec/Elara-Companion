@@ -1,1 +1,3 @@
-Pass 7 removes the retired Chat GenerateContent runtime and all migration-only compatibility stories. Unrelated generation APIs remain outside this purge unless they are part of the retired Chat agent path.
+# Pass 7 — Final scope
+
+Remove the retired Chat GenerateContent transport and migration-only stories. Keep unrelated non-Chat provider calls out of this purge unless they are part of the retired Chat generation path.
