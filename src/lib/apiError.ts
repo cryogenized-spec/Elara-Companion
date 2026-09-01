@@ -57,6 +57,17 @@ function retryAfterMs(error: any): number | undefined {
   return undefined;
 }
 
+function isContextLimitMessage(lower: string): boolean {
+  return (
+    lower.includes('too many tokens')
+    || lower.includes('prompt is too long')
+    || lower.includes('input is too long')
+    || /(?:exceed|exceeded|maximum|max|limit|limited)[^.]*(?:context window|context length|input token|prompt token|token count)/i.test(lower)
+    || /(?:context window|context length|input token|prompt token|token count)[^.]{0,120}(?:exceed|exceeded|maximum|max|limit|too many)/i.test(lower)
+    || lower.includes('maximum number of tokens')
+  );
+}
+
 export function classifyApiError(error: any, modelId?: string): ClassifiedApiError {
   const rawMessage = extractRawMessage(error);
   const lower = rawMessage.toLowerCase();
@@ -192,12 +203,12 @@ export function classifyApiError(error: any, modelId?: string): ClassifiedApiErr
     };
   }
 
-  if (lower.includes('context') || lower.includes('token count') || lower.includes('maximum number of tokens') || lower.includes('too many tokens')) {
+  if (isContextLimitMessage(lower)) {
     return {
       code: 'CONTEXT_LIMIT_400',
       httpStatus: status || 400,
       modelId,
-      message: `The request is too large for ${modelId ? `[${modelId}]` : 'the selected model'}. Reduce conversation history or document context, or choose a model with a larger supported context.`,
+      message: `The request is too large for ${modelId ? `[${modelId}]` : 'the selected model'}. Measured token usage is available in diagnostics; reduce context only when the provider reports that the model's actual limit has been exceeded.`,
       retryable: false,
       rawMessage,
     };
