@@ -14,41 +14,18 @@ test('reuses one diagnostic request ID across repeated turns sharing the same co
     if (event.kind === 'REQUEST' && event.requestId) requestIds.push(event.requestId);
   });
 
-  async function* responseStream() {
-    yield {
-      candidates: [{
-        content: { parts: [{ text: 'ok' }] },
-        finishReason: 'STOP',
-      }],
-    };
+  async function* interactionStream() {
+    yield { event_type: 'interaction.created', interaction: { id: 'int-1' } };
+    yield { event_type: 'interaction.completed', interaction: { id: 'int-1', status: 'completed', steps: [{ type: 'model_output', content: [{ type: 'text', text: 'ok' }] }], usage: { total_input_tokens: 1, total_output_tokens: 1, total_tokens: 2 } } };
   }
 
-  const ai = {
-    models: {
-      generateContentStream: async () => responseStream(),
-    },
-  } as any;
-
+  const ai = { interactions: { create: async () => interactionStream(), delete: async () => undefined } } as any;
   const contents: any[] = [{ role: 'user', parts: [{ text: 'hello' }] }];
 
   try {
-    await runResilientGeminiStreamTurn({
-      ai,
-      preferredModel: 'gemini-3.6-flash',
-      contents,
-      buildConfig: () => ({}),
-      onChunk: () => undefined,
-    });
-
+    await runResilientGeminiStreamTurn({ ai, preferredModel: 'gemini-3.6-flash', contents, buildConfig: () => ({}), onChunk: () => undefined });
     contents.push({ role: 'model', parts: [{ text: 'ok' }] });
-
-    await runResilientGeminiStreamTurn({
-      ai,
-      preferredModel: 'gemini-3.6-flash',
-      contents,
-      buildConfig: () => ({}),
-      onChunk: () => undefined,
-    });
+    await runResilientGeminiStreamTurn({ ai, preferredModel: 'gemini-3.6-flash', contents, buildConfig: () => ({}), onChunk: () => undefined });
   } finally {
     unsubscribe();
   }
