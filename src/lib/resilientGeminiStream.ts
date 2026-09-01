@@ -22,12 +22,6 @@ function getStableRequestId(contents: any[]): string | undefined {
   return requestId;
 }
 
-/**
- * Gemini GenerateContent uses role=user for functionResponse content. Some
- * legacy Elara callers still construct role=tool blocks, so normalize them at
- * the single provider boundary before countTokens and generation. This keeps
- * both paths identical and prevents a stale caller from bypassing the fix.
- */
 export function normalizeGeminiToolHistory(contents: any[]): any[] {
   for (const content of contents) {
     if (content?.role === 'tool') content.role = 'user';
@@ -40,11 +34,6 @@ function hasThoughtSignature(part: any): boolean {
     || typeof part?.thought_signature === 'string' && part.thought_signature.length > 0;
 }
 
-/**
- * Gemini 3 requires the original thought signature to be replayed with a
- * function call. Never synthesize a signature-less replacement object when a
- * caller failed to retain the provider's original model part.
- */
 export function validateGeminiToolHistory(contents: any[], model: string): void {
   if (!isGemini3Model(model)) return;
 
@@ -65,6 +54,44 @@ export function validateGeminiToolHistory(contents: any[], model: string): void 
       }
     }
   }
+}
+
+function summarizeGeminiRequest(contents: any[], config: any) {
+  let totalPartCount = 0;
+  let modelPartCount = 0;
+  let functionCallCount = 0;
+  let functionResponseCount = 0;
+  let functionCallIdsPresent = 0;
+  let thoughtSignaturesPresent = 0;
+
+  for (const content of contents || []) {
+    const parts = Array.isArray(content?.parts) ? content.parts : [];
+    totalPartCount += parts.length;
+    if (content?.role === 'model') modelPartCount += parts.length;
+    for (const part of parts) {
+      if (part?.functionCall) {
+        functionCallCount++;
+        if (typeof part.functionCall.id === 'string' && part.functionCall.id.length > 0) functionCallIdsPresent++;
+        if (hasThoughtSignature(part)) thoughtSignaturesPresent++;
+      }
+      if (part?.functionResponse) functionResponseCount++;
+    }
+  }
+
+  const toolDeclarationCount = Array.isArray(config?.tools)
+    ? config.tools.reduce((sum: number, tool: any) => sum + (Array.isArray(tool?.functionDeclarations) ? tool.functionDeclarations.length : 0), 0)
+    : 0;
+
+  return {
+    contentsCount: Array.isArray(contents) ? contents.length : 0,
+    totalPartCount,
+    modelPartCount,
+    functionCallCount,
+    functionResponseCount,
+    functionCallIdsPresent,
+    thoughtSignaturesPresent,
+    toolDeclarationCount,
+  };
 }
 
 export interface ResilientStreamTurnResult {
@@ -102,7 +129,43 @@ export async function runResilientGeminiStreamTurn(
     async (model) => {
       const config = options.buildConfig(model);
       const providerContents = normalizeGeminiToolHistory(options.contents);
-      validateGeminiToolHistory(providerContents, model);
+      const requestShape = summarizeGeminiRequest(providerContents, config);
+      const phase = requestShape.functionResponseCount > 0 ? 'continuation' : 'generation';
+
+      emitResilienceDiagnostic({
+        kind: 'METRIC',
+        provider: 'google',
+        conversationId: options.conversationId,
+        requestId,
+        preferredModel: options.preferredModel,
+        actualModel: model,
+        phase,
+        ...requestShape,
+        message: 'Gemini request shape captured before provider validation and generation.',
+      });
+
+      try {
+        validateGeminiToolHistory(providerContents, model);
+      } catch (error: any) {
+        const classified = error?.apiError;
+        emitResilienceDiagnostic({
+          kind: 'ERROR',
+          outcome: 'failure',
+          provider: 'google',
+          conversationId: options.conversationId,
+          requestId,
+          preferredModel: options.preferredModel,
+          actualModel: model,
+          phase,
+          ...requestShape,
+          errorCode: classified?.code || 'INVALID_REQUEST_400',
+          httpStatus: classified?.httpStatus || 400,
+          providerErrorMessage: classified?.rawMessage || error?.message,
+          message: classified?.message || 'Gemini 3 tool history validation failed before generation.',
+        });
+        throw error;
+      }
+
       const tokenMeasurement = await countGeminiRequestTokens(options.ai, model, providerContents, config);
 
       emitResilienceDiagnostic({
@@ -112,6 +175,8 @@ export async function runResilientGeminiStreamTurn(
         requestId,
         preferredModel: options.preferredModel,
         actualModel: model,
+        phase,
+        ...requestShape,
         countedInputTokens: tokenMeasurement.countedInputTokens,
         tokenCountError: tokenMeasurement.countError,
         message: tokenMeasurement.countedInputTokens !== undefined
@@ -119,47 +184,71 @@ export async function runResilientGeminiStreamTurn(
           : 'Gemini input token count was unavailable before generation.',
       });
 
-      const responseStream = await options.ai.models.generateContentStream({
-        model,
-        contents: providerContents,
-        config,
-      });
+      try {
+        const responseStream = await options.ai.models.generateContentStream({
+          model,
+          contents: providerContents,
+          config,
+        });
 
-      const streamResult = await processGeminiResponseStream({
-        model,
-        responseStream,
-        onChunk: options.onChunk,
-        signal: options.signal,
-      });
+        const streamResult = await processGeminiResponseStream({
+          model,
+          responseStream,
+          onChunk: options.onChunk,
+          signal: options.signal,
+        });
 
-      if (streamResult.usage) {
+        if (streamResult.usage) {
+          emitResilienceDiagnostic({
+            kind: 'SUCCESS',
+            outcome: 'success',
+            provider: 'google',
+            conversationId: options.conversationId,
+            requestId,
+            preferredModel: options.preferredModel,
+            actualModel: model,
+            phase: 'stream',
+            ...requestShape,
+            observedInputTokens: streamResult.usage.inputTokenCount,
+            observedOutputTokens: streamResult.usage.outputTokenCount,
+            observedThoughtsTokens: streamResult.usage.thoughtsTokenCount,
+            observedToolUsePromptTokens: streamResult.usage.toolUsePromptTokenCount,
+            observedCachedContentTokens: streamResult.usage.cachedContentTokenCount,
+            observedTotalTokens: streamResult.usage.totalTokenCount,
+            message: 'Gemini returned usage metadata for the streamed request.',
+          });
+        }
+
+        return {
+          value: {
+            functionCalls: streamResult.functionCalls,
+            modelParts: streamResult.modelParts,
+            tokenMeasurement,
+            usage: streamResult.usage,
+          },
+          emittedOutput: streamResult.emittedOutput,
+        };
+      } catch (error: any) {
+        const classified = error?.apiError;
         emitResilienceDiagnostic({
-          kind: 'SUCCESS',
-          outcome: 'success',
+          kind: 'ERROR',
+          outcome: 'failure',
           provider: 'google',
           conversationId: options.conversationId,
           requestId,
           preferredModel: options.preferredModel,
           actualModel: model,
-          observedInputTokens: streamResult.usage.inputTokenCount,
-          observedOutputTokens: streamResult.usage.outputTokenCount,
-          observedThoughtsTokens: streamResult.usage.thoughtsTokenCount,
-          observedToolUsePromptTokens: streamResult.usage.toolUsePromptTokenCount,
-          observedCachedContentTokens: streamResult.usage.cachedContentTokenCount,
-          observedTotalTokens: streamResult.usage.totalTokenCount,
-          message: 'Gemini returned usage metadata for the streamed request.',
+          phase: 'stream',
+          ...requestShape,
+          countedInputTokens: tokenMeasurement.countedInputTokens,
+          tokenCountError: tokenMeasurement.countError,
+          errorCode: classified?.code,
+          httpStatus: classified?.httpStatus,
+          providerErrorMessage: classified?.rawMessage || error?.message,
+          message: classified?.message || String(error?.message || error || 'Gemini generation or stream processing failed'),
         });
+        throw error;
       }
-
-      return {
-        value: {
-          functionCalls: streamResult.functionCalls,
-          modelParts: streamResult.modelParts,
-          tokenMeasurement,
-          usage: streamResult.usage,
-        },
-        emittedOutput: streamResult.emittedOutput,
-      };
     },
     {
       ...policy,
