@@ -3,7 +3,9 @@ import { ModelResiliencePolicy, ModelResilienceStateStore, runWithModelResilienc
 import type { ReliabilitySettings } from './reliabilitySettings';
 import { buildModelResiliencePolicy } from './modelResilience';
 import { emitResilienceStatus } from './resilienceStatus';
+import { emitResilienceDiagnostic } from './resilienceDiagnostics';
 import { processGeminiResponseStream } from '../services/geminiStreamProcessor';
+import { countGeminiRequestTokens, type GeminiRequestUsageTelemetry } from './geminiRequestTelemetry';
 
 const requestIdsByContents = new WeakMap<object, string>();
 
@@ -26,6 +28,8 @@ export interface ResilientStreamTurnResult {
   attempts: number;
   functionCalls: any[];
   modelParts: any[];
+  tokenMeasurement?: ReturnType<typeof countGeminiRequestTokens> extends Promise<infer T> ? T : never;
+  usage?: GeminiRequestUsageTelemetry;
 }
 
 export interface ResilientStreamTurnOptions {
@@ -46,13 +50,32 @@ export async function runResilientGeminiStreamTurn(
   options: ResilientStreamTurnOptions,
 ): Promise<ResilientStreamTurnResult> {
   const policy = options.policy || (options.reliabilitySettings ? buildModelResiliencePolicy(options.reliabilitySettings) : undefined);
+  const requestId = options.requestId ?? policy?.requestId ?? getStableRequestId(options.contents);
   const result = await runWithModelResilience(
     options.preferredModel,
     async (model) => {
+      const config = options.buildConfig(model);
+      const tokenMeasurement = await countGeminiRequestTokens(options.ai, model, options.contents, config);
+
+      emitResilienceDiagnostic({
+        kind: 'REQUEST',
+        outcome: 'success',
+        provider: 'google',
+        conversationId: options.conversationId,
+        requestId,
+        preferredModel: options.preferredModel,
+        actualModel: model,
+        countedInputTokens: tokenMeasurement.countedInputTokens,
+        tokenCountError: tokenMeasurement.countError,
+        message: tokenMeasurement.countedInputTokens !== undefined
+          ? `Counted Gemini input before generation: ${tokenMeasurement.countedInputTokens} tokens.`
+          : 'Gemini input token count was unavailable before generation.',
+      });
+
       const responseStream = await options.ai.models.generateContentStream({
         model,
         contents: options.contents,
-        config: options.buildConfig(model),
+        config,
       });
 
       const streamResult = await processGeminiResponseStream({
@@ -62,10 +85,31 @@ export async function runResilientGeminiStreamTurn(
         signal: options.signal,
       });
 
+      if (streamResult.usage) {
+        emitResilienceDiagnostic({
+          kind: 'SUCCESS',
+          outcome: 'success',
+          provider: 'google',
+          conversationId: options.conversationId,
+          requestId,
+          preferredModel: options.preferredModel,
+          actualModel: model,
+          observedInputTokens: streamResult.usage.inputTokenCount,
+          observedOutputTokens: streamResult.usage.outputTokenCount,
+          observedThoughtsTokens: streamResult.usage.thoughtsTokenCount,
+          observedToolUsePromptTokens: streamResult.usage.toolUsePromptTokenCount,
+          observedCachedContentTokens: streamResult.usage.cachedContentTokenCount,
+          observedTotalTokens: streamResult.usage.totalTokenCount,
+          message: 'Gemini returned usage metadata for the streamed request.',
+        });
+      }
+
       return {
         value: {
           functionCalls: streamResult.functionCalls,
           modelParts: streamResult.modelParts,
+          tokenMeasurement,
+          usage: streamResult.usage,
         },
         emittedOutput: streamResult.emittedOutput,
       };
@@ -73,7 +117,7 @@ export async function runResilientGeminiStreamTurn(
     {
       ...policy,
       conversationId: options.conversationId ?? policy?.conversationId,
-      requestId: options.requestId ?? policy?.requestId ?? getStableRequestId(options.contents),
+      requestId,
     },
     options.stateStore,
   );
@@ -99,8 +143,10 @@ export async function runResilientGeminiStreamTurn(
     model: result.context.model,
     usedFallback: result.context.usedFallback,
     probingPreferred: result.context.probingPreferred,
-    attempts: result.context.attempts,
+    attempts: result.attempts,
     functionCalls: result.value.functionCalls,
     modelParts: result.value.modelParts,
+    tokenMeasurement: result.value.tokenMeasurement,
+    usage: result.value.usage,
   };
 }
