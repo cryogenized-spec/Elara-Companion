@@ -1,6 +1,7 @@
 import { executeAnyWorkspaceTool, workspaceToolDeclarations } from '../lib/workspaceTools';
 import { executeGoogleAgentTool, googleAgentToolDeclarations, GOOGLE_AGENT_TOOL_NAMES } from '../lib/googleAgentTools';
 import { executeGoogleOperationalTool, googleOperationalToolDeclarations, GOOGLE_OPERATIONAL_TOOL_NAMES } from '../lib/googleAgentOperationalTools';
+import { executeGoogleTaskAgentTool, googleTaskAgentToolDeclarations, GOOGLE_TASK_AGENT_TOOL_NAMES } from '../lib/googleTaskAgentTools';
 import { executeGoogleAuthLifecycleTool, GOOGLE_AUTH_LIFECYCLE_TOOL_DECLARATION } from '../lib/googleAuthLifecycleTool';
 import { authorizeGoogleAction, classifyGoogleAction } from '../lib/googleAuthorizationPolicy';
 import { markGoogleAuthInvalid } from '../lib/googleAuthLifecycle';
@@ -23,6 +24,11 @@ const GOOGLE_BACKED_WORKSPACE_WRITE_TOOLS = new Set([
   'sync_to_google_doc',
   'sync_from_google_doc',
 ]);
+
+const LEGACY_TASK_OPERATIONAL_TOOL_NAMES = new Set(['list_google_tasks']);
+const googleOperationalAgentToolNames = new Set(
+  [...GOOGLE_OPERATIONAL_TOOL_NAMES].filter((name) => !LEGACY_TASK_OPERATIONAL_TOOL_NAMES.has(name)),
+);
 
 function withExternalActionConfirmation(tool: AgentToolDeclaration): AgentToolDeclaration {
   const actionClass = classifyGoogleAction(tool.name);
@@ -98,11 +104,24 @@ const googleAgentPlugin: ToolPlugin = {
   },
 };
 
+const googleTaskPlugin: ToolPlugin = {
+  id: 'google-tasks-agent',
+  version: 1,
+  declarations: googleTaskAgentToolDeclarations.map((tool) => withGoogleExposureMetadata(withExternalActionConfirmation(tool))),
+  owns: (toolName) => GOOGLE_TASK_AGENT_TOOL_NAMES.has(toolName),
+  authorize: googleAuthorization,
+  execute: async ({ toolName, args, googleToken, workspace }) => {
+    const result = await executeGoogleTaskAgentTool(toolName, args, googleToken);
+    if (result?.errorCode === 'GOOGLE_AUTH_REQUIRED') markGoogleAuthInvalid();
+    return { result, updatedWorkspace: workspace };
+  },
+};
+
 const googleOperationalPlugin: ToolPlugin = {
   id: 'google-operational',
   version: 1,
-  declarations: googleOperationalToolDeclarations.map((tool) => withGoogleExposureMetadata(withExternalActionConfirmation(tool))),
-  owns: (toolName) => GOOGLE_OPERATIONAL_TOOL_NAMES.has(toolName),
+  declarations: googleOperationalToolDeclarations.filter((tool) => googleOperationalAgentToolNames.has(tool.name)).map((tool) => withGoogleExposureMetadata(withExternalActionConfirmation(tool))),
+  owns: (toolName) => googleOperationalAgentToolNames.has(toolName),
   authorize: googleAuthorization,
   execute: async ({ toolName, args, googleToken, workspace }) => {
     const result = await executeGoogleOperationalTool(toolName, args, googleToken);
@@ -127,6 +146,7 @@ export const builtinToolPlugins: readonly ToolPlugin[] = [
   artifactToolPlugin,
   workspacePlugin,
   googleAgentPlugin,
+  googleTaskPlugin,
   googleOperationalPlugin,
   googleAuthLifecyclePlugin,
 ];
