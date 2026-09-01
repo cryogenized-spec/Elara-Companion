@@ -3,6 +3,7 @@ import type { ClassifiedApiError } from './apiError';
 export type ResilienceDiagnosticLevel = 'off' | 'basic' | 'detailed' | 'debug';
 export type ResilienceDiagnosticEventKind = 'REQUEST' | 'METRIC' | 'RETRY' | 'ERROR' | 'POLICY' | 'ROUTE' | 'COOLDOWN' | 'RECOVERY' | 'SUCCESS';
 export type ResilienceDiagnosticOutcome = 'success' | 'failure' | 'retry' | 'fallback' | 'cooldown' | 'recovery';
+export type GeminiDiagnosticPhase = 'countTokens' | 'generation' | 'stream' | 'toolExecution' | 'continuation' | 'unknown';
 
 export interface ResilienceDiagnosticEvent {
   id: number;
@@ -30,6 +31,15 @@ export interface ResilienceDiagnosticEvent {
   cooldownApplied?: boolean;
   cooldownUntil?: number;
   latencyMs?: number;
+  phase?: GeminiDiagnosticPhase;
+  contentsCount?: number;
+  totalPartCount?: number;
+  modelPartCount?: number;
+  functionCallCount?: number;
+  functionResponseCount?: number;
+  functionCallIdsPresent?: number;
+  thoughtSignaturesPresent?: number;
+  toolDeclarationCount?: number;
   countedInputTokens?: number;
   observedInputTokens?: number;
   observedOutputTokens?: number;
@@ -38,6 +48,7 @@ export interface ResilienceDiagnosticEvent {
   observedCachedContentTokens?: number;
   observedTotalTokens?: number;
   tokenCountError?: string;
+  providerErrorMessage?: string;
   message?: string;
 }
 
@@ -130,7 +141,7 @@ function safeMessage(message?: string): string | undefined {
     .replace(/authorization\s*:\s*bearer\s+[^\s,;]+/gi, 'authorization: [redacted]')
     .replace(/(api[_ -]?key|access[_ -]?token|oauth[_ -]?token|cookie|secret|password)\s*[=:]\s*[^\s,;]+/gi, '$1=[redacted]')
     .replace(/"(?:apiKey|accessToken|refreshToken|clientSecret|authorization|cookie|password)"\s*:\s*"[^"]*"/gi, '"$1":"[redacted]"')
-    .slice(0, 240);
+    .slice(0, 500);
 }
 
 export function setResilienceDiagnosticStorage(nextStorage: ResilienceDiagnosticStorage): void {
@@ -176,6 +187,15 @@ export function sanitizeResilienceDiagnosticEvent(
     cooldownApplied: event.cooldownApplied,
     cooldownUntil: event.cooldownUntil,
     latencyMs: event.latencyMs,
+    phase: event.phase,
+    contentsCount: event.contentsCount,
+    totalPartCount: event.totalPartCount,
+    modelPartCount: event.modelPartCount,
+    functionCallCount: event.functionCallCount,
+    functionResponseCount: event.functionResponseCount,
+    functionCallIdsPresent: event.functionCallIdsPresent,
+    thoughtSignaturesPresent: event.thoughtSignaturesPresent,
+    toolDeclarationCount: event.toolDeclarationCount,
     countedInputTokens: event.countedInputTokens,
     observedInputTokens: event.observedInputTokens,
     observedOutputTokens: event.observedOutputTokens,
@@ -184,6 +204,7 @@ export function sanitizeResilienceDiagnosticEvent(
     observedCachedContentTokens: event.observedCachedContentTokens,
     observedTotalTokens: event.observedTotalTokens,
     tokenCountError: safeMessage(event.tokenCountError),
+    providerErrorMessage: safeMessage(event.providerErrorMessage),
     message: safeMessage(event.message),
   };
   return sanitized;
