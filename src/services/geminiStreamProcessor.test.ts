@@ -37,8 +37,41 @@ test('flushes before function calls and returns the calls', async () => {
   });
 
   assert.deepEqual(result.functionCalls, [{ name: 'foo', args: { x: 1 } }]);
+  assert.equal(result.modelParts.length, 2);
   assert.equal(emitted.length, 1);
   assert.equal(emitted[0]?.text, 'before');
+});
+
+test('preserves empty-text thought-signature parts for faithful replay', async () => {
+  const signaturePart = { text: '', thoughtSignature: 'sig-empty' };
+  const result = await processGeminiResponseStream({
+    model: 'gemini-3.7-flash',
+    responseStream: streamOf({ candidates: [{ content: { parts: [signaturePart] } }] }),
+    onChunk: () => undefined,
+  });
+
+  assert.equal(result.modelParts.length, 1);
+  assert.strictEqual(result.modelParts[0], signaturePart);
+});
+
+test('preserves all streamed model parts in exact order', async () => {
+  const parts = [
+    { thought: true, text: 'think' },
+    { functionCall: { name: 'foo', args: {}, id: 'call-1' }, thoughtSignature: 'sig-1' },
+    { inlineData: { mimeType: 'image/png', data: 'AAAA' }, thoughtSignature: 'sig-2' },
+  ];
+  const result = await processGeminiResponseStream({
+    model: 'gemini-3.7-flash',
+    responseStream: streamOf(
+      { candidates: [{ content: { parts: [parts[0]] } }] },
+      { candidates: [{ content: { parts: [parts[1]] } }] },
+      { candidates: [{ content: { parts: [parts[2]] } }] },
+    ),
+    onChunk: () => undefined,
+  });
+
+  assert.deepEqual(result.modelParts, parts);
+  assert.deepEqual(result.functionCalls, [parts[1].functionCall]);
 });
 
 test('stops on abort without turning the result into an error', async () => {

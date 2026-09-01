@@ -30,27 +30,88 @@ export function normalizeGeminiToolHistory(contents: any[]): any[] {
 }
 
 function hasThoughtSignature(part: any): boolean {
-  return typeof part?.thoughtSignature === 'string' && part.thoughtSignature.length > 0
-    || typeof part?.thought_signature === 'string' && part.thought_signature.length > 0;
+  return (typeof part?.thoughtSignature === 'string' && part.thoughtSignature.length > 0)
+    || (typeof part?.thought_signature === 'string' && part.thought_signature.length > 0);
 }
 
+function geminiValidationError(model: string, message: string): Error {
+  const error = new Error(message);
+  (error as any).apiError = {
+    code: 'INVALID_REQUEST_400',
+    httpStatus: 400,
+    modelId: model,
+    message,
+    retryable: false,
+    rawMessage: message,
+  };
+  return error;
+}
+
+/**
+ * Validate only the current Gemini 3 tool-calling turn. Parallel function
+ * calls share one model response and only the first function-call part carries
+ * the thought signature. Every call must still carry its provider call ID.
+ * Older history is intentionally not revalidated retroactively.
+ */
 export function validateGeminiToolHistory(contents: any[], model: string): void {
   if (!isGemini3Model(model)) return;
 
-  for (const content of contents) {
-    if (content?.role !== 'model' || !Array.isArray(content.parts)) continue;
-    for (const part of content.parts) {
-      if (part?.functionCall && !hasThoughtSignature(part)) {
-        const error = new Error('Gemini 3 function-call history is missing the original thought signature; refusing to submit a reconstructed tool turn.');
-        (error as any).apiError = {
-          code: 'INVALID_REQUEST_400',
-          httpStatus: 400,
-          modelId: model,
-          message: 'Gemini 3 rejected the tool turn because the original function-call thought signature was not preserved.',
-          retryable: false,
-          rawMessage: error.message,
-        };
-        throw error;
+  let currentModelTurnIndex = -1;
+  for (let index = contents.length - 1; index >= 0; index -= 1) {
+    const content = contents[index];
+    if (content?.role === 'model' && Array.isArray(content.parts) && content.parts.some((part: any) => part?.functionCall)) {
+      currentModelTurnIndex = index;
+      break;
+    }
+  }
+  if (currentModelTurnIndex < 0) return;
+
+  const currentModelContent = contents[currentModelTurnIndex];
+  const currentCalls = currentModelContent.parts.filter((part: any) => part?.functionCall);
+  if (currentCalls.length === 0) return;
+
+  const firstCall = currentCalls[0];
+  if (!hasThoughtSignature(firstCall)) {
+    throw geminiValidationError(model, 'Gemini 3 rejected the tool turn because the original first function-call thought signature was not preserved.');
+  }
+
+  const callIds = new Set<string>();
+  for (const part of currentCalls) {
+    const id = part?.functionCall?.id;
+    if (typeof id !== 'string' || id.length === 0) {
+      throw geminiValidationError(model, 'Gemini 3 function-call history is missing a function-call id.');
+    }
+    callIds.add(id);
+  }
+
+  for (let index = currentModelTurnIndex + 1; index < contents.length; index += 1) {
+    const content = contents[index];
+    if (content?.role !== 'user' || !Array.isArray(content.parts)) break;
+    const responses = content.parts.filter((part: any) => part?.functionResponse);
+    if (responses.length === 0) continue;
+    for (const part of responses) {
+      const responseId = part?.functionResponse?.id;
+      if (typeof responseId !== 'string' || !callIds.has(responseId)) {
+        throw geminiValidationError(model, 'Gemini 3 function-response id does not match a function-call id from the preceding model turn.');
+      }
+    }
+  }
+
+  // If a later model turn in this same tool exchange requests another tool,
+  // validate it as its own sequential turn. This requires a signature on its
+  // first function-call part.
+  for (let index = currentModelTurnIndex + 1; index < contents.length; index += 1) {
+    const content = contents[index];
+    if (content?.role === 'model' && Array.isArray(content.parts) && content.parts.some((part: any) => part?.functionCall)) {
+      const calls = content.parts.filter((part: any) => part?.functionCall);
+      if (!hasThoughtSignature(calls[0])) {
+        throw geminiValidationError(model, 'Gemini 3 rejected a sequential function-call turn because its original thought signature was not preserved.');
+      }
+      for (const part of calls) {
+        const id = part?.functionCall?.id;
+        if (typeof id !== 'string' || id.length === 0) {
+          throw geminiValidationError(model, 'Gemini 3 sequential function-call history is missing a function-call id.');
+        }
       }
     }
   }
