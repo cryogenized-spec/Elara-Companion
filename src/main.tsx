@@ -1,6 +1,7 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import './runtime/legacyChatGlobals';
+import './services/googleCalendarBrowserAuth';
 import App from './App.tsx';
 import { AppearanceQuickPanel } from './components/AppearanceQuickPanel';
 import { ModelTuningQuickPanel } from './components/ModelTuningQuickPanel';
