@@ -1,11 +1,15 @@
 import {
   CalendarEventItem,
+  CalendarEventPatch,
   createCalendarEventWithToken,
+  deleteCalendarEventWithToken,
+  getCalendarEventWithToken,
   getCalendarEventsRangeWithToken,
   getUpcomingCalendarEventsWithToken,
+  patchCalendarEventWithToken,
 } from '../infrastructure/googleCalendarApi';
 
-export type { CalendarEventItem } from '../infrastructure/googleCalendarApi';
+export type { CalendarEventItem, CalendarEventPatch } from '../infrastructure/googleCalendarApi';
 
 export type CalendarTokenCapability = 'calendar.read' | 'calendar.write';
 export type CalendarTokenProvider = (capability: CalendarTokenCapability) => Promise<string>;
@@ -47,6 +51,13 @@ export async function getCalendarEventsRange(
   );
 }
 
+export async function getCalendarEvent(
+  eventId: string,
+  passedToken?: string,
+): Promise<CalendarEventItem> {
+  return getCalendarEventWithToken(await getCalendarToken('calendar.read', passedToken), eventId);
+}
+
 export async function createCalendarEvent(
   summary: string,
   startTime: string,
@@ -63,4 +74,23 @@ export async function createCalendarEvent(
     description,
     location,
   );
+}
+
+export async function patchCalendarEvent(
+  eventId: string,
+  patch: CalendarEventPatch,
+  passedToken?: string,
+): Promise<CalendarEventItem> {
+  return patchCalendarEventWithToken(
+    await getCalendarToken('calendar.write', passedToken),
+    eventId,
+    patch,
+  );
+}
+
+export async function deleteCalendarEvent(
+  eventId: string,
+  passedToken?: string,
+): Promise<void> {
+  return deleteCalendarEventWithToken(await getCalendarToken('calendar.write', passedToken), eventId);
 }
