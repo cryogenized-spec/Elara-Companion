@@ -131,7 +131,7 @@ async function executeElaraAutomation(prompt, workspace, googleToken) {
       });
     }
 
-    contents.push({ role: 'tool', parts: toolResponseParts });
+    contents.push({ role: 'user', parts: toolResponseParts });
   }
 
   return {
