@@ -1,7 +1,7 @@
 import type { ClassifiedApiError } from './apiError';
 
 export type ResilienceDiagnosticLevel = 'off' | 'basic' | 'detailed' | 'debug';
-export type ResilienceDiagnosticEventKind = 'REQUEST' | 'RETRY' | 'ERROR' | 'POLICY' | 'ROUTE' | 'COOLDOWN' | 'RECOVERY' | 'SUCCESS';
+export type ResilienceDiagnosticEventKind = 'REQUEST' | 'METRIC' | 'RETRY' | 'ERROR' | 'POLICY' | 'ROUTE' | 'COOLDOWN' | 'RECOVERY' | 'SUCCESS';
 export type ResilienceDiagnosticOutcome = 'success' | 'failure' | 'retry' | 'fallback' | 'cooldown' | 'recovery';
 
 export interface ResilienceDiagnosticEvent {
