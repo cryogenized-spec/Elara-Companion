@@ -96,22 +96,23 @@ export async function processGeminiResponseStream(
       const safetyRatings = candidate?.safetyRatings;
       const parts = candidate?.content?.parts;
 
-      if (parts && parts.length > 0) {
+      if (Array.isArray(parts) && parts.length > 0) {
         for (const part of parts) {
+          // Preserve every provider part exactly as received. Gemini 3 can
+          // place a required thought signature on an empty-text part, and
+          // non-text/non-function-call parts can also be required for replay.
+          modelParts.push(part);
+
           if ((part as any).thought && part.text) {
             emittedOutput = true;
             batcher.enqueue({ thoughtText: part.text, thoughtType: 'summary' });
-            modelParts.push(part);
           } else if ((part as any).functionCall) {
             emittedOutput = true;
             batcher.flush();
-            const functionCall = (part as any).functionCall;
-            functionCalls.push(functionCall);
-            modelParts.push(part);
+            functionCalls.push((part as any).functionCall);
           } else if (part.text) {
             emittedOutput = true;
             batcher.enqueue({ text: part.text, finishReason, safetyRatings });
-            modelParts.push(part);
           }
         }
       } else if (chunk.text) {
