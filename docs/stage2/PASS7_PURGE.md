@@ -1,5 +1,5 @@
 # Pass 7 — Legacy Generation Purge
 
-Pass 7 is the final cleanup pass for the Chat runtime migration.
+This is the final migration cleanup for the Chat agent runtime.
 
-The Interactions runtime is now the sole production Chat model/tool transport. This pass removes the temporary StreamTurn compatibility alias, deletes the obsolete GenerateContent Chat runtime, removes the retired request-generation stories/tests, and strengthens the architecture lock so those paths cannot be reintroduced silently.
+Gemini Interactions is the sole production Chat model/tool transport. The retired GenerateContent stream implementation and its obsolete request-identity test story are removed. The remaining legacy filename is a forwarding compatibility surface only and contains no provider transport logic.
