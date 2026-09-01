@@ -1,3 +1,5 @@
 # Pass 7 — Legacy Generation Purge
 
-Final cleanup after the Gemini Interactions migration. The production Chat runtime must expose Interactions only; obsolete GenerateContent Chat runtime code, compatibility aliases, and retired generation test stories are removed rather than retained as dormant code.
+The final migration pass makes Gemini Interactions the sole production Chat transport and removes the retired GenerateContent Chat runtime implementation and its obsolete request-identity test story.
+
+A temporary forwarding filename remains only for callers that have not yet been physically moved; it contains no provider transport logic.
