@@ -6,6 +6,7 @@ import { emitResilienceStatus } from './resilienceStatus';
 import { emitResilienceDiagnostic } from './resilienceDiagnostics';
 import { processGeminiResponseStream } from '../services/geminiStreamProcessor';
 import { countGeminiRequestTokens, type GeminiRequestTokenMeasurement, type GeminiRequestUsageTelemetry } from './geminiRequestTelemetry';
+import { isGemini3Model } from './modelRegistry';
 
 const requestIdsByContents = new WeakMap<object, string>();
 
@@ -32,6 +33,38 @@ export function normalizeGeminiToolHistory(contents: any[]): any[] {
     if (content?.role === 'tool') content.role = 'user';
   }
   return contents;
+}
+
+function hasThoughtSignature(part: any): boolean {
+  return typeof part?.thoughtSignature === 'string' && part.thoughtSignature.length > 0
+    || typeof part?.thought_signature === 'string' && part.thought_signature.length > 0;
+}
+
+/**
+ * Gemini 3 requires the original thought signature to be replayed with a
+ * function call. Never synthesize a signature-less replacement object when a
+ * caller failed to retain the provider's original model part.
+ */
+export function validateGeminiToolHistory(contents: any[], model: string): void {
+  if (!isGemini3Model(model)) return;
+
+  for (const content of contents) {
+    if (content?.role !== 'model' || !Array.isArray(content.parts)) continue;
+    for (const part of content.parts) {
+      if (part?.functionCall && !hasThoughtSignature(part)) {
+        const error = new Error('Gemini 3 function-call history is missing the original thought signature; refusing to submit a reconstructed tool turn.');
+        (error as any).apiError = {
+          code: 'INVALID_REQUEST_400',
+          httpStatus: 400,
+          modelId: model,
+          message: 'Gemini 3 rejected the tool turn because the original function-call thought signature was not preserved.',
+          retryable: false,
+          rawMessage: error.message,
+        };
+        throw error;
+      }
+    }
+  }
 }
 
 export interface ResilientStreamTurnResult {
@@ -69,6 +102,7 @@ export async function runResilientGeminiStreamTurn(
     async (model) => {
       const config = options.buildConfig(model);
       const providerContents = normalizeGeminiToolHistory(options.contents);
+      validateGeminiToolHistory(providerContents, model);
       const tokenMeasurement = await countGeminiRequestTokens(options.ai, model, providerContents, config);
 
       emitResilienceDiagnostic({
@@ -156,7 +190,7 @@ export async function runResilientGeminiStreamTurn(
     model: result.context.model,
     usedFallback: result.context.usedFallback,
     probingPreferred: result.context.probingPreferred,
-    attempts: result.context.attempts,
+    attempts: result.attempts,
     functionCalls: result.value.functionCalls,
     modelParts: result.value.modelParts,
     tokenMeasurement: result.value.tokenMeasurement,
