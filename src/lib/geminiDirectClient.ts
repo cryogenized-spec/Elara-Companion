@@ -4,7 +4,7 @@ import { classifyApiError } from './apiError';
 import { getDbSettings } from './db';
 import { loadUserProfileNotes, loadActiveScratchpad, buildSystemPayload } from './contextManager';
 import { DEFAULT_PERSONA_PROTOCOL, DEFAULT_INTIMACY_MODULE, DEFAULT_RUNTIME_RULES } from '../constants/defaultPrompt';
-import { runResilientGeminiStreamTurn } from './resilientGeminiStream';
+import { runResilientGeminiInteractionTurn } from './geminiInteractionsRuntime';
 import {
   buildConversationContents,
   buildRuntimeConfig,
@@ -62,7 +62,7 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
           if (signal?.aborted) break;
           iteration++;
 
-          const turn = await runResilientGeminiStreamTurn({
+          const turn = await runResilientGeminiInteractionTurn({
             ai,
             preferredModel,
             buildConfig: (runtimeModel) => buildRuntimeConfig({
@@ -84,11 +84,7 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
           });
 
           const functionCalls = enableTools ? turn.functionCalls : [];
-          const modelParts = turn.modelParts;
-
           if (functionCalls.length === 0 || signal?.aborted) break;
-          contents.push({ role: 'model', parts: modelParts.length > 0 ? modelParts : functionCalls.map((fc) => ({ functionCall: fc })) });
-          const toolResponseParts: any[] = [];
 
           for (const fc of functionCalls) {
             const op = await executeAgentToolCall(currentWorkspace, fc.name, fc.args, googleToken);
@@ -104,9 +100,9 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
               workspace: currentWorkspace,
               artifactIds: touchedArtifactIds,
             });
-            toolResponseParts.push({ functionResponse: { name: fc.name, response: op.result, id: fc.id } });
+            contents.push({ role: 'model', parts: [{ functionCall: { name: fc.name, args: fc.args, id: fc.id } }] });
+            contents.push({ role: 'tool', parts: [{ functionResponse: { name: fc.name, response: op.result, id: fc.id } }] });
           }
-          contents.push({ role: 'tool', parts: toolResponseParts });
         }
 
         onChunk({ workspace: currentWorkspace, artifactIds: touchedArtifactIds });
@@ -169,17 +165,17 @@ export async function runDirectTitleGeneration(apiKey: string, firstUserMsg: str
   try {
     const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
     const ctx = await buildInCharacterUtilityContext();
-    const prompt = `Using the system/persona above, act as Elara and create the short title she would show in a polished ChatGPT-style conversation list.\n\nRules:\n- Exactly 2 to 5 words.\n- Capture the distinctive subject, problem, idea, event, or mood.\n- Be specific and slightly creative rather than mechanically summarizing the first sentence.\n- Prefer memorable noun phrases such as \"Roof Repair Strategy\", \"Midnight Memory Architecture\", or \"Android Keyboard Fix\".\n- Never use generic labels such as Conversation, Chat, Discussion, New Conversation, General Help, or Miscellaneous.\n- No quotes, emojis, numbering, prefixes, trailing punctuation, or explanation.\n\nConversation opening:\nUser: ${firstUserMsg.slice(0, 500)}\nElara: ${firstAssistantMsg.slice(0, 700)}\n\nReturn only the title.`;
-    const res = await ai.models.generateContent({
+    const prompt = `Using the system/persona above, act as Elara and create the short title she would show in a polished ChatGPT-style conversation list.\n\nRules:\n- Exactly 2 to 5 words.\n- Capture the distinctive subject, problem, idea, event, or mood.\n- Be specific and slightly creative rather than mechanically summarizing the first sentence.\n- Prefer memorable noun phrases.\n- Never use generic labels such as Conversation, Chat, Discussion, New Conversation, General Help, or Miscellaneous.\n- No quotes, emojis, numbering, prefixes, trailing punctuation, or explanation.\n\nConversation opening:\nUser: ${firstUserMsg.slice(0, 500)}\nElara: ${firstAssistantMsg.slice(0, 700)}\n\nReturn only the title.`;
+    const res = await ai.interactions.create({
       model: normalizeModel(ctx.model),
-      contents: [{ role: 'user', parts: [{ text: `${ctx.systemPrompt}\n\n${prompt}` }] }],
-      config: {
-        maxOutputTokens: 30,
-        temperature: 0.75,
-        safetySettings: ELARA_SAFETY_SETTINGS,
-      },
-    });
-    return normalizeConversationTitle(res.text?.trim() || '', firstUserMsg);
+      input: [{ type: 'user_input', content: [{ type: 'text', text: `${ctx.systemPrompt}\n\n${prompt}` }] }],
+      stream: false,
+      store: false,
+      generation_config: { maxOutputTokens: 30, temperature: 0.75 },
+      safety_settings: ELARA_SAFETY_SETTINGS,
+    } as any);
+    const text = (res as any)?.outputs?.flatMap((output: any) => output?.content || []).find((part: any) => typeof part?.text === 'string')?.text || '';
+    return normalizeConversationTitle(text.trim(), firstUserMsg);
   } catch (e) {
     console.warn('Direct title generation error:', e);
     return normalizeConversationTitle('', firstUserMsg);
@@ -194,16 +190,11 @@ export async function runDirectMemoryExtraction(apiKey: string, userMessage: str
     const formattedExisting = currentMemories?.length
       ? currentMemories.slice(0, 40).map((m) => `[ID: ${m.id}] [Resolution: ${m.resolution || 'contextual'}] [Kind: ${m.kind || 'context'}] [Lifecycle: ${m.lifecycle || 'persistent'}] [Category: ${m.category}] [State: ${m.state || 'active'}] [Confidence: ${m.confidence}] [Importance: ${m.importance}] \"${m.content}\"`).join('\n')
       : 'No existing memories recorded yet.';
-    const prompt = `Using the system/persona above, maintain Elara's memory as a quiet stream of small, useful observations.\n\nThe first job here is NOT to decide what becomes permanent memory. Instead, notice potentially useful details revealed by the interaction and capture them as atomic observations that can be evaluated, reinforced, contradicted, promoted, or allowed to become stale later.\n\nGood observations include small facts about the user's circumstances, current activities, projects, plans, preferences, routines, interests, relationships, purchases, places, worries, decisions, or one-off events that could become relevant in a later conversation. A detail does not need to be important today to be worth recording. The point is to preserve useful dots and let later memory passes decide which dots form durable patterns.\n\nWrite notes as natural, human-readable observations in Elara's own voice, not database labels and not robotic telemetry. Prefer a concise complete sentence that records the meaning rather than merely repeating a quote.\n\nDo not invent facts. Do not infer sensitive traits from weak evidence. Do not diagnose, speculate about, or permanently assign identities, beliefs, politics, religion, health, sexuality, ethnicity, or other sensitive traits merely from implication. Do not record credentials, secrets, passwords, API keys, financial credentials, or other authentication material. Do not turn a fleeting emotional statement into a stable personality trait.\n\nCREATE an observation when a detail is reasonably grounded in what the user actually said or did. UPDATE an existing note when the interaction clearly provides a newer or more precise version of the same observation. Prefer NO_ACTION when there is genuinely nothing useful to preserve.\n\nFor this pass, newly created observations MUST use resolution=observation and state=active. Keep their lifecycle contextual or working as appropriate; do not promote observations directly to core or persistent memory. Use low or normal importance unless the user explicitly indicates that the detail matters more. Confidence should reflect the evidence actually present in the interaction.\n\nReturn ONLY valid JSON using this schema: {\"actions\":[{\"type\":\"CREATE\"|\"UPDATE\"|\"NO_ACTION\",\"targetId\":\"existing ID when updating\",\"memory\":{\"content\":\"natural-language observation in Elara's voice\",\"kind\":\"fact|preference|observation|episode|project|relationship|plan|working|context\",\"lifecycle\":\"working|contextual|persistent|core\",\"source\":\"user|elara|conversation|artifact|system|imported\",\"category\":\"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other\",\"importance\":\"core|important|normal|low\",\"confidence\":\"certain|likely|uncertain\",\"isPrivate\":true,\"tags\":[\"string\"],\"eventDate\":\"optional YYYY-MM-DD\",\"expiresAt\":\"optional ISO timestamp\",\"sourceArtifactId\":\"optional artifact id\",\"relatedMemoryIds\":[\"optional ids\"]},\"reason\":\"brief reason\"}]} .\n\nRECENT INTERACTION:\nUser: \"${userMessage.slice(0, 1400)}\"\nElara: \"${assistantResponse.slice(0, 2200)}\"\n\nCURRENT NOTEBOOK:\n${formattedExisting}\n\nUSER NAME: ${userName || ctx.userName}`;
+    const prompt = `Using the system/persona above, maintain Elara's memory as a quiet stream of small, useful observations.\n\nDo not invent facts. Do not infer sensitive traits from weak evidence. Do not record credentials, secrets, passwords, API keys, or other authentication material.\n\nReturn ONLY valid JSON using this schema: {\"actions\":[{\"type\":\"CREATE\"|\"UPDATE\"|\"NO_ACTION\",\"targetId\":\"existing ID when updating\",\"memory\":{\"content\":\"natural-language observation\",\"kind\":\"fact|preference|observation|episode|project|relationship|plan|working|context\",\"lifecycle\":\"working|contextual|persistent|core\",\"source\":\"user|elara|conversation|artifact|system|imported\",\"category\":\"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other\",\"importance\":\"core|important|normal|low\",\"confidence\":\"certain|likely|uncertain\",\"isPrivate\":true,\"tags\":[\"string\"]},\"reason\":\"brief reason\"}]} .\n\nRECENT INTERACTION:\nUser: \"${userMessage.slice(0, 1400)}\"\nElara: \"${assistantResponse.slice(0, 2200)}\"\n\nCURRENT NOTEBOOK:\n${formattedExisting}\n\nUSER NAME: ${userName || ctx.userName}`;
     const res = await ai.models.generateContent({
       model: normalizeModel(ctx.model),
       contents: [{ role: 'user', parts: [{ text: `${ctx.systemPrompt}\n\n${prompt}` }] }],
-      config: {
-        temperature: 0.15,
-        responseMimeType: 'application/json',
-        maxOutputTokens: 1000,
-        safetySettings: ELARA_SAFETY_SETTINGS,
-      },
+      config: { temperature: 0.15, responseMimeType: 'application/json', maxOutputTokens: 1000, safetySettings: ELARA_SAFETY_SETTINGS },
     });
     const parsed = JSON.parse(res.text || '{}');
     return Array.isArray(parsed?.actions) ? parsed.actions : [];
@@ -219,16 +210,11 @@ export async function runDirectMemoryMaintenance(apiKey: string, memories: Memor
     const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
     const ctx = await buildInCharacterUtilityContext();
     const formattedList = memories.map((m) => `[ID: ${m.id}] [Resolution: ${m.resolution || 'contextual'}] [Kind: ${m.kind || 'context'}] [Lifecycle: ${m.lifecycle || 'persistent'}] [State: ${m.state || 'active'}] [Category: ${m.category}] [Importance: ${m.importance}] [Confidence: ${m.confidence}] \"${m.content}\"`).join('\n');
-    const prompt = `Using the system/persona above, audit Elara's long-term memory notebook without breaking character. Look for genuinely duplicate notes, stale working/context material, contradictions, and notes that should be strengthened or weakened because newer information supersedes them. Preserve core and pinned memories. Do not delete solely because a memory is old; prefer an UPDATE or NO_ACTION when uncertain. Return ONLY valid JSON: {\"summary\":\"Brief 1-2 sentence explanation of maintenance performed\",\"actions\":[{\"type\":\"DELETE\"|\"UPDATE\"|\"MERGE\"|\"NO_ACTION\",\"targetId\":\"ID\",\"mergeTargetIds\":[\"optional ids\"],\"memory\":{\"content\":\"updated natural-language note if updating\",\"kind\":\"fact|preference|observation|episode|project|relationship|plan|working|context\",\"lifecycle\":\"working|contextual|persistent|core\",\"source\":\"user|elara|conversation|artifact|system|imported\",\"importance\":\"core|important|normal|low\",\"confidence\":\"certain|likely|uncertain\",\"category\":\"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other\"},\"reason\":\"why\"}]}`;
+    const prompt = `Using the system/persona above, audit Elara's long-term memory notebook without breaking character. Look for genuinely duplicate notes, stale working/context material, contradictions, and notes that should be strengthened or weakened because newer information supersedes them. Preserve core and pinned memories. Return ONLY valid JSON: {\"summary\":\"Brief 1-2 sentence explanation of maintenance performed\",\"actions\":[{\"type\":\"DELETE\"|\"UPDATE\"|\"MERGE\"|\"NO_ACTION\",\"targetId\":\"ID\",\"mergeTargetIds\":[\"optional ids\"],\"memory\":{\"content\":\"updated natural-language note if updating\",\"kind\":\"fact|preference|observation|episode|project|relationship|plan|working|context\",\"lifecycle\":\"working|contextual|persistent|core\",\"source\":\"user|elara|conversation|artifact|system|imported\",\"importance\":\"core|important|normal|low\",\"confidence\":\"certain|likely|uncertain\",\"category\":\"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other\"},\"reason\":\"why\"}]}`;
     const res = await ai.models.generateContent({
       model: normalizeModel(ctx.model),
       contents: [{ role: 'user', parts: [{ text: `${ctx.systemPrompt}\n\n${prompt}\n\nMEMORIES:\n${formattedList}\n\nUSER: ${userName || ctx.userName}` }] }],
-      config: {
-        temperature: 0.15,
-        responseMimeType: 'application/json',
-        maxOutputTokens: 900,
-        safetySettings: ELARA_SAFETY_SETTINGS,
-      },
+      config: { temperature: 0.15, responseMimeType: 'application/json', maxOutputTokens: 900, safetySettings: ELARA_SAFETY_SETTINGS },
     });
     const parsed = JSON.parse(res.text || '{}');
     return { actions: Array.isArray(parsed?.actions) ? parsed.actions : [], summary: parsed?.summary || 'Memory notebook audit complete.' };
