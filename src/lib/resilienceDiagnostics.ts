@@ -1,7 +1,7 @@
 import type { ClassifiedApiError } from './apiError';
 
 export type ResilienceDiagnosticLevel = 'off' | 'basic' | 'detailed' | 'debug';
-export type ResilienceDiagnosticEventKind = 'REQUEST' | 'RETRY' | 'ERROR' | 'POLICY' | 'ROUTE' | 'COOLDOWN' | 'RECOVERY' | 'SUCCESS';
+export type ResilienceDiagnosticEventKind = 'REQUEST' | 'METRIC' | 'RETRY' | 'ERROR' | 'POLICY' | 'ROUTE' | 'COOLDOWN' | 'RECOVERY' | 'SUCCESS';
 export type ResilienceDiagnosticOutcome = 'success' | 'failure' | 'retry' | 'fallback' | 'cooldown' | 'recovery';
 
 export interface ResilienceDiagnosticEvent {
@@ -30,6 +30,14 @@ export interface ResilienceDiagnosticEvent {
   cooldownApplied?: boolean;
   cooldownUntil?: number;
   latencyMs?: number;
+  countedInputTokens?: number;
+  observedInputTokens?: number;
+  observedOutputTokens?: number;
+  observedThoughtsTokens?: number;
+  observedToolUsePromptTokens?: number;
+  observedCachedContentTokens?: number;
+  observedTotalTokens?: number;
+  tokenCountError?: string;
   message?: string;
 }
 
@@ -168,6 +176,14 @@ export function sanitizeResilienceDiagnosticEvent(
     cooldownApplied: event.cooldownApplied,
     cooldownUntil: event.cooldownUntil,
     latencyMs: event.latencyMs,
+    countedInputTokens: event.countedInputTokens,
+    observedInputTokens: event.observedInputTokens,
+    observedOutputTokens: event.observedOutputTokens,
+    observedThoughtsTokens: event.observedThoughtsTokens,
+    observedToolUsePromptTokens: event.observedToolUsePromptTokens,
+    observedCachedContentTokens: event.observedCachedContentTokens,
+    observedTotalTokens: event.observedTotalTokens,
+    tokenCountError: safeMessage(event.tokenCountError),
     message: safeMessage(event.message),
   };
   return sanitized;

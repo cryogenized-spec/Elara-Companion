@@ -7,7 +7,7 @@ test('Google Hub composition exposes all registered capability ids with complete
   const capabilities = googleHubCapabilityRegistry.list();
   assert.deepEqual(
     capabilities.map((capability) => capability.id),
-    ['gmail', 'calendar', 'drive', 'docs', 'sheets', 'tasks', 'keep', 'contacts', 'chat'],
+    ['gmail', 'calendar', 'drive', 'docs', 'sheets', 'tasks', 'contacts', 'chat'],
   );
 
   const state = createGoogleHubAuthorizationState(

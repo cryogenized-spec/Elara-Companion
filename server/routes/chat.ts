@@ -142,7 +142,10 @@ export function setupChatRoutes(app: express.Express) {
         }
 
         if (functionCalls.length === 0) break;
-        contents.push({ role: 'model', parts: modelParts.length > 0 ? modelParts : functionCalls.map((fc) => ({ functionCall: fc })) });
+        if (modelParts.length === 0) {
+          throw new Error('Gemini returned function calls without their original model response parts; refusing to reconstruct a signature-bearing Gemini 3 tool turn.');
+        }
+        contents.push({ role: 'model', parts: modelParts });
         const toolResponseParts: any[] = [];
 
         for (const fc of functionCalls) {
@@ -157,7 +160,7 @@ export function setupChatRoutes(app: express.Express) {
           res.write(`data: ${JSON.stringify({ toolCall: { name: fc.name, args: fc.args, result: op.result, workspace: currentWorkspace, createdArtifactId: op.createdArtifactId, modifiedArtifactId: op.modifiedArtifactId, externalDocUrl: op.externalDocUrl } })}\n\n`);
           toolResponseParts.push({ functionResponse: { name: fc.name, response: op.result, id: fc.id } });
         }
-        contents.push({ role: 'tool', parts: toolResponseParts });
+        contents.push({ role: 'user', parts: toolResponseParts });
       }
 
       res.write(`data: ${JSON.stringify({ done: true, workspace: currentWorkspace, artifactIds: touchedArtifactIds })}\n\n`);

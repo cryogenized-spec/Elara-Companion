@@ -1,4 +1,5 @@
 import { classifyApiError } from '../lib/apiError';
+import { extractGeminiUsageMetadata, type GeminiRequestUsageTelemetry } from '../lib/geminiRequestTelemetry';
 
 export type StreamChunk = {
   text?: string;
@@ -19,6 +20,7 @@ export type ProcessGeminiStreamResult = {
   emittedOutput: boolean;
   functionCalls: any[];
   modelParts: any[];
+  usage?: GeminiRequestUsageTelemetry;
 };
 
 const STREAM_UI_BATCH_WINDOW_MS = 16;
@@ -79,11 +81,15 @@ export async function processGeminiResponseStream(
   let emittedOutput = false;
   const functionCalls: any[] = [];
   const modelParts: any[] = [];
+  let usage: GeminiRequestUsageTelemetry | undefined;
   const batcher = createChunkBatcher(options.onChunk);
 
   try {
     for await (const chunk of options.responseStream) {
       if (options.signal?.aborted) break;
+
+      const chunkUsage = extractGeminiUsageMetadata(chunk);
+      if (chunkUsage) usage = chunkUsage;
 
       const candidate = chunk.candidates?.[0];
       const finishReason = candidate?.finishReason;
@@ -129,5 +135,5 @@ export async function processGeminiResponseStream(
     batcher.flush();
   }
 
-  return { emittedOutput, functionCalls, modelParts };
+  return { emittedOutput, functionCalls, modelParts, usage };
 }

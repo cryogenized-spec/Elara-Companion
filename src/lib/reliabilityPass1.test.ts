@@ -15,6 +15,21 @@ test('classifies retryable transient Gemini failures', () => {
   assert.equal(classifyApiError(new Error('Failed to fetch'), 'gemini-3.7-flash').code, 'NETWORK_ERROR');
 });
 
+test('distinguishes genuine context-limit messages from unrelated context errors', () => {
+  assert.equal(
+    classifyApiError(error(400, 'Request exceeds the maximum number of input tokens for this model'), 'gemini-3.7-flash').code,
+    'CONTEXT_LIMIT_400',
+  );
+  assert.equal(
+    classifyApiError(error(400, 'Invalid request: context must be provided for this operation'), 'gemini-3.7-flash').code,
+    'INVALID_REQUEST_400',
+  );
+  assert.equal(
+    classifyApiError(error(400, 'Invalid request: function call missing thought signature'), 'gemini-3.7-flash').code,
+    'INVALID_REQUEST_400',
+  );
+});
+
 test('does not retry authentication, permission, invalid-request, quota, or cancellation failures', () => {
   assert.equal(classifyApiError(error(401), 'gemini-3.7-flash').retryable, false);
   assert.equal(classifyApiError(error(403), 'gemini-3.7-flash').retryable, false);

@@ -9,7 +9,7 @@ const capability = (id: string, name = 'Test Capability') => ({
 });
 
 test('Google Hub capability registry registers the current capability set', () => {
-  assert.deepEqual(googleHubCapabilityRegistry.list().map(item => item.id), ['gmail','calendar','drive','docs','sheets','tasks','keep','contacts','chat']);
+  assert.deepEqual(googleHubCapabilityRegistry.list().map(item => item.id), ['gmail','calendar','drive','docs','sheets','tasks','contacts','chat']);
 });
 
 test('Google Hub registry supports lookup and category filtering', () => {
@@ -49,7 +49,7 @@ test('Google Hub module registry rejects duplicate factories and missing modules
   assert.throws(() => modules.render(capability('future.drive'), { descriptor: capability('future.drive'), isGranted: () => false, askElara: () => undefined, recordActivity: () => undefined }), /No Google capability module registered for future.drive/);
 });
 
-test('Google Hub capability descriptors cover the original Pass 12 UX actions', () => {
+test('Google Hub capability descriptors cover the current UX actions', () => {
   const expected: Record<string, string[]> = {
     gmail: ['search','compose','send','open','ask'],
     calendar: ['upcoming','availability','create','open','ask'],
@@ -57,7 +57,6 @@ test('Google Hub capability descriptors cover the original Pass 12 UX actions', 
     docs: ['create','work-with','open','ask'],
     sheets: ['inspect','write','create','open','ask'],
     tasks: ['list','create','complete','open','ask'],
-    keep: ['search','create','delete','pin-to-elara','open','ask'],
     contacts: ['search','open','ask'],
     chat: ['read','send','manage','open','ask'],
   };

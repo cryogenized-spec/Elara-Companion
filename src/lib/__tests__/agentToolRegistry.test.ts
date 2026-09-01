@@ -31,10 +31,10 @@ test('artifact tools are independently owned and carry explicit capability metad
 
 test('external Google write declarations require explicit confirmation', () => {
   const writeTools = agentToolDeclarations.filter((tool: any) =>
-    ['create_calendar_event', 'create_google_sheet', 'write_google_sheet_range', 'delete_google_keep_note', 'create_google_doc', 'update_google_doc', 'sync_to_google_doc', 'sync_from_google_doc', 'disconnect_google_workspace'].includes(tool.name),
+    ['create_calendar_event', 'create_google_sheet', 'write_google_sheet_range', 'create_google_doc', 'update_google_doc', 'sync_to_google_doc', 'sync_from_google_doc', 'disconnect_google_workspace'].includes(tool.name),
   );
 
-  assert.equal(writeTools.length, 9);
+  assert.equal(writeTools.length, 8);
   for (const tool of writeTools) {
     assert.ok(tool.parameters.required.includes('userConfirmed'));
     assert.equal(tool.parameters.properties.userConfirmed.type, 'BOOLEAN');

@@ -3,7 +3,10 @@ import { ModelResiliencePolicy, ModelResilienceStateStore, runWithModelResilienc
 import type { ReliabilitySettings } from './reliabilitySettings';
 import { buildModelResiliencePolicy } from './modelResilience';
 import { emitResilienceStatus } from './resilienceStatus';
+import { emitResilienceDiagnostic } from './resilienceDiagnostics';
 import { processGeminiResponseStream } from '../services/geminiStreamProcessor';
+import { countGeminiRequestTokens, type GeminiRequestTokenMeasurement, type GeminiRequestUsageTelemetry } from './geminiRequestTelemetry';
+import { isGemini3Model } from './modelRegistry';
 
 const requestIdsByContents = new WeakMap<object, string>();
 
@@ -19,6 +22,51 @@ function getStableRequestId(contents: any[]): string | undefined {
   return requestId;
 }
 
+/**
+ * Gemini GenerateContent uses role=user for functionResponse content. Some
+ * legacy Elara callers still construct role=tool blocks, so normalize them at
+ * the single provider boundary before countTokens and generation. This keeps
+ * both paths identical and prevents a stale caller from bypassing the fix.
+ */
+export function normalizeGeminiToolHistory(contents: any[]): any[] {
+  for (const content of contents) {
+    if (content?.role === 'tool') content.role = 'user';
+  }
+  return contents;
+}
+
+function hasThoughtSignature(part: any): boolean {
+  return typeof part?.thoughtSignature === 'string' && part.thoughtSignature.length > 0
+    || typeof part?.thought_signature === 'string' && part.thought_signature.length > 0;
+}
+
+/**
+ * Gemini 3 requires the original thought signature to be replayed with a
+ * function call. Never synthesize a signature-less replacement object when a
+ * caller failed to retain the provider's original model part.
+ */
+export function validateGeminiToolHistory(contents: any[], model: string): void {
+  if (!isGemini3Model(model)) return;
+
+  for (const content of contents) {
+    if (content?.role !== 'model' || !Array.isArray(content.parts)) continue;
+    for (const part of content.parts) {
+      if (part?.functionCall && !hasThoughtSignature(part)) {
+        const error = new Error('Gemini 3 function-call history is missing the original thought signature; refusing to submit a reconstructed tool turn.');
+        (error as any).apiError = {
+          code: 'INVALID_REQUEST_400',
+          httpStatus: 400,
+          modelId: model,
+          message: 'Gemini 3 rejected the tool turn because the original function-call thought signature was not preserved.',
+          retryable: false,
+          rawMessage: error.message,
+        };
+        throw error;
+      }
+    }
+  }
+}
+
 export interface ResilientStreamTurnResult {
   model: string;
   usedFallback: boolean;
@@ -26,6 +74,8 @@ export interface ResilientStreamTurnResult {
   attempts: number;
   functionCalls: any[];
   modelParts: any[];
+  tokenMeasurement?: GeminiRequestTokenMeasurement;
+  usage?: GeminiRequestUsageTelemetry;
 }
 
 export interface ResilientStreamTurnOptions {
@@ -46,13 +96,33 @@ export async function runResilientGeminiStreamTurn(
   options: ResilientStreamTurnOptions,
 ): Promise<ResilientStreamTurnResult> {
   const policy = options.policy || (options.reliabilitySettings ? buildModelResiliencePolicy(options.reliabilitySettings) : undefined);
+  const requestId = options.requestId ?? policy?.requestId ?? getStableRequestId(options.contents);
   const result = await runWithModelResilience(
     options.preferredModel,
     async (model) => {
+      const config = options.buildConfig(model);
+      const providerContents = normalizeGeminiToolHistory(options.contents);
+      validateGeminiToolHistory(providerContents, model);
+      const tokenMeasurement = await countGeminiRequestTokens(options.ai, model, providerContents, config);
+
+      emitResilienceDiagnostic({
+        kind: 'METRIC',
+        provider: 'google',
+        conversationId: options.conversationId,
+        requestId,
+        preferredModel: options.preferredModel,
+        actualModel: model,
+        countedInputTokens: tokenMeasurement.countedInputTokens,
+        tokenCountError: tokenMeasurement.countError,
+        message: tokenMeasurement.countedInputTokens !== undefined
+          ? `Counted Gemini input before generation: ${tokenMeasurement.countedInputTokens} tokens.`
+          : 'Gemini input token count was unavailable before generation.',
+      });
+
       const responseStream = await options.ai.models.generateContentStream({
         model,
-        contents: options.contents,
-        config: options.buildConfig(model),
+        contents: providerContents,
+        config,
       });
 
       const streamResult = await processGeminiResponseStream({
@@ -62,10 +132,31 @@ export async function runResilientGeminiStreamTurn(
         signal: options.signal,
       });
 
+      if (streamResult.usage) {
+        emitResilienceDiagnostic({
+          kind: 'SUCCESS',
+          outcome: 'success',
+          provider: 'google',
+          conversationId: options.conversationId,
+          requestId,
+          preferredModel: options.preferredModel,
+          actualModel: model,
+          observedInputTokens: streamResult.usage.inputTokenCount,
+          observedOutputTokens: streamResult.usage.outputTokenCount,
+          observedThoughtsTokens: streamResult.usage.thoughtsTokenCount,
+          observedToolUsePromptTokens: streamResult.usage.toolUsePromptTokenCount,
+          observedCachedContentTokens: streamResult.usage.cachedContentTokenCount,
+          observedTotalTokens: streamResult.usage.totalTokenCount,
+          message: 'Gemini returned usage metadata for the streamed request.',
+        });
+      }
+
       return {
         value: {
           functionCalls: streamResult.functionCalls,
           modelParts: streamResult.modelParts,
+          tokenMeasurement,
+          usage: streamResult.usage,
         },
         emittedOutput: streamResult.emittedOutput,
       };
@@ -73,7 +164,7 @@ export async function runResilientGeminiStreamTurn(
     {
       ...policy,
       conversationId: options.conversationId ?? policy?.conversationId,
-      requestId: options.requestId ?? policy?.requestId ?? getStableRequestId(options.contents),
+      requestId,
     },
     options.stateStore,
   );
@@ -102,5 +193,7 @@ export async function runResilientGeminiStreamTurn(
     attempts: result.context.attempts,
     functionCalls: result.value.functionCalls,
     modelParts: result.value.modelParts,
+    tokenMeasurement: result.value.tokenMeasurement,
+    usage: result.value.usage,
   };
 }
