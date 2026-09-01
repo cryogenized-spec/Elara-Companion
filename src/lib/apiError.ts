@@ -59,12 +59,13 @@ function retryAfterMs(error: any): number | undefined {
 
 function isContextLimitMessage(lower: string): boolean {
   return (
-    lower.includes('too many tokens')
+    lower.includes('too many input tokens')
     || lower.includes('prompt is too long')
     || lower.includes('input is too long')
-    || /(?:exceed|exceeded|maximum|max|limit|limited)[^.]*(?:context window|context length|input token|prompt token|token count)/i.test(lower)
-    || /(?:context window|context length|input token|prompt token|token count)[^.]{0,120}(?:exceed|exceeded|maximum|max|limit|too many)/i.test(lower)
-    || lower.includes('maximum number of tokens')
+    || /(?:exceed|exceeded|maximum|max|limit|limited)[^.]{0,120}(?:context window|context length)/i.test(lower)
+    || /(?:context window|context length)[^.]{0,120}(?:exceed|exceeded|maximum|max|limit|too many)/i.test(lower)
+    || /(?:input|prompt)[^.]{0,120}(?:token|tokens|token count)[^.]{0,120}(?:exceed|exceeded|maximum|max|limit|too many)/i.test(lower)
+    || /(?:exceed|exceeded|maximum|max|limit|too many)[^.]{0,120}(?:input|prompt)[^.]{0,120}(?:token|tokens|token count)/i.test(lower)
   );
 }
 
