@@ -1,0 +1,1 @@
+Pass 7 final scope: remove retired Chat GenerateContent transport, compatibility aliases, and obsolete Chat generation stories/tests; do not alter unrelated provider-specific generation uses outside the Chat agent runtime.
