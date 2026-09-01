@@ -87,7 +87,19 @@ export async function runDirectGeminiStream(params: DirectStreamParams): Promise
           const modelParts = turn.modelParts;
 
           if (functionCalls.length === 0 || signal?.aborted) break;
-          contents.push({ role: 'model', parts: modelParts.length > 0 ? modelParts : functionCalls.map((fc) => ({ functionCall: fc })) });
+          if (modelParts.length === 0) {
+            const error = new Error('Gemini returned function calls without their original model response parts; refusing to reconstruct a signature-bearing Gemini 3 tool turn.');
+            (error as any).apiError = {
+              code: 'INVALID_REQUEST_400',
+              httpStatus: 400,
+              modelId: preferredModel,
+              message: 'Gemini 3 tool history could not be preserved exactly because the original model response parts were unavailable.',
+              retryable: false,
+              rawMessage: error.message,
+            };
+            throw error;
+          }
+          contents.push({ role: 'model', parts: modelParts });
           const toolResponseParts: any[] = [];
 
           for (const fc of functionCalls) {
@@ -219,21 +231,21 @@ export async function runDirectMemoryMaintenance(apiKey: string, memories: Memor
     const ai = new GoogleGenAI({ apiKey: apiKey.trim() });
     const ctx = await buildInCharacterUtilityContext();
     const formattedList = memories.map((m) => `[ID: ${m.id}] [Resolution: ${m.resolution || 'contextual'}] [Kind: ${m.kind || 'context'}] [Lifecycle: ${m.lifecycle || 'persistent'}] [State: ${m.state || 'active'}] [Category: ${m.category}] [Importance: ${m.importance}] [Confidence: ${m.confidence}] \"${m.content}\"`).join('\n');
-    const prompt = `Using the system/persona above, audit Elara's long-term memory notebook without breaking character. Look for genuinely duplicate notes, stale working/context material, contradictions, and notes that should be strengthened or weakened because newer information supersedes them. Preserve core and pinned memories. Do not delete solely because a memory is old; prefer an UPDATE or NO_ACTION when uncertain. Return ONLY valid JSON: {\"summary\":\"Brief 1-2 sentence explanation of maintenance performed\",\"actions\":[{\"type\":\"DELETE\"|\"UPDATE\"|\"MERGE\"|\"NO_ACTION\",\"targetId\":\"ID\",\"mergeTargetIds\":[\"optional ids\"],\"memory\":{\"content\":\"updated natural-language note if updating\",\"kind\":\"fact|preference|observation|episode|project|relationship|plan|working|context\",\"lifecycle\":\"working|contextual|persistent|core\",\"source\":\"user|elara|conversation|artifact|system|imported\",\"importance\":\"core|important|normal|low\",\"confidence\":\"certain|likely|uncertain\",\"category\":\"User|Elara|Relationship|Home|Work|Projects|Preferences|People|Places|Experiences|Observations|Plans|Other\"},\"reason\":\"why\"}]}`;
+    const prompt = `Using the system/persona above, audit Elara's long-term memory notebook without breaking character. Look for genuinely duplicate notes, stale working/context material, contradictions, and notes that should be strengthened or weakened because newer information supersedes them. Preserve core and pinned memories. Do not delete solely because a memory is old; prefer an UPDATE or NO_ACTION when uncertain. Return ONLY valid JSON: {\"summary\":\"Brief 1-2 sentence explanation of maintenance performed\",\"actions\":[{\"type\":\"DELETE\"|\"UPDATE\"|\"MERGE\"|\"NO_ACTION\",\"targetId\":\"ID\",\"mergeTargetIds\":[\"optional ids\"],\"memory\":{\"content\":\"updated natural-language note if updating\",...}}]}.\n\nMEMORY NOTEBOOK:\n${formattedList}\n\nUSER NAME: ${userName || ctx.userName}`;
     const res = await ai.models.generateContent({
       model: normalizeModel(ctx.model),
-      contents: [{ role: 'user', parts: [{ text: `${ctx.systemPrompt}\n\n${prompt}\n\nMEMORIES:\n${formattedList}\n\nUSER: ${userName || ctx.userName}` }] }],
+      contents: [{ role: 'user', parts: [{ text: `${ctx.systemPrompt}\n\n${prompt}` }] }],
       config: {
-        temperature: 0.15,
+        temperature: 0.1,
         responseMimeType: 'application/json',
-        maxOutputTokens: 900,
+        maxOutputTokens: 2000,
         safetySettings: ELARA_SAFETY_SETTINGS,
       },
     });
     const parsed = JSON.parse(res.text || '{}');
-    return { actions: Array.isArray(parsed?.actions) ? parsed.actions : [], summary: parsed?.summary || 'Memory notebook audit complete.' };
+    return { actions: Array.isArray(parsed?.actions) ? parsed.actions : [], summary: typeof parsed?.summary === 'string' ? parsed.summary : 'Memory maintenance completed.' };
   } catch (e) {
-    console.warn('Direct memory audit error:', e);
-    return { actions: [], summary: 'Audit failed.' };
+    console.warn('Direct memory maintenance error:', e);
+    return { actions: [], summary: 'Memory maintenance could not be completed.' };
   }
 }
