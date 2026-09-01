@@ -190,7 +190,7 @@ export async function runResilientGeminiStreamTurn(
     model: result.context.model,
     usedFallback: result.context.usedFallback,
     probingPreferred: result.context.probingPreferred,
-    attempts: result.attempts,
+    attempts: result.context.attempts,
     functionCalls: result.value.functionCalls,
     modelParts: result.value.modelParts,
     tokenMeasurement: result.value.tokenMeasurement,
