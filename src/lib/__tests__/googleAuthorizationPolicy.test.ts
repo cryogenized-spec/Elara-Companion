@@ -5,6 +5,8 @@ import { authorizeGoogleAction, classifyGoogleAction } from '../googleAuthorizat
 test('Google authorization policy classifies external actions', () => {
   assert.equal(classifyGoogleAction('read_google_keep_note'), 'read');
   assert.equal(classifyGoogleAction('create_calendar_event'), 'write');
+  assert.equal(classifyGoogleAction('complete_google_task'), 'write');
+  assert.equal(classifyGoogleAction('move_google_task'), 'write');
   assert.equal(classifyGoogleAction('delete_google_keep_note'), 'destructive');
 });
 
@@ -19,6 +21,19 @@ test('Google writes require an authenticated token and explicit confirmation', (
 
   const confirmed = authorizeGoogleAction('create_calendar_event', { userConfirmed: true }, 'token');
   assert.equal(confirmed.allowed, true);
+});
+
+test('Task completion and movement require the same explicit confirmation guard', () => {
+  const completion = authorizeGoogleAction('complete_google_task', {}, 'token');
+  assert.equal(completion.allowed, false);
+  assert.equal(completion.errorCode, 'GOOGLE_ACTION_CONFIRMATION_REQUIRED');
+
+  const move = authorizeGoogleAction('move_google_task', {}, 'token');
+  assert.equal(move.allowed, false);
+  assert.equal(move.errorCode, 'GOOGLE_ACTION_CONFIRMATION_REQUIRED');
+
+  assert.equal(authorizeGoogleAction('complete_google_task', { userConfirmed: true }, 'token').allowed, true);
+  assert.equal(authorizeGoogleAction('move_google_task', { userConfirmed: true }, 'token').allowed, true);
 });
 
 test('Read-only Google actions do not require confirmation', () => {
