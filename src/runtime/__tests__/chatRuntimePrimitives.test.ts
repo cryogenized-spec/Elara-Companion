@@ -3,8 +3,6 @@ import test from 'node:test';
 import {
   buildConversationContents,
   MAX_AGENT_ITERATIONS,
-  MAX_HISTORY_CHARACTERS,
-  MAX_HISTORY_MESSAGES,
   parseRuntimeDataUrl,
 } from '../chatRuntimePrimitives';
 import {
@@ -42,7 +40,7 @@ test('canonical runtime constructs the same multimodal content contract for hist
   assert.equal(contents[1].parts[1].text, 'current');
 });
 
-test('canonical runtime bounds long conversation history before provider submission', () => {
+test('canonical runtime preserves long history instead of imposing a character ceiling', () => {
   const large = 'history '.repeat(5000);
   const history = Array.from({ length: 30 }, (_, index) => ({
     role: index % 2 === 0 ? 'user' : 'assistant',
@@ -50,10 +48,9 @@ test('canonical runtime bounds long conversation history before provider submiss
   }));
   const contents = buildConversationContents(history, 'look at my pending tasks');
   const historicalContents = contents.slice(0, -1);
-  const characters = historicalContents.reduce((sum, item) => sum + (item.parts?.[0]?.text?.length || 0), 0);
 
-  assert.ok(historicalContents.length <= MAX_HISTORY_MESSAGES);
-  assert.ok(characters <= MAX_HISTORY_CHARACTERS);
+  assert.equal(historicalContents.length, history.length);
+  assert.ok(historicalContents.reduce((sum, item) => sum + (item.parts?.[0]?.text?.length || 0), 0) > 32000);
   assert.equal(contents.at(-1)?.parts?.[0]?.text, 'look at my pending tasks');
   assert.equal(contents[0].parts?.[0]?.text, 'Original user request');
 });
