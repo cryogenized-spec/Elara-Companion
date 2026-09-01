@@ -130,6 +130,8 @@ export async function runResilientGeminiStreamTurn(
       const config = options.buildConfig(model);
       const providerContents = normalizeGeminiToolHistory(options.contents);
       const requestShape = summarizeGeminiRequest(providerContents, config);
+      const phase = requestShape.functionResponseCount > 0 ? 'continuation' : 'generation';
+
       emitResilienceDiagnostic({
         kind: 'METRIC',
         provider: 'google',
@@ -137,7 +139,7 @@ export async function runResilientGeminiStreamTurn(
         requestId,
         preferredModel: options.preferredModel,
         actualModel: model,
-        phase: requestShape.functionResponseCount > 0 ? 'continuation' : 'generation',
+        phase,
         ...requestShape,
         message: 'Gemini request shape captured before provider validation and generation.',
       });
@@ -154,7 +156,7 @@ export async function runResilientGeminiStreamTurn(
           requestId,
           preferredModel: options.preferredModel,
           actualModel: model,
-          phase: 'continuation',
+          phase,
           ...requestShape,
           errorCode: classified?.code || 'INVALID_REQUEST_400',
           httpStatus: classified?.httpStatus || 400,
@@ -173,7 +175,7 @@ export async function runResilientGeminiStreamTurn(
         requestId,
         preferredModel: options.preferredModel,
         actualModel: model,
-        phase: requestShape.functionResponseCount > 0 ? 'continuation' : 'generation',
+        phase,
         ...requestShape,
         countedInputTokens: tokenMeasurement.countedInputTokens,
         tokenCountError: tokenMeasurement.countError,
@@ -236,14 +238,14 @@ export async function runResilientGeminiStreamTurn(
           requestId,
           preferredModel: options.preferredModel,
           actualModel: model,
-          phase: 'generation',
+          phase: 'stream',
           ...requestShape,
           countedInputTokens: tokenMeasurement.countedInputTokens,
           tokenCountError: tokenMeasurement.countError,
           errorCode: classified?.code,
           httpStatus: classified?.httpStatus,
           providerErrorMessage: classified?.rawMessage || error?.message,
-          message: classified?.message || String(error?.message || error || 'Gemini generation failed'),
+          message: classified?.message || String(error?.message || error || 'Gemini generation or stream processing failed'),
         });
         throw error;
       }
@@ -277,7 +279,7 @@ export async function runResilientGeminiStreamTurn(
     model: result.context.model,
     usedFallback: result.context.usedFallback,
     probingPreferred: result.context.probingPreferred,
-    attempts: result.attempts,
+    attempts: result.context.attempts,
     functionCalls: result.value.functionCalls,
     modelParts: result.value.modelParts,
     tokenMeasurement: result.value.tokenMeasurement,
