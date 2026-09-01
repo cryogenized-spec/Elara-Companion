@@ -20,6 +20,8 @@ test('Google task agent exposes intent-level planning tools and explicit write t
     assert.ok(names.includes(required), `missing tool ${required}`);
     assert.equal(GOOGLE_TASK_AGENT_TOOL_NAMES.has(required), true);
   }
+  assert.equal(GOOGLE_TASK_AGENT_TOOL_NAMES.has('list_google_tasks'), false);
+  assert.equal(names.includes('list_google_tasks'), false);
 });
 
 test('Google task reads fail cleanly when authorization is unavailable', async () => {
