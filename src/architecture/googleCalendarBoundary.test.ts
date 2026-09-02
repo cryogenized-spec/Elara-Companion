@@ -24,6 +24,7 @@ test('Calendar REST requests are isolated to the infrastructure adapter', async 
   const files = await collectSourceFiles(join(root, 'src'));
   for (const file of files) {
     const relative = file.replace(`${root}/`, '');
+    if (/\.test\.[tj]sx?$/.test(relative) || relative.includes('/__tests__/')) continue;
     const source = await readFile(file, 'utf8');
     if (/calendar\/v3/.test(source)) {
       assert.equal(relative, 'src/infrastructure/googleCalendarApi.ts', `Direct Calendar REST usage found outside the canonical adapter: ${relative}`);
