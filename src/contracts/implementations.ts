@@ -74,7 +74,8 @@ export const googleCalendarContract: GoogleCalendarContract = {
   getCalendars: getCalendarList,
   getFreeBusy: getCalendarFreeBusy,
   getEventInstances: getCalendarEventInstances,
-  create: createCalendarEvent,
+  create: (summary, startTime, endTime, description, location, options) =>
+    createCalendarEvent(summary, startTime, endTime, description, location, undefined, options),
 };
 
 export const backgroundRuntimeContract: BackgroundRuntimeContract = {
@@ -84,6 +85,7 @@ export const backgroundRuntimeContract: BackgroundRuntimeContract = {
   persistJob: backgroundRuntimeApplicationService.persistJob,
   removeJob: backgroundRuntimeApplicationService.removeJob,
   createChatJob: backgroundRuntimeApplicationService.createChatJob,
+  getJob: backgroundRuntimeApplicationService.getJob,
   getJob: backgroundRuntimeApplicationService.getJob,
   waitForJob: backgroundRuntimeApplicationService.waitForJob,
 };
