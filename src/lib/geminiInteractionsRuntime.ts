@@ -126,8 +126,9 @@ function toInteractionRequest(model: string, config: any, input: any, previousIn
   if (previousInteractionId) request.previous_interaction_id = previousInteractionId;
   if (typeof config?.systemInstruction === 'string' && config.systemInstruction) request.system_instruction = config.systemInstruction;
 
-  // Interactions API uses its own generation_config schema. Do not pass the
-  // GenerateContent camelCase thinkingConfig/sampling fields through verbatim.
+  // Interactions has its own generation_config schema. Custom safety_settings
+  // are not supported on the Interactions API, so GenerateContent safety policy
+  // is deliberately not serialized into this stateful request.
   const generationConfig: any = {};
   if (typeof config?.maxOutputTokens === 'number') generationConfig.max_output_tokens = config.maxOutputTokens;
   if (typeof config?.temperature === 'number') generationConfig.temperature = config.temperature;
@@ -138,9 +139,6 @@ function toInteractionRequest(model: string, config: any, input: any, previousIn
     if (typeof config.thinkingConfig.thinkingBudget === 'number') generationConfig.thinking_budget = config.thinkingConfig.thinkingBudget;
   }
   if (Object.keys(generationConfig).length > 0) request.generation_config = generationConfig;
-
-  const safetySettings = normalizeInteractionSafetySettings(config?.safetySettings);
-  if (safetySettings?.length) request.safety_settings = safetySettings;
 
   const tools = toInteractionTools(config);
   if (tools.length > 0) request.tools = tools;
@@ -238,7 +236,7 @@ export async function runResilientGeminiInteractionTurn(options: InteractionRunt
       state.previousInteractionId = functionCalls.length > 0 ? interactionId : undefined;
       if (functionCalls.length === 0) await cleanupInteractions(options.ai, state);
 
-      emitResilienceDiagnostic({ kind: 'SUCCESS', outcome: 'success', provider: 'google', conversationId: options.conversationId, requestId, preferredModel: options.preferredModel, actualModel: model, phase: functionCalls.length > 0 ? 'continuation' : 'stream', functionCallCount: functionCalls.length, functionCallIdsPresent: functionCalls.length, observedInputTokens: usage?.inputTokenCount, observedOutputTokens: usage?.outputTokenCount, observedThoughtsTokens: usage?.thoughtsTokenCount, observedToolUsePromptTokens: usage?.toolUsePromptTokenCount, observedCachedContentTokens: usage?.cachedContentTokenCount, observedTotalTokens: usage?.totalTokenCount, message: `Gemini Interactions turn completed with status ${status}.` });
+      emitResilienceDiagnostic({ kind: 'SUCCESS', outcome: 'success', provider: 'google', conversationId: options.conversationId, requestId, preferredModel: options.preferredModel, actualModel: model, phase: functionCalls.length > 0 ? 'continuation' : 'stream', functionCallCount: functionCalls.length, functionCallIdsPresent: functionCalls.length, observedInputTokens: usage?.inputTokenCount, observedOutputTokens: usage?.outputTokenCount, observedThoughtsTokens: usage?.thoughtsTokenCount, observedToolUsePromptTokens: usage?.toolUsePromptTokenCount, observedCachedContentTokenCount: usage?.cachedContentTokenCount, observedTotalTokens: usage?.totalTokenCount, message: `Gemini Interactions turn completed with status ${status}.` });
 
       return { value: { functionCalls, modelParts: functionCalls.map((call) => ({ functionCall: { name: call.name, args: call.args, id: call.id } })), interactionId, usage }, emittedOutput: true };
     }, { ...policy, conversationId: options.conversationId ?? policy?.conversationId, requestId }, options.stateStore);
