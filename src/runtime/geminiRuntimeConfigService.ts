@@ -7,14 +7,12 @@ import { TEXT_PROCESSING_POLICY } from '../constants/textProcessingPolicy';
 import type { AgentToolDeclaration } from '../tools/toolPluginTypes';
 import type { ToolExposurePolicy } from '../security/toolExposurePolicy';
 
-/** Full documented GenerateContent safety settings for Elara. Never omit or override. */
+/** Documented Gemini API safety settings for Elara. Never omit or override. */
 export const ELARA_SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_JAILBREAK, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
 const CREATIVE_ROLEPLAY_CONTEXT = `[CREATIVE / ARTISTIC ROLEPLAY CONTEXT]
