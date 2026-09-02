@@ -18,6 +18,12 @@ import {
   syncCalendarEventsWithToken,
   syncCalendarListWithToken,
 } from '../infrastructure/googleCalendarApi';
+import {
+  CalendarWatchChannel,
+  CalendarWatchOptions,
+  stopCalendarWatchWithToken,
+  watchCalendarEventsWithToken,
+} from '../infrastructure/googleCalendarWatchApi';
 
 export type {
   CalendarEventDateTime,
@@ -32,6 +38,7 @@ export type {
   CalendarListSyncResponse,
 } from '../infrastructure/googleCalendarApi';
 export { CalendarSyncTokenExpiredError } from '../infrastructure/googleCalendarApi';
+export type { CalendarWatchChannel, CalendarWatchOptions } from '../infrastructure/googleCalendarWatchApi';
 
 export type CalendarTokenCapability = 'calendar.read' | 'calendar.write' | 'calendar.list' | 'calendar.freebusy';
 export type CalendarTokenProvider = (capability: CalendarTokenCapability) => Promise<string>;
@@ -168,4 +175,20 @@ export async function syncCalendarList(
   passedToken?: string,
 ): Promise<CalendarListSyncResponse> {
   return syncCalendarListWithToken(await getCalendarToken('calendar.list', passedToken), syncToken);
+}
+
+export async function watchCalendarEvents(
+  calendarId = 'primary',
+  options: CalendarWatchOptions,
+  passedToken?: string,
+): Promise<CalendarWatchChannel> {
+  return watchCalendarEventsWithToken(await getCalendarToken('calendar.read', passedToken), calendarId, options);
+}
+
+export async function stopCalendarWatch(
+  channelId: string,
+  resourceId: string,
+  passedToken?: string,
+): Promise<void> {
+  return stopCalendarWatchWithToken(await getCalendarToken('calendar.read', passedToken), channelId, resourceId);
 }
