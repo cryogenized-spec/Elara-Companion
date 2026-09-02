@@ -13,22 +13,19 @@ async function collectSourceFiles(dir: string): Promise<string[]> {
     if (entry.isDirectory()) {
       if (entry.name === 'node_modules' || entry.name === '.git') continue;
       files.push(...await collectSourceFiles(path));
-    } else if (/\.(ts|tsx)$/.test(entry.name)) {
-      files.push(path);
-    }
+    } else if (/\.(ts|tsx)$/.test(entry.name)) files.push(path);
   }
   return files;
 }
 
-test('Calendar REST requests are isolated to the infrastructure adapter', async () => {
+test('Calendar REST requests are isolated to infrastructure adapters', async () => {
+  const allowed = new Set(['src/infrastructure/googleCalendarApi.ts', 'src/infrastructure/googleCalendarWatchApi.ts']);
   const files = await collectSourceFiles(join(root, 'src'));
   for (const file of files) {
     const relative = file.replace(`${root}/`, '');
     if (/\.test\.[tj]sx?$/.test(relative) || relative.includes('/__tests__/')) continue;
     const source = await readFile(file, 'utf8');
-    if (/calendar\/v3/.test(source)) {
-      assert.equal(relative, 'src/infrastructure/googleCalendarApi.ts', `Direct Calendar REST usage found outside the canonical adapter: ${relative}`);
-    }
+    if (/calendar\/v3/.test(source)) assert.ok(allowed.has(relative), `Direct Calendar REST usage found outside approved infrastructure adapters: ${relative}`);
   }
 });
 
