@@ -7,7 +7,7 @@ async function* completedInteraction() {
   yield { event_type: 'interaction.completed', interaction: { id: 'int-safety-boundary', status: 'completed', steps: [] } };
 }
 
-test('Interactions runtime does not serialize unsupported custom safety settings', async () => {
+test('Interactions runtime serializes normalized custom safety settings', async () => {
   let request: any;
   const ai = {
     interactions: {
@@ -41,7 +41,13 @@ test('Interactions runtime does not serialize unsupported custom safety settings
   });
 
   assert.equal(request.model, 'gemini-3.7-flash');
-  assert.equal(request.safety_settings, undefined);
+  assert.deepEqual(request.safety_settings, [
+    { type: 'harassment', threshold: 'block_none' },
+    { type: 'hate_speech', threshold: 'block_none' },
+    { type: 'sexually_explicit', threshold: 'block_none' },
+    { type: 'dangerous_content', threshold: 'block_none' },
+    { type: 'jailbreak', threshold: 'block_none' },
+  ]);
   assert.match(request.system_instruction, /fictional creative writing and roleplay/i);
   assert.equal(request.generation_config.max_output_tokens, 512);
 });
