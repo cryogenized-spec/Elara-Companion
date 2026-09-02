@@ -7,7 +7,7 @@ async function* completedInteraction() {
   yield { event_type: 'interaction.completed', interaction: { id: 'int-safety-boundary', status: 'completed', steps: [] } };
 }
 
-test('Interactions runtime serializes normalized custom safety settings', async () => {
+test('Interactions runtime serializes supported normalized custom safety settings', async () => {
   let request: any;
   const ai = {
     interactions: {
@@ -46,8 +46,8 @@ test('Interactions runtime serializes normalized custom safety settings', async 
     { type: 'hate_speech', threshold: 'block_none' },
     { type: 'sexually_explicit', threshold: 'block_none' },
     { type: 'dangerous_content', threshold: 'block_none' },
-    { type: 'jailbreak', threshold: 'block_none' },
   ]);
+  assert.ok(!request.safety_settings.some((setting: any) => setting.type === 'jailbreak'));
   assert.match(request.system_instruction, /fictional creative writing and roleplay/i);
   assert.equal(request.generation_config.max_output_tokens, 512);
 });
