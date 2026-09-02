@@ -86,7 +86,6 @@ export const backgroundRuntimeContract: BackgroundRuntimeContract = {
   removeJob: backgroundRuntimeApplicationService.removeJob,
   createChatJob: backgroundRuntimeApplicationService.createChatJob,
   getJob: backgroundRuntimeApplicationService.getJob,
-  getJob: backgroundRuntimeApplicationService.getJob,
   waitForJob: backgroundRuntimeApplicationService.waitForJob,
 };
 
