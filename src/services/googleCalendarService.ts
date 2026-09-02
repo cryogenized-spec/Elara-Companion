@@ -17,7 +17,6 @@ import {
   patchCalendarEventWithToken,
   syncCalendarEventsWithToken,
   syncCalendarListWithToken,
-  CalendarSyncTokenExpiredError,
 } from '../infrastructure/googleCalendarApi';
 
 export type {
@@ -174,5 +173,3 @@ export async function syncCalendarList(
 ): Promise<CalendarListSyncResponse> {
   return syncCalendarListWithToken(await getCalendarToken('calendar.list', passedToken), syncToken);
 }
-
-void CalendarSyncTokenExpiredError;
