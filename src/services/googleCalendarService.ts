@@ -4,6 +4,8 @@ import {
   CalendarFreeBusyResponse,
   CalendarListItem,
   CalendarEventCreateOptions,
+  CalendarSyncResponse,
+  CalendarListSyncResponse,
   createCalendarEventWithToken,
   deleteCalendarEventWithToken,
   getCalendarEventWithToken,
@@ -13,6 +15,8 @@ import {
   getCalendarListWithToken,
   getUpcomingCalendarEventsWithToken,
   patchCalendarEventWithToken,
+  syncCalendarEventsWithToken,
+  syncCalendarListWithToken,
 } from '../infrastructure/googleCalendarApi';
 
 export type {
@@ -24,7 +28,10 @@ export type {
   CalendarFreeBusyCalendar,
   CalendarFreeBusyResponse,
   CalendarListItem,
+  CalendarSyncResponse,
+  CalendarListSyncResponse,
 } from '../infrastructure/googleCalendarApi';
+export { CalendarSyncTokenExpiredError } from '../infrastructure/googleCalendarApi';
 
 export type CalendarTokenCapability = 'calendar.read' | 'calendar.write' | 'calendar.list' | 'calendar.freebusy';
 export type CalendarTokenProvider = (capability: CalendarTokenCapability) => Promise<string>;
@@ -146,4 +153,19 @@ export async function deleteCalendarEvent(
   calendarId = 'primary',
 ): Promise<void> {
   return deleteCalendarEventWithToken(await getCalendarToken('calendar.write', passedToken), eventId, calendarId);
+}
+
+export async function syncCalendarEvents(
+  calendarId = 'primary',
+  syncToken?: string,
+  passedToken?: string,
+): Promise<CalendarSyncResponse> {
+  return syncCalendarEventsWithToken(await getCalendarToken('calendar.read', passedToken), calendarId, syncToken);
+}
+
+export async function syncCalendarList(
+  syncToken?: string,
+  passedToken?: string,
+): Promise<CalendarListSyncResponse> {
+  return syncCalendarListWithToken(await getCalendarToken('calendar.list', passedToken), syncToken);
 }
