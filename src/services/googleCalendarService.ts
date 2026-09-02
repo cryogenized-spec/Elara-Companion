@@ -4,6 +4,8 @@ import {
   CalendarFreeBusyResponse,
   CalendarListItem,
   CalendarEventCreateOptions,
+  CalendarSyncResponse,
+  CalendarListSyncResponse,
   createCalendarEventWithToken,
   deleteCalendarEventWithToken,
   getCalendarEventWithToken,
@@ -13,6 +15,9 @@ import {
   getCalendarListWithToken,
   getUpcomingCalendarEventsWithToken,
   patchCalendarEventWithToken,
+  syncCalendarEventsWithToken,
+  syncCalendarListWithToken,
+  CalendarSyncTokenExpiredError,
 } from '../infrastructure/googleCalendarApi';
 
 export type {
@@ -24,7 +29,10 @@ export type {
   CalendarFreeBusyCalendar,
   CalendarFreeBusyResponse,
   CalendarListItem,
+  CalendarSyncResponse,
+  CalendarListSyncResponse,
 } from '../infrastructure/googleCalendarApi';
+export { CalendarSyncTokenExpiredError } from '../infrastructure/googleCalendarApi';
 
 export type CalendarTokenCapability = 'calendar.read' | 'calendar.write' | 'calendar.list' | 'calendar.freebusy';
 export type CalendarTokenProvider = (capability: CalendarTokenCapability) => Promise<string>;
@@ -46,6 +54,10 @@ async function getCalendarToken(
   const token = await calendarTokenProvider(capability);
   if (!token?.trim()) throw new Error('Google Calendar authorization is required.');
   return token.trim();
+}
+
+export function getCalendarTokenForService(capability: CalendarTokenCapability): Promise<string> {
+  return getCalendarToken(capability);
 }
 
 export async function getUpcomingCalendarEvents(maxResults = 10, passedToken?: string, calendarId = 'primary'): Promise<{ items: CalendarEventItem[] }> {
@@ -147,3 +159,20 @@ export async function deleteCalendarEvent(
 ): Promise<void> {
   return deleteCalendarEventWithToken(await getCalendarToken('calendar.write', passedToken), eventId, calendarId);
 }
+
+export async function syncCalendarEvents(
+  calendarId = 'primary',
+  syncToken?: string,
+  passedToken?: string,
+): Promise<CalendarSyncResponse> {
+  return syncCalendarEventsWithToken(await getCalendarToken('calendar.read', passedToken), calendarId, syncToken);
+}
+
+export async function syncCalendarList(
+  syncToken?: string,
+  passedToken?: string,
+): Promise<CalendarListSyncResponse> {
+  return syncCalendarListWithToken(await getCalendarToken('calendar.list', passedToken), syncToken);
+}
+
+void CalendarSyncTokenExpiredError;
