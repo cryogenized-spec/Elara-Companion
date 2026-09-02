@@ -25,17 +25,16 @@ export interface ChatRuntimeExecutionRequest {
   signal?: AbortSignal;
   runtime: GeminiRuntimeContract;
   background: Pick<BackgroundRuntimeContract,
-    'isEnabled' | 'createChatJob' | 'persistJob' | 'waitForJob' | 'removeJob'
+    'isEnabled' | 'isConfigured' | 'createChatJob' | 'persistJob' | 'waitForJob' | 'removeJob'
   >;
   onChunk: (chunk: GeminiStreamChunk) => void;
+  forceBackground?: boolean;
 }
 
-/**
- * Foreground execution stays in the browser for immediate streaming. Background execution
- * is durable and is selected by the controller when the app cannot safely remain foreground.
- */
+/** Foreground uses the browser Gemini runtime; durable background execution is handled by the Cloudflare-backed background contract. */
 export async function executeChatRuntime(request: ChatRuntimeExecutionRequest): Promise<{ durable: boolean }> {
-  if (request.background.isEnabled()) {
+  if (request.forceBackground || request.background.isEnabled()) {
+    if (!request.background.isConfigured()) throw new Error('Elara background runtime is not configured.');
     return executeBackgroundChatJob({
       conversationId: request.conversationId,
       assistantMessageId: request.assistantMessageId,
@@ -60,7 +59,8 @@ export async function executeChatRuntime(request: ChatRuntimeExecutionRequest): 
     });
   }
 
-  await request.runtime.generateContentStream({
+  await request.runtime.stream({
+    apiKey: request.apiKey || '',
     message: request.message,
     image: request.image,
     history: request.history,
