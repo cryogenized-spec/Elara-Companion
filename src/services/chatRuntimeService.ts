@@ -30,7 +30,7 @@ export interface ChatRuntimeExecutionRequest {
   onChunk: (chunk: GeminiStreamChunk) => void;
 }
 
-/** Main Chat uses the foreground Gemini runtime unless a durable background path is explicitly enabled. */
+/** Foreground uses the browser Gemini runtime; durable background execution is handled by the Cloudflare-backed background contract. */
 export async function executeChatRuntime(request: ChatRuntimeExecutionRequest): Promise<{ durable: boolean }> {
   if (request.background.isEnabled()) {
     return executeBackgroundChatJob({
@@ -57,7 +57,7 @@ export async function executeChatRuntime(request: ChatRuntimeExecutionRequest): 
     });
   }
 
-  return request.runtime.generateContentStream({
+  await request.runtime.generateContentStream({
     message: request.message,
     image: request.image,
     history: request.history,
@@ -72,4 +72,5 @@ export async function executeChatRuntime(request: ChatRuntimeExecutionRequest): 
     signal: request.signal,
     onChunk: request.onChunk,
   });
+  return { durable: false };
 }
