@@ -107,31 +107,12 @@ function toInteractionTools(config: any): any[] {
   }));
 }
 
-function normalizeInteractionSafetySettings(settings: any): any[] | undefined {
-  if (!Array.isArray(settings)) return undefined;
-  const supportedCategories = new Set(['harassment', 'hate_speech', 'sexually_explicit', 'dangerous_content']);
-  return settings.map((setting) => {
-    const rawType = String(setting?.type ?? setting?.category ?? '').trim();
-    const rawThreshold = String(setting?.threshold ?? '').trim();
-    const type = rawType.replace(/^HARM_CATEGORY_/i, '').toLowerCase();
-    const threshold = rawThreshold.replace(/^HARM_BLOCK_THRESHOLD_/i, '').replace(/^BLOCK_/i, 'block_').toLowerCase();
-    return {
-      ...(type ? { type } : {}),
-      ...(threshold ? { threshold } : {}),
-    };
-  }).filter((setting) => setting.type && setting.threshold && supportedCategories.has(setting.type));
-}
-
 function toInteractionRequest(model: string, config: any, input: any, previousInteractionId?: string): any {
   const request: any = { model, input, stream: true, store: true };
   if (previousInteractionId) request.previous_interaction_id = previousInteractionId;
   if (typeof config?.systemInstruction === 'string' && config.systemInstruction) request.system_instruction = config.systemInstruction;
+  if (Array.isArray(config?.safetySettings)) request.safetySettings = config.safetySettings;
 
-  const safetySettings = normalizeInteractionSafetySettings(config?.safetySettings);
-  if (safetySettings?.length) request.safety_settings = safetySettings;
-
-  // Interactions uses its own generation_config schema for generation controls;
-  // safety_settings remain a top-level provider-native request field.
   const generationConfig: any = {};
   if (typeof config?.maxOutputTokens === 'number') generationConfig.max_output_tokens = config.maxOutputTokens;
   if (typeof config?.temperature === 'number') generationConfig.temperature = config.temperature;
