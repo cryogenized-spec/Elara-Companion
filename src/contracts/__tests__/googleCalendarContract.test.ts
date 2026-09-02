@@ -7,4 +7,6 @@ test('calendar contract exposes canonical service operations', () => {
   assert.equal(typeof googleCalendarContract.create, 'function');
   assert.equal(typeof googleCalendarContract.sync, 'function');
   assert.equal(typeof googleCalendarContract.getLocalSyncState, 'function');
+  assert.equal(typeof googleCalendarContract.watch, 'function');
+  assert.equal(typeof googleCalendarContract.stopWatch, 'function');
 });

@@ -8,6 +8,13 @@ import {
   getGoogleConnectionStatus,
   type GoogleVaultEnv,
 } from './googleVault';
+import {
+  createCalendarWatch,
+  getCalendarChangeSignal,
+  getCalendarChannel,
+  receiveCalendarNotification,
+  stopCalendarWatchChannel,
+} from './googleCalendarPush';
 
 function page(message: string, status = 200): Response {
   const safe = message.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
@@ -29,6 +36,10 @@ export default {
     const path = url.pathname.replace(/\/+$/, '') || '/';
 
     if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
+
+    if (request.method === 'POST' && path === '/google/calendar/notifications') {
+      return receiveCalendarNotification(env, request);
+    }
 
     if (request.method === 'GET' && path === '/google/connect') {
       const state = await createOAuthState(env);
@@ -52,9 +63,7 @@ export default {
 
     if (!authorized(request, env)) return json({ error: 'Unauthorized.' }, 401);
 
-    if (request.method === 'GET' && path === '/google/status') {
-      return json(await getGoogleConnectionStatus(env));
-    }
+    if (request.method === 'GET' && path === '/google/status') return json(await getGoogleConnectionStatus(env));
 
     if (request.method === 'POST' && path === '/google/access') {
       try {
@@ -64,6 +73,33 @@ export default {
         return json({ error: e?.message || 'Google access token unavailable.' }, 401);
       }
     }
+
+    if (request.method === 'POST' && path === '/google/calendar/watch') {
+      try {
+        const body = await request.json() as { calendarId?: string; notificationAddress?: string; expiration?: string };
+        if (!body.notificationAddress) return json({ error: 'notificationAddress is required.' }, 400);
+        return json(await createCalendarWatch(env, body.calendarId || 'primary', body.notificationAddress, body.expiration));
+      } catch (e: any) {
+        return json({ error: e?.message || 'Failed to create Calendar watch.' }, 400);
+      }
+    }
+
+    if (request.method === 'POST' && path === '/google/calendar/watch/stop') {
+      try {
+        const body = await request.json() as { channelId?: string; resourceId?: string };
+        if (!body.channelId || !body.resourceId) return json({ error: 'channelId and resourceId are required.' }, 400);
+        await stopCalendarWatchChannel(env, body.channelId, body.resourceId);
+        return json({ stopped: true });
+      } catch (e: any) {
+        return json({ error: e?.message || 'Failed to stop Calendar watch.' }, 400);
+      }
+    }
+
+    const signalMatch = path.match(/^\/google\/calendar\/changes\/([^/]+)$/);
+    if (request.method === 'GET' && signalMatch) return json(await getCalendarChangeSignal(env, decodeURIComponent(signalMatch[1])));
+
+    const channelMatch = path.match(/^\/google\/calendar\/watch\/([^/]+)$/);
+    if (request.method === 'GET' && channelMatch) return json(await getCalendarChannel(env, decodeURIComponent(channelMatch[1])));
 
     if (request.method === 'POST' && path === '/google/disconnect') {
       await clearGoogleVault(env);
