@@ -30,7 +30,10 @@ export interface ChatRuntimeExecutionRequest {
   onChunk: (chunk: GeminiStreamChunk) => void;
 }
 
-/** Foreground uses the browser Gemini runtime; durable background execution is handled by the Cloudflare-backed background contract. */
+/**
+ * Foreground execution stays in the browser for immediate streaming. Background execution
+ * is durable and is selected by the controller when the app cannot safely remain foreground.
+ */
 export async function executeChatRuntime(request: ChatRuntimeExecutionRequest): Promise<{ durable: boolean }> {
   if (request.background.isEnabled()) {
     return executeBackgroundChatJob({
