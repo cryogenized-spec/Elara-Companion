@@ -111,8 +111,8 @@ function toInteractionRequest(model: string, config: any, input: any, previousIn
   const request: any = { model, input, stream: true, store: true };
   if (previousInteractionId) request.previous_interaction_id = previousInteractionId;
   if (typeof config?.systemInstruction === 'string' && config.systemInstruction) request.system_instruction = config.systemInstruction;
-  if (Array.isArray(config?.safetySettings)) request.safetySettings = config.safetySettings;
 
+  // Interactions has its own request contract. Custom safety settings are not supported there.
   const generationConfig: any = {};
   if (typeof config?.maxOutputTokens === 'number') generationConfig.max_output_tokens = config.maxOutputTokens;
   if (typeof config?.temperature === 'number') generationConfig.temperature = config.temperature;
@@ -121,6 +121,7 @@ function toInteractionRequest(model: string, config: any, input: any, previousIn
   if (config?.thinkingConfig && typeof config.thinkingConfig === 'object') {
     if (typeof config.thinkingConfig.thinkingLevel === 'string') generationConfig.thinking_level = config.thinkingConfig.thinkingLevel;
     if (typeof config.thinkingConfig.thinkingBudget === 'number') generationConfig.thinking_budget = config.thinkingConfig.thinkingBudget;
+    if (config.thinkingConfig.includeThoughts === true) generationConfig.thinking_summaries = 'auto';
   }
   if (Object.keys(generationConfig).length > 0) request.generation_config = generationConfig;
 
