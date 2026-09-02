@@ -107,28 +107,12 @@ function toInteractionTools(config: any): any[] {
   }));
 }
 
-function normalizeInteractionSafetySettings(settings: any): any[] | undefined {
-  if (!Array.isArray(settings)) return undefined;
-  return settings.map((setting) => {
-    const rawType = String(setting?.type ?? setting?.category ?? '').trim();
-    const rawThreshold = String(setting?.threshold ?? '').trim();
-    const type = rawType.replace(/^HARM_CATEGORY_/i, '').toLowerCase();
-    const threshold = rawThreshold.replace(/^HARM_BLOCK_THRESHOLD_/i, '').replace(/^BLOCK_/i, 'block_').toLowerCase();
-    return {
-      ...(type ? { type } : {}),
-      ...(threshold ? { threshold } : {}),
-    };
-  }).filter((setting) => setting.type && setting.threshold);
-}
-
 function toInteractionRequest(model: string, config: any, input: any, previousInteractionId?: string): any {
   const request: any = { model, input, stream: true, store: true };
   if (previousInteractionId) request.previous_interaction_id = previousInteractionId;
   if (typeof config?.systemInstruction === 'string' && config.systemInstruction) request.system_instruction = config.systemInstruction;
+  if (Array.isArray(config?.safetySettings)) request.safetySettings = config.safetySettings;
 
-  // Interactions has its own generation_config schema. Custom safety_settings
-  // are not supported on the Interactions API, so GenerateContent safety policy
-  // is deliberately not serialized into this stateful request.
   const generationConfig: any = {};
   if (typeof config?.maxOutputTokens === 'number') generationConfig.max_output_tokens = config.maxOutputTokens;
   if (typeof config?.temperature === 'number') generationConfig.temperature = config.temperature;
@@ -236,7 +220,7 @@ export async function runResilientGeminiInteractionTurn(options: InteractionRunt
       state.previousInteractionId = functionCalls.length > 0 ? interactionId : undefined;
       if (functionCalls.length === 0) await cleanupInteractions(options.ai, state);
 
-      emitResilienceDiagnostic({ kind: 'SUCCESS', outcome: 'success', provider: 'google', conversationId: options.conversationId, requestId, preferredModel: options.preferredModel, actualModel: model, phase: functionCalls.length > 0 ? 'continuation' : 'stream', functionCallCount: functionCalls.length, functionCallIdsPresent: functionCalls.length, observedInputTokens: usage?.inputTokenCount, observedOutputTokens: usage?.outputTokenCount, observedThoughtsTokens: usage?.thoughtsTokenCount, observedToolUsePromptTokens: usage?.toolUsePromptTokenCount, observedCachedContentTokenCount: usage?.cachedContentTokenCount, observedTotalTokens: usage?.totalTokenCount, message: `Gemini Interactions turn completed with status ${status}.` });
+      emitResilienceDiagnostic({ kind: 'SUCCESS', outcome: 'success', provider: 'google', conversationId: options.conversationId, requestId, preferredModel: options.preferredModel, actualModel: model, phase: functionCalls.length > 0 ? 'continuation' : 'stream', functionCallCount: functionCalls.length, functionCallIdsPresent: functionCalls.length, observedInputTokens: usage?.inputTokenCount, observedOutputTokens: usage?.outputTokenCount, observedThoughtsTokens: usage?.thoughtsTokenCount, observedToolUsePromptTokens: usage?.toolUsePromptTokenCount, observedCachedContentTokens: usage?.cachedContentTokenCount, observedTotalTokens: usage?.totalTokenCount, message: `Gemini Interactions turn completed with status ${status}.` });
 
       return { value: { functionCalls, modelParts: functionCalls.map((call) => ({ functionCall: { name: call.name, args: call.args, id: call.id } })), interactionId, usage }, emittedOutput: true };
     }, { ...policy, conversationId: options.conversationId ?? policy?.conversationId, requestId }, options.stateStore);

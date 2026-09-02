@@ -20,6 +20,7 @@ export interface ChatRuntimeExecutionRequest {
   topP?: number;
   topK?: number;
   thinkingBudget?: number;
+  /** Deprecated client-side Gemini key retained only for call-site compatibility. */
   apiKey?: string;
   workspace?: import('../types').Workspace;
   signal?: AbortSignal;
@@ -36,17 +37,12 @@ function normalizeBackendErrorText(raw: string, status: number): string {
     const parsed = JSON.parse(raw);
     text = parsed?.error?.message || parsed?.error || parsed?.message || 'API request failed';
   } catch {
-    if (raw.trim().startsWith('<') || raw.includes('<html>')) {
-      text = `Service unavailable (HTTP ${status})`;
-    }
+    if (raw.trim().startsWith('<') || raw.includes('<html>')) text = `Service unavailable (HTTP ${status})`;
   }
   return text || `Server returned HTTP ${status}`;
 }
 
-async function streamBackendChat(
-  request: ChatRuntimeExecutionRequest,
-  googleToken: string,
-): Promise<void> {
+async function streamBackendChat(request: ChatRuntimeExecutionRequest, googleToken: string): Promise<void> {
   const response = await fetch('/api/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -68,22 +64,19 @@ async function streamBackendChat(
   });
 
   if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error('Backend route not found. If hosting as a static GitHub Page, please enter your Gemini API Key in Settings.');
-    }
+    if (response.status === 404) throw new Error('Backend route not found. The server-side Gemini runtime is required for Chat execution.');
     throw new Error(normalizeBackendErrorText(await response.text().catch(() => ''), response.status));
   }
 
   const reader = response.body?.getReader();
   if (!reader) throw new Error('Response stream not readable');
-
   const decoder = new TextDecoder();
   let buffer = '';
+
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n\n');
       buffer = lines.pop() || '';
@@ -93,7 +86,11 @@ async function streamBackendChat(
         if (!trimmed.startsWith('data: ')) continue;
         try {
           const data = JSON.parse(trimmed.slice(6));
-          if (data.error) throw new Error(data.error);
+          if (data.error) {
+            const error = new Error(data.error);
+            (error as any).apiError = data.errorDetails;
+            throw error;
+          }
           request.onChunk({
             text: data.text,
             thoughtText: data.thoughtText,
@@ -114,17 +111,12 @@ async function streamBackendChat(
   }
 }
 
-/**
- * Owns the model/background execution choice for Chat.
- * Durable job choreography lives in chatBackgroundService; provider transport remains here.
- */
-export async function executeChatRuntime(
-  request: ChatRuntimeExecutionRequest,
-): Promise<{ durable: boolean }> {
+/** Main Chat is server-authoritative; the browser no longer calls Gemini with a user API key. */
+export async function executeChatRuntime(request: ChatRuntimeExecutionRequest): Promise<{ durable: boolean }> {
   const googleToken = googleContract.getAccessToken();
 
   if (request.background.isEnabled()) {
-    const result = await executeBackgroundChatJob({
+    return executeBackgroundChatJob({
       conversationId: request.conversationId,
       assistantMessageId: request.assistantMessageId,
       request: {
@@ -146,28 +138,6 @@ export async function executeChatRuntime(
       background: request.background,
       onChunk: request.onChunk,
     });
-    return result;
-  }
-
-  if (request.apiKey?.trim()) {
-    await request.runtime.stream({
-      apiKey: request.apiKey.trim(),
-      model: request.model,
-      systemPrompt: request.systemPrompt,
-      history: request.history,
-      message: request.message,
-      image: request.image,
-      temperature: request.temperature,
-      maxOutputTokens: request.maxOutputTokens,
-      topP: request.topP,
-      topK: request.topK,
-      thinkingBudget: request.thinkingBudget,
-      workspace: request.workspace,
-      googleToken,
-      signal: request.signal,
-      onChunk: request.onChunk,
-    });
-    return { durable: false };
   }
 
   await streamBackendChat(request, googleToken);

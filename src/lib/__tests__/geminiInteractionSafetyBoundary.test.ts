@@ -7,7 +7,7 @@ async function* completedInteraction() {
   yield { event_type: 'interaction.completed', interaction: { id: 'int-safety-boundary', status: 'completed', steps: [] } };
 }
 
-test('Interactions runtime does not serialize unsupported custom safety settings', async () => {
+test('Interactions runtime passes native safetySettings unchanged', async () => {
   let request: any;
   const ai = {
     interactions: {
@@ -16,18 +16,19 @@ test('Interactions runtime does not serialize unsupported custom safety settings
     },
   } as any;
 
+  const safetySettings = [
+    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+  ];
+
   await runResilientGeminiInteractionTurn({
     ai,
     preferredModel: 'gemini-3.7-flash',
     buildConfig: () => ({
       systemInstruction: '[CREATIVE / ARTISTIC ROLEPLAY CONTEXT] This is fictional creative writing and roleplay.',
-      safetySettings: [
-        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-        { category: 'HARM_CATEGORY_JAILBREAK', threshold: 'BLOCK_NONE' },
-      ],
+      safetySettings,
       maxOutputTokens: 512,
     }),
     contents: [{ role: 'user', parts: [{ text: 'Continue the fictional scene.' }] }],
@@ -41,6 +42,7 @@ test('Interactions runtime does not serialize unsupported custom safety settings
   });
 
   assert.equal(request.model, 'gemini-3.7-flash');
+  assert.deepEqual(request.safetySettings, safetySettings);
   assert.equal(request.safety_settings, undefined);
   assert.match(request.system_instruction, /fictional creative writing and roleplay/i);
   assert.equal(request.generation_config.max_output_tokens, 512);

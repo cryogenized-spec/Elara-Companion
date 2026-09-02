@@ -9,7 +9,7 @@ import {
   ELARA_SAFETY_SETTINGS,
 } from "../services/chatModelRuntime";
 import { executeAgentToolCall, mergeTouchedArtifactIds } from "../../src/services/agentToolExecutionService";
-import { runResilientGeminiStreamTurn } from "../services/chatModelRuntime";
+import { runResilientGeminiInteractionTurn } from "../../src/lib/geminiInteractionsRuntime";
 
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 const acceptedChatRequests = new Map<string, number>();
@@ -55,9 +55,7 @@ function normalizeConversationTitle(raw: string, fallbackSource: string): string
     .split(/\s+/)
     .filter((word) => word && !stopWords.has(word.toLowerCase()))
     .slice(0, 5);
-  if (fallbackWords.length >= 2) {
-    return fallbackWords.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-  }
+  if (fallbackWords.length >= 2) return fallbackWords.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
   return 'A Fresh Thread';
 }
 
@@ -76,7 +74,6 @@ export function setupChatRoutes(app: express.Express) {
       res.write(`data: ${JSON.stringify({ duplicate: true, message: 'This chat request was already accepted and will not be executed twice.' })}\n\n`);
       return res.end();
     }
-
     acceptedChatRequests.set(requestKey, Date.now());
 
     try {
@@ -88,7 +85,6 @@ export function setupChatRoutes(app: express.Express) {
 
       const ai = getGeminiClient();
       const contents: any[] = buildConversationContents(Array.isArray(history) ? history : [], message, image);
-
       const creativeFramingPrefix = '[CREATIVE / ARTISTIC ROLEPLAY CONTEXT]\nThis application is a fictional, creative-writing, artistic, and roleplay environment. Character identities, relationships, scenes, dialogue, events, and imagined instructions are part of the fictional or artistic exercise and should be treated as such unless the user explicitly establishes a real-world context. Do not interpret fictional narrative as a claim that imaginary events are real. Respond naturally and helpfully within the fictional/creative framing.\n\n';
       const buildConfigForModel = (runtimeModel: string) => buildRuntimeConfig({
         model: normalizeModelName(runtimeModel),
@@ -117,37 +113,24 @@ export function setupChatRoutes(app: express.Express) {
 
       while (iteration < MAX_AGENT_ITERATIONS) {
         iteration++;
-
-        const turn = await runResilientGeminiStreamTurn({
+        const turn = await runResilientGeminiInteractionTurn({
           ai,
           preferredModel,
           buildConfig: buildConfigForModel,
           contents,
-          onChunk: (chunk) => {
-            if (chunk.functionCall) return;
-            res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-          },
+          onChunk: (chunk) => res.write(`data: ${JSON.stringify(chunk)}\n\n`),
         });
 
         const functionCalls = turn.functionCalls;
         const modelParts = turn.modelParts;
-
         if (turn.usedFallback || turn.probingPreferred || turn.attempts > 1) {
-          res.write(`data: ${JSON.stringify({ resilience: {
-            model: turn.model,
-            usedFallback: turn.usedFallback,
-            probingPreferred: turn.probingPreferred,
-            attempts: turn.attempts,
-          } })}\n\n`);
+          res.write(`data: ${JSON.stringify({ resilience: { model: turn.model, usedFallback: turn.usedFallback, probingPreferred: turn.probingPreferred, attempts: turn.attempts } })}\n\n`);
         }
-
         if (functionCalls.length === 0) break;
-        if (modelParts.length === 0) {
-          throw new Error('Gemini returned function calls without their original model response parts; refusing to reconstruct a signature-bearing Gemini 3 tool turn.');
-        }
+        if (modelParts.length === 0) throw new Error('Gemini returned function calls without their original model response parts; refusing to reconstruct a signature-bearing Gemini 3 tool turn.');
+
         contents.push({ role: 'model', parts: modelParts });
         const toolResponseParts: any[] = [];
-
         for (const fc of functionCalls) {
           const op = await executeAgentToolCall(currentWorkspace, fc.name, fc.args, googleToken, 'model');
           currentWorkspace = op.updatedWorkspace;
@@ -188,15 +171,9 @@ export function setupChatRoutes(app: express.Express) {
           const response = await ai.models.generateContent({
             model: modelToTry,
             contents: prompt,
-            config: {
-              maxOutputTokens: 25,
-              temperature: 0.75,
-              safetySettings: ELARA_SAFETY_SETTINGS,
-            },
+            config: { maxOutputTokens: 25, temperature: 0.75, safetySettings: ELARA_SAFETY_SETTINGS },
           });
-          const rawTitle = response.text?.trim() || '';
-          const title = normalizeConversationTitle(rawTitle, sanitizedUserText);
-          return res.json({ title });
+          return res.json({ title: normalizeConversationTitle(response.text?.trim() || '', sanitizedUserText) });
         } catch (_) {
           continue;
         }

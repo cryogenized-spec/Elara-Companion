@@ -47,9 +47,9 @@ test('Chat runtime sends GenerateContent requests with Elara BLOCK_NONE settings
   assert.equal(request.config.systemInstruction.includes('fictional, creative-writing, artistic, and roleplay environment'), true);
 });
 
-test('Elara safety settings retain BLOCK_NONE for every configured Gemini safety category', () => {
+test('Elara safety settings retain BLOCK_NONE for every configurable Gemini safety category', () => {
   assert.ok(Array.isArray(ELARA_SAFETY_SETTINGS));
-  assert.equal(ELARA_SAFETY_SETTINGS.length, 6);
+  assert.equal(ELARA_SAFETY_SETTINGS.length, 4);
   for (const setting of ELARA_SAFETY_SETTINGS) {
     assert.equal(setting.threshold, 'BLOCK_NONE');
   }
