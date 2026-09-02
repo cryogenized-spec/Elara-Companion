@@ -8,7 +8,7 @@ import type {
   WorkspaceContract,
 } from './index';
 import { backgroundRuntimeApplicationService } from '../services/backgroundRuntimeApplicationService';
-import { createCalendarEvent, getCalendarEventInstances, getCalendarFreeBusy, getCalendarList, getUpcomingCalendarEvents } from '../services/googleCalendarService';
+import { createCalendarEvent, getCalendarEventInstances, getCalendarFreeBusy, getCalendarList, getUpcomingCalendarEvents, stopCalendarWatch, watchCalendarEvents } from '../services/googleCalendarService';
 import { googleCapabilities, googleIdentity } from '../services/googleWorkspaceService';
 import { getLocalGoogleCalendarSyncState, syncGoogleCalendar } from '../services/googleCalendarSyncService';
 import { getLoadedMemoryState, loadMemoryState, reduceMemoryActions, saveMemoryState } from '../services/memoryService';
@@ -79,6 +79,8 @@ export const googleCalendarContract: GoogleCalendarContract = {
     createCalendarEvent(summary, startTime, endTime, description, location, undefined, options),
   sync: syncGoogleCalendar,
   getLocalSyncState: getLocalGoogleCalendarSyncState,
+  watch: (calendarId, options) => watchCalendarEvents(calendarId || 'primary', options),
+  stopWatch: stopCalendarWatch,
 };
 
 export const backgroundRuntimeContract: BackgroundRuntimeContract = {
