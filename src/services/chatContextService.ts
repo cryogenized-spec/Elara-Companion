@@ -1,5 +1,6 @@
 import { loadAgentOperatingPolicy } from '../lib/agentPolicy';
 import { TEXT_PROCESSING_POLICY } from '../constants/textProcessingPolicy';
+import { DEFAULT_ADULT_FICTION_MODULE } from '../constants/defaultPrompt';
 import {
   inspectMemoryRetrieval,
   retrieveRelevantMemories,
@@ -123,9 +124,10 @@ export function buildSystemPayload({
   const authoritativeMemoryState = memoryState || getLoadedMemoryState();
   const retrievedMemoryContext = buildRetrievedMemoryContext(authoritativeMemoryState?.memories || [], query);
 
+  const configuredAdultFictionModule = adultFictionModule?.trim();
   const adultFictionBlock =
-    adultFictionEnabled !== false && adultFictionModule && adultFictionModule.trim()
-      ? `\n${adultFictionModule.trim()}\n`
+    adultFictionEnabled !== false
+      ? `\n${configuredAdultFictionModule || DEFAULT_ADULT_FICTION_MODULE}\n`
       : '';
 
   return `--- BEGIN SYSTEM PAYLOAD TEMPLATE ---
