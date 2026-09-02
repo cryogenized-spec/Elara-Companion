@@ -7,8 +7,10 @@
     "gmail.compose": {"scopes": ["https://www.googleapis.com/auth/gmail.compose"], "risk": "sensitive", "default": false, "usedBy": ["Create Gmail draft"]},
     "gmail.send": {"scopes": ["https://www.googleapis.com/auth/gmail.send"], "risk": "sensitive", "default": false, "usedBy": ["Send Gmail message"]},
     "gmail.modify": {"scopes": ["https://www.googleapis.com/auth/gmail.modify"], "risk": "sensitive", "default": false, "usedBy": ["Mailbox mutation/label operations when required"]},
-    "calendar.read": {"scopes": ["https://www.googleapis.com/auth/calendar.readonly"], "risk": "sensitive", "default": false, "usedBy": ["Calendar read operations"]},
+    "calendar.read": {"scopes": ["https://www.googleapis.com/auth/calendar.readonly"], "risk": "sensitive", "default": false, "usedBy": ["Calendar event read operations"]},
     "calendar.write": {"scopes": ["https://www.googleapis.com/auth/calendar.events"], "risk": "sensitive", "default": false, "usedBy": ["Calendar event creation/editing"]},
+    "calendar.list": {"scopes": ["https://www.googleapis.com/auth/calendar.calendarlist.readonly"], "risk": "sensitive", "default": false, "usedBy": ["Subscribed calendar discovery"]},
+    "calendar.freebusy": {"scopes": ["https://www.googleapis.com/auth/calendar.freebusy"], "risk": "sensitive", "default": false, "usedBy": ["Calendar availability queries"]},
     "tasks": {"scopes": ["https://www.googleapis.com/auth/tasks"], "risk": "sensitive", "default": false, "usedBy": ["Google Tasks read/write operations"]},
     "docs": {"scopes": ["https://www.googleapis.com/auth/documents"], "risk": "sensitive", "default": false, "usedBy": ["Google Docs create/read/edit operations"]},
     "drive.read": {"scopes": ["https://www.googleapis.com/auth/drive.readonly"], "risk": "sensitive", "default": false, "usedBy": ["Drive search/read operations"]},
@@ -37,6 +39,8 @@
     "https://www.googleapis.com/auth/chat.messages",
     "https://www.googleapis.com/auth/chat.messages.readonly",
     "https://www.googleapis.com/auth/chat.messages.create",
-    "https://www.googleapis.com/auth/chat.memberships.readonly"
+    "https://www.googleapis.com/auth/chat.memberships.readonly",
+    "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+    "https://www.googleapis.com/auth/calendar.freebusy"
   ]
 }
