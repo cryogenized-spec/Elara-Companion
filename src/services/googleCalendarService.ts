@@ -1,17 +1,32 @@
 import {
   CalendarEventItem,
   CalendarEventPatch,
+  CalendarFreeBusyResponse,
+  CalendarListItem,
+  CalendarEventCreateOptions,
   createCalendarEventWithToken,
   deleteCalendarEventWithToken,
   getCalendarEventWithToken,
+  getCalendarEventInstancesWithToken,
   getCalendarEventsRangeWithToken,
+  getCalendarFreeBusyWithToken,
+  getCalendarListWithToken,
   getUpcomingCalendarEventsWithToken,
   patchCalendarEventWithToken,
 } from '../infrastructure/googleCalendarApi';
 
-export type { CalendarEventItem, CalendarEventPatch } from '../infrastructure/googleCalendarApi';
+export type {
+  CalendarEventDateTime,
+  CalendarEventItem,
+  CalendarEventPatch,
+  CalendarEventCreateOptions,
+  CalendarFreeBusyRange,
+  CalendarFreeBusyCalendar,
+  CalendarFreeBusyResponse,
+  CalendarListItem,
+} from '../infrastructure/googleCalendarApi';
 
-export type CalendarTokenCapability = 'calendar.read' | 'calendar.write';
+export type CalendarTokenCapability = 'calendar.read' | 'calendar.write' | 'calendar.list' | 'calendar.freebusy';
 export type CalendarTokenProvider = (capability: CalendarTokenCapability) => Promise<string>;
 
 let calendarTokenProvider: CalendarTokenProvider | null = null;
@@ -33,8 +48,8 @@ async function getCalendarToken(
   return token.trim();
 }
 
-export async function getUpcomingCalendarEvents(maxResults = 10, passedToken?: string): Promise<{ items: CalendarEventItem[] }> {
-  return getUpcomingCalendarEventsWithToken(await getCalendarToken('calendar.read', passedToken), maxResults);
+export async function getUpcomingCalendarEvents(maxResults = 10, passedToken?: string, calendarId = 'primary'): Promise<{ items: CalendarEventItem[] }> {
+  return getUpcomingCalendarEventsWithToken(await getCalendarToken('calendar.read', passedToken), maxResults, calendarId);
 }
 
 export async function getCalendarEventsRange(
@@ -42,20 +57,53 @@ export async function getCalendarEventsRange(
   endTime: string,
   maxResults = 50,
   passedToken?: string,
+  calendarId = 'primary',
 ): Promise<{ items: CalendarEventItem[]; startTime: string; endTime: string }> {
   return getCalendarEventsRangeWithToken(
     await getCalendarToken('calendar.read', passedToken),
     startTime,
     endTime,
     maxResults,
+    calendarId,
   );
 }
 
 export async function getCalendarEvent(
   eventId: string,
   passedToken?: string,
+  calendarId = 'primary',
 ): Promise<CalendarEventItem> {
-  return getCalendarEventWithToken(await getCalendarToken('calendar.read', passedToken), eventId);
+  return getCalendarEventWithToken(await getCalendarToken('calendar.read', passedToken), eventId, calendarId);
+}
+
+export async function getCalendarList(maxResults = 50, passedToken?: string): Promise<{ items: CalendarListItem[] }> {
+  return getCalendarListWithToken(await getCalendarToken('calendar.list', passedToken), maxResults);
+}
+
+export async function getCalendarFreeBusy(
+  timeMin: string,
+  timeMax: string,
+  calendarIds: string[],
+  passedToken?: string,
+): Promise<CalendarFreeBusyResponse> {
+  return getCalendarFreeBusyWithToken(
+    await getCalendarToken('calendar.freebusy', passedToken),
+    timeMin,
+    timeMax,
+    calendarIds,
+  );
+}
+
+export async function getCalendarEventInstances(
+  recurringEventId: string,
+  options: { timeMin?: string; timeMax?: string; maxResults?: number; calendarId?: string } = {},
+  passedToken?: string,
+): Promise<{ items: CalendarEventItem[] }> {
+  return getCalendarEventInstancesWithToken(
+    await getCalendarToken('calendar.read', passedToken),
+    recurringEventId,
+    options,
+  );
 }
 
 export async function createCalendarEvent(
@@ -65,6 +113,7 @@ export async function createCalendarEvent(
   description?: string,
   location?: string,
   passedToken?: string,
+  options?: CalendarEventCreateOptions,
 ): Promise<CalendarEventItem> {
   return createCalendarEventWithToken(
     await getCalendarToken('calendar.write', passedToken),
@@ -73,6 +122,7 @@ export async function createCalendarEvent(
     endTime,
     description,
     location,
+    options,
   );
 }
 
@@ -80,17 +130,20 @@ export async function patchCalendarEvent(
   eventId: string,
   patch: CalendarEventPatch,
   passedToken?: string,
+  calendarId = 'primary',
 ): Promise<CalendarEventItem> {
   return patchCalendarEventWithToken(
     await getCalendarToken('calendar.write', passedToken),
     eventId,
     patch,
+    calendarId,
   );
 }
 
 export async function deleteCalendarEvent(
   eventId: string,
   passedToken?: string,
+  calendarId = 'primary',
 ): Promise<void> {
-  return deleteCalendarEventWithToken(await getCalendarToken('calendar.write', passedToken), eventId);
+  return deleteCalendarEventWithToken(await getCalendarToken('calendar.write', passedToken), eventId, calendarId);
 }
