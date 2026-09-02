@@ -54,7 +54,11 @@ test('Calendar event normalization preserves high-value scheduling metadata and 
     assert.equal(event.attendees?.[0]?.responseStatus, 'accepted');
     assert.equal(event.conferenceData?.conferenceId, 'conf-123');
     assert.equal(event.attachments?.[0]?.fileId, 'file-123');
-    assert.equal(event.extendedProperties?.private && (event.extendedProperties.private as Record<string, unknown>).source, 'elara');
+    assert.equal(
+      event.extendedProperties?.private &&
+        (event.extendedProperties.private as Record<string, unknown>).source,
+      'elara',
+    );
     assert.equal(event.reminders?.useDefault, false);
     assert.deepEqual(event.raw, sourceEvent);
     assert.deepEqual(event.raw.customFutureField, { nested: true });
@@ -83,10 +87,15 @@ test('Calendar incremental sync retains full event resources for durable snapsho
 
   try {
     const result = await syncCalendarEventsWithToken('token', 'primary');
+    const event = result.items[0];
+    const workingLocationProperties = event?.workingLocationProperties as
+      | { type?: string; officeLocation?: { buildingId?: string } }
+      | undefined;
+
     assert.equal(result.nextSyncToken, 'sync-token-2');
-    assert.deepEqual(result.items[0]?.raw, sourceEvent);
-    assert.equal(result.items[0]?.workingLocationProperties?.type, 'officeLocation');
-    assert.equal(result.items[0]?.workingLocationProperties?.officeLocation?.buildingId, 'B1');
+    assert.deepEqual(event?.raw, sourceEvent);
+    assert.equal(workingLocationProperties?.type, 'officeLocation');
+    assert.equal(workingLocationProperties?.officeLocation?.buildingId, 'B1');
   } finally {
     globalThis.fetch = originalFetch;
   }
