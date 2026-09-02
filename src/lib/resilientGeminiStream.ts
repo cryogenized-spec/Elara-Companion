@@ -6,6 +6,13 @@ export type { InteractionRuntimeOptions, InteractionRuntimeResult } from './gemi
 export interface ResilientStreamTurnResult extends InteractionRuntimeResult {}
 export interface ResilientStreamTurnOptions extends InteractionRuntimeOptions {}
 
+type GenerateContentTurnValue = {
+  functionCalls: Array<{ name: string; args: Record<string, unknown>; id: string }>;
+  modelParts: any[];
+  interactionId?: string;
+  usage?: any;
+};
+
 function safetyError(model: string, details: Record<string, unknown>): Error {
   const providerDetail = JSON.stringify(details);
   const error = new Error(`Gemini content safety blocked this request: ${providerDetail}`);
@@ -44,91 +51,96 @@ function extractFunctionCalls(parts: any[]): Array<{ name: string; args: Record<
         : {},
       id: String(part.functionCall.id || ''),
     }))
-    .filter((call) => call.name && call.id);
+    .filter((call) => call.name);
 }
 
 async function runGenerateContentTurn(
   options: ResilientStreamTurnOptions,
   model: string,
-): Promise<InteractionRuntimeResult['value']> {
+): Promise<{ value: GenerateContentTurnValue; emittedOutput: boolean }> {
   const config = options.buildConfig(model);
   const partsByCallKey = new Map<string, any>();
   let usage: any;
 
-  try {
-    const stream = await options.ai.models.generateContentStream({
-      model,
-      contents: options.contents,
-      config,
-    });
+  const stream = await options.ai.models.generateContentStream({
+    model,
+    contents: options.contents,
+    config,
+  });
 
-    for await (const chunk of stream as any) {
-      if (options.signal?.aborted) {
-        throw options.signal.reason || new DOMException('Aborted', 'AbortError');
+  for await (const chunk of stream as any) {
+    if (options.signal?.aborted) {
+      throw options.signal.reason || new DOMException('Aborted', 'AbortError');
+    }
+
+    usage = chunk?.usageMetadata || usage;
+
+    const promptFeedback = chunk?.promptFeedback;
+    if (promptFeedback?.blockReason) {
+      options.onChunk({
+        finishReason: String(promptFeedback.blockReason),
+        safetyRatings: promptFeedback.safetyRatings || [],
+      });
+      throw safetyError(model, {
+        source: 'promptFeedback',
+        blockReason: promptFeedback.blockReason,
+        safetyRatings: promptFeedback.safetyRatings || [],
+      });
+    }
+
+    if (typeof chunk?.text === 'string' && chunk.text) {
+      options.onChunk({ text: chunk.text });
+    }
+
+    const candidates = Array.isArray(chunk?.candidates) ? chunk.candidates : [];
+    for (const candidate of candidates) {
+      const finishReason = candidate?.finishReason;
+      const safetyRatings = candidate?.safetyRatings;
+      if (finishReason) {
+        options.onChunk({ finishReason: String(finishReason), safetyRatings });
       }
 
-      usage = chunk?.usageMetadata || usage;
-
-      const promptFeedback = chunk?.promptFeedback;
-      if (promptFeedback?.blockReason) {
+      if (finishReason === 'SAFETY' || finishReason === 'PROHIBITED_CONTENT' || finishReason === 'BLOCKLIST') {
         throw safetyError(model, {
-          source: 'promptFeedback',
-          blockReason: promptFeedback.blockReason,
-          safetyRatings: promptFeedback.safetyRatings || [],
+          source: 'candidate',
+          finishReason,
+          safetyRatings: safetyRatings || [],
         });
       }
 
-      if (typeof chunk?.text === 'string' && chunk.text) {
-        options.onChunk({ text: chunk.text });
-      }
-
-      const candidates = Array.isArray(chunk?.candidates) ? chunk.candidates : [];
-      for (const candidate of candidates) {
-        const finishReason = candidate?.finishReason;
-        const safetyRatings = candidate?.safetyRatings;
-        if (finishReason) {
-          options.onChunk({ finishReason: String(finishReason), safetyRatings });
-        }
-
-        if (finishReason === 'SAFETY' || finishReason === 'PROHIBITED_CONTENT' || finishReason === 'BLOCKLIST') {
-          throw safetyError(model, {
-            source: 'candidate',
-            finishReason,
-            safetyRatings: safetyRatings || [],
-          });
-        }
-
-        const candidateParts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
-        for (let index = 0; index < candidateParts.length; index += 1) {
-          const part = candidateParts[index];
-          if (!part?.functionCall) continue;
-          const key = String(part.functionCall.id || `${part.functionCall.name || 'call'}:${index}`);
-          partsByCallKey.set(key, part);
-        }
+      const candidateParts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
+      for (let index = 0; index < candidateParts.length; index += 1) {
+        const part = candidateParts[index];
+        if (!part?.functionCall) continue;
+        const key = String(part.functionCall.id || `${part.functionCall.name || 'call'}:${index}`);
+        partsByCallKey.set(key, part);
       }
     }
-  } catch (error) {
-    throw error;
   }
 
   const modelParts = [...partsByCallKey.values()];
   const functionCalls = extractFunctionCalls(modelParts);
   for (const call of functionCalls) {
-    if (!call.id) throw invalidRequestError(model, 'Gemini returned a function call without a call id; refusing to construct an invalid follow-up turn.');
+    if (!call.id) {
+      throw invalidRequestError(model, `Gemini returned function call [${call.name}] without a call id; refusing to construct an invalid follow-up turn.`);
+    }
   }
 
   return {
-    functionCalls,
-    modelParts,
-    usage,
-    interactionId: undefined,
+    value: {
+      functionCalls,
+      modelParts,
+      usage,
+      interactionId: undefined,
+    },
+    emittedOutput: true,
   };
 }
 
 /**
  * Production Chat transport. GenerateContent is deliberately used here because Elara's
  * Chat workload requires request-level safetySettings, including BLOCK_NONE. The
- * Interactions API remains available through its dedicated runtime for callers that need it.
+ * Interactions API remains available through its dedicated runtime for other callers.
  */
 export async function runResilientGeminiStreamTurn(options: ResilientStreamTurnOptions): Promise<ResilientStreamTurnResult> {
   const policy: ModelResiliencePolicy = options.policy || (options.reliabilitySettings
