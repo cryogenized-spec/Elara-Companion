@@ -64,8 +64,11 @@ export async function executeChatRuntime(request: ChatRuntimeExecutionRequest): 
     });
   }
 
+  const apiKey = request.apiKey?.trim();
+  if (!apiKey) throw new Error('Gemini API key is required for foreground execution when the background runtime is unavailable.');
+
   await request.runtime.stream({
-    apiKey: request.apiKey || '',
+    apiKey,
     message: request.message,
     image: request.image,
     history: request.history,
