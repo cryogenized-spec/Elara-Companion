@@ -8,7 +8,7 @@ import type {
   WorkspaceContract,
 } from './index';
 import { backgroundRuntimeApplicationService } from '../services/backgroundRuntimeApplicationService';
-import { createCalendarEvent, getUpcomingCalendarEvents } from '../services/googleCalendarService';
+import { createCalendarEvent, getCalendarEventInstances, getCalendarFreeBusy, getCalendarList, getUpcomingCalendarEvents } from '../services/googleCalendarService';
 import { googleCapabilities, googleIdentity } from '../services/googleWorkspaceService';
 import { getLoadedMemoryState, loadMemoryState, reduceMemoryActions, saveMemoryState } from '../services/memoryService';
 import { streamGemini, normalizeGeminiWorkspace } from '../runtime/geminiRuntimeService';
@@ -71,7 +71,11 @@ export const googleContract: GoogleContract = {
 
 export const googleCalendarContract: GoogleCalendarContract = {
   getUpcoming: getUpcomingCalendarEvents,
-  create: createCalendarEvent,
+  getCalendars: getCalendarList,
+  getFreeBusy: getCalendarFreeBusy,
+  getEventInstances: getCalendarEventInstances,
+  create: (summary, startTime, endTime, description, location, options) =>
+    createCalendarEvent(summary, startTime, endTime, description, location, undefined, options),
 };
 
 export const backgroundRuntimeContract: BackgroundRuntimeContract = {
