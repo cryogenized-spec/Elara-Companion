@@ -4,6 +4,14 @@ export interface CalendarEventDateTime {
   timeZone?: string;
 }
 
+/**
+ * The unmodified Google Calendar Events resource returned by the API.
+ *
+ * We intentionally retain this alongside Elara's normalized projection so new
+ * Google Calendar fields are not silently discarded by synchronization.
+ */
+export type GoogleCalendarEventResource = Record<string, unknown>;
+
 export interface CalendarEventItem {
   id: string;
   summary: string;
@@ -19,6 +27,33 @@ export interface CalendarEventItem {
   eventType?: string;
   transparency?: string;
   visibility?: string;
+  iCalUID?: string;
+  sequence?: number;
+  created?: string;
+  updated?: string;
+  colorId?: string;
+  eventLabelId?: string;
+  creator?: GoogleCalendarEventResource;
+  organizer?: GoogleCalendarEventResource;
+  attendees?: GoogleCalendarEventResource[];
+  attendeesOmitted?: boolean;
+  conferenceData?: GoogleCalendarEventResource;
+  hangoutLink?: string;
+  attachments?: GoogleCalendarEventResource[];
+  extendedProperties?: GoogleCalendarEventResource;
+  reminders?: GoogleCalendarEventResource;
+  endTimeUnspecified?: boolean;
+  guestsCanInviteOthers?: boolean;
+  guestsCanModify?: boolean;
+  guestsCanSeeOtherGuests?: boolean;
+  privateCopy?: boolean;
+  locked?: boolean;
+  source?: GoogleCalendarEventResource;
+  birthdayProperties?: GoogleCalendarEventResource;
+  focusTimeProperties?: GoogleCalendarEventResource;
+  outOfOfficeProperties?: GoogleCalendarEventResource;
+  workingLocationProperties?: GoogleCalendarEventResource;
+  raw: GoogleCalendarEventResource;
 }
 
 export interface CalendarEventPatch {
@@ -30,12 +65,33 @@ export interface CalendarEventPatch {
   recurrence?: string[] | null;
   transparency?: string | null;
   visibility?: string | null;
+  attendees?: GoogleCalendarEventResource[] | null;
+  attendeesOmitted?: boolean | null;
+  conferenceData?: GoogleCalendarEventResource | null;
+  attachments?: GoogleCalendarEventResource[] | null;
+  extendedProperties?: GoogleCalendarEventResource | null;
+  reminders?: GoogleCalendarEventResource | null;
+  colorId?: string | null;
+  eventLabelId?: string | null;
+  guestsCanInviteOthers?: boolean | null;
+  guestsCanModify?: boolean | null;
+  guestsCanSeeOtherGuests?: boolean | null;
 }
 
 export interface CalendarEventCreateOptions {
   recurrence?: string[];
   timeZone?: string;
   calendarId?: string;
+  attendees?: GoogleCalendarEventResource[];
+  conferenceData?: GoogleCalendarEventResource;
+  attachments?: GoogleCalendarEventResource[];
+  extendedProperties?: GoogleCalendarEventResource;
+  reminders?: GoogleCalendarEventResource;
+  colorId?: string;
+  eventLabelId?: string;
+  guestsCanInviteOthers?: boolean;
+  guestsCanModify?: boolean;
+  guestsCanSeeOtherGuests?: boolean;
 }
 
 export interface CalendarListItem {
@@ -61,7 +117,7 @@ export interface CalendarFreeBusyRange {
 
 export interface CalendarFreeBusyCalendar {
   busy: CalendarFreeBusyRange[];
-  errors?: Array<{ domain?: string; reason?: string }>; 
+  errors?: Array<{ domain?: string; reason?: string }>;
 }
 
 export interface CalendarFreeBusyResponse {
@@ -118,23 +174,57 @@ function normalizeDateTime(value: any): CalendarEventDateTime {
   };
 }
 
-function normalizeEvent(event: any): CalendarEventItem {
-  return {
-    id: event.id,
-    summary: event.summary || '(Untitled Event)',
-    description: event.description,
+function cloneGoogleResource(value: unknown): GoogleCalendarEventResource {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return JSON.parse(JSON.stringify(value)) as GoogleCalendarEventResource;
+}
+
+function normalizeEvent(event: GoogleCalendarEventResource): CalendarEventItem {
+  const normalized = {
+    id: String(event.id || ''),
+    summary: String(event.summary || '(Untitled Event)'),
+    description: typeof event.description === 'string' ? event.description : undefined,
     start: normalizeDateTime(event.start),
     end: normalizeDateTime(event.end),
-    location: event.location,
-    htmlLink: event.htmlLink,
-    status: event.status,
-    recurrence: Array.isArray(event.recurrence) ? [...event.recurrence] : undefined,
-    recurringEventId: event.recurringEventId,
+    location: typeof event.location === 'string' ? event.location : undefined,
+    htmlLink: typeof event.htmlLink === 'string' ? event.htmlLink : undefined,
+    status: typeof event.status === 'string' ? event.status : undefined,
+    recurrence: Array.isArray(event.recurrence) ? event.recurrence.map(String) : undefined,
+    recurringEventId: typeof event.recurringEventId === 'string' ? event.recurringEventId : undefined,
     originalStartTime: event.originalStartTime ? normalizeDateTime(event.originalStartTime) : undefined,
-    eventType: event.eventType,
-    transparency: event.transparency,
-    visibility: event.visibility,
-  };
+    eventType: typeof event.eventType === 'string' ? event.eventType : undefined,
+    transparency: typeof event.transparency === 'string' ? event.transparency : undefined,
+    visibility: typeof event.visibility === 'string' ? event.visibility : undefined,
+    iCalUID: typeof event.iCalUID === 'string' ? event.iCalUID : undefined,
+    sequence: typeof event.sequence === 'number' ? event.sequence : undefined,
+    created: typeof event.created === 'string' ? event.created : undefined,
+    updated: typeof event.updated === 'string' ? event.updated : undefined,
+    colorId: typeof event.colorId === 'string' ? event.colorId : undefined,
+    eventLabelId: typeof event.eventLabelId === 'string' ? event.eventLabelId : undefined,
+    creator: event.creator ? cloneGoogleResource(event.creator) : undefined,
+    organizer: event.organizer ? cloneGoogleResource(event.organizer) : undefined,
+    attendees: Array.isArray(event.attendees) ? event.attendees.map(cloneGoogleResource) : undefined,
+    attendeesOmitted: typeof event.attendeesOmitted === 'boolean' ? event.attendeesOmitted : undefined,
+    conferenceData: event.conferenceData ? cloneGoogleResource(event.conferenceData) : undefined,
+    hangoutLink: typeof event.hangoutLink === 'string' ? event.hangoutLink : undefined,
+    attachments: Array.isArray(event.attachments) ? event.attachments.map(cloneGoogleResource) : undefined,
+    extendedProperties: event.extendedProperties ? cloneGoogleResource(event.extendedProperties) : undefined,
+    reminders: event.reminders ? cloneGoogleResource(event.reminders) : undefined,
+    endTimeUnspecified: typeof event.endTimeUnspecified === 'boolean' ? event.endTimeUnspecified : undefined,
+    guestsCanInviteOthers: typeof event.guestsCanInviteOthers === 'boolean' ? event.guestsCanInviteOthers : undefined,
+    guestsCanModify: typeof event.guestsCanModify === 'boolean' ? event.guestsCanModify : undefined,
+    guestsCanSeeOtherGuests: typeof event.guestsCanSeeOtherGuests === 'boolean' ? event.guestsCanSeeOtherGuests : undefined,
+    privateCopy: typeof event.privateCopy === 'boolean' ? event.privateCopy : undefined,
+    locked: typeof event.locked === 'boolean' ? event.locked : undefined,
+    source: event.source ? cloneGoogleResource(event.source) : undefined,
+    birthdayProperties: event.birthdayProperties ? cloneGoogleResource(event.birthdayProperties) : undefined,
+    focusTimeProperties: event.focusTimeProperties ? cloneGoogleResource(event.focusTimeProperties) : undefined,
+    outOfOfficeProperties: event.outOfOfficeProperties ? cloneGoogleResource(event.outOfOfficeProperties) : undefined,
+    workingLocationProperties: event.workingLocationProperties ? cloneGoogleResource(event.workingLocationProperties) : undefined,
+    raw: cloneGoogleResource(event),
+  } satisfies CalendarEventItem;
+
+  return normalized;
 }
 
 function normalizeCalendarListItem(item: any): CalendarListItem {
@@ -395,6 +485,16 @@ export async function createCalendarEventWithToken(
   if (description) body.description = description;
   if (location) body.location = location;
   if (options.recurrence?.length) body.recurrence = [...options.recurrence];
+  if (options.attendees?.length) body.attendees = options.attendees;
+  if (options.conferenceData) body.conferenceData = options.conferenceData;
+  if (options.attachments?.length) body.attachments = options.attachments;
+  if (options.extendedProperties) body.extendedProperties = options.extendedProperties;
+  if (options.reminders) body.reminders = options.reminders;
+  if (options.colorId) body.colorId = options.colorId;
+  if (options.eventLabelId) body.eventLabelId = options.eventLabelId;
+  if (options.guestsCanInviteOthers !== undefined) body.guestsCanInviteOthers = options.guestsCanInviteOthers;
+  if (options.guestsCanModify !== undefined) body.guestsCanModify = options.guestsCanModify;
+  if (options.guestsCanSeeOtherGuests !== undefined) body.guestsCanSeeOtherGuests = options.guestsCanSeeOtherGuests;
 
   const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, {
     method: 'POST',
