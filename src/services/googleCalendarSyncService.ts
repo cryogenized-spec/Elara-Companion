@@ -1,13 +1,10 @@
-import {
-  CalendarSyncTokenExpiredError,
-  syncCalendarEventsWithToken,
-} from '../infrastructure/googleCalendarApi';
+import { CalendarSyncTokenExpiredError } from '../infrastructure/googleCalendarApi';
 import type { GoogleCalendarEvent, GoogleCalendarSyncResult, GoogleCalendarSyncState } from '../contracts';
 import {
   getCalendarSyncState,
   setCalendarSyncState,
 } from '../lib/calendarSyncStorage';
-import { getCalendarTokenForService } from './googleCalendarService';
+import { syncCalendarEvents } from './googleCalendarService';
 
 const syncLocks = new Map<string, Promise<GoogleCalendarSyncResult>>();
 
@@ -48,18 +45,17 @@ function applyChanges(
 
 async function performCalendarSync(calendarId: string): Promise<GoogleCalendarSyncResult> {
   const existing = await getCalendarSyncState(calendarId);
-  const token = await getCalendarTokenForService('calendar.read');
   let mode: 'full' | 'incremental' = existing?.syncToken ? 'incremental' : 'full';
   let reset = false;
 
   let response;
   try {
-    response = await syncCalendarEventsWithToken(token, calendarId, existing?.syncToken);
+    response = await syncCalendarEvents(calendarId, existing?.syncToken);
   } catch (error) {
     if (!(error instanceof CalendarSyncTokenExpiredError) || !existing?.syncToken) throw error;
     mode = 'full';
     reset = true;
-    response = await syncCalendarEventsWithToken(token, calendarId);
+    response = await syncCalendarEvents(calendarId);
   }
 
   const applied = applyChanges(mode === 'full' ? [] : existing?.events || [], response.items);
