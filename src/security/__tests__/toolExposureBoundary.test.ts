@@ -59,7 +59,7 @@ test('portrait/application state is not injected into model contents unless expl
   assert.equal(imageContents.some((item) => item.parts?.some((part: any) => part.inlineData?.data === 'ZmFrZS1wb3J0cmFpdA==')), true);
 });
 
-test('tool exposure policy does not alter Gemini safety settings', () => {
+test('tool exposure policy does not alter Gemini BLOCK_NONE safety settings', () => {
   const config = buildRuntimeConfig({
     model: 'gemini-3.7-flash',
     toolExposure: {
@@ -70,5 +70,9 @@ test('tool exposure policy does not alter Gemini safety settings', () => {
   });
 
   assert.ok(Array.isArray(config.safetySettings));
-  assert.equal(config.safetySettings.length, 5);
+  assert.equal(config.safetySettings.length, 6);
+  for (const setting of config.safetySettings) {
+    assert.equal(setting.threshold, 'BLOCK_NONE');
+  }
+  assert.ok(config.safetySettings.some((setting: any) => setting.category === 'HARM_CATEGORY_JAILBREAK'));
 });
