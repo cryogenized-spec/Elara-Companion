@@ -24,7 +24,11 @@ async function collectSourceFiles(dir: string): Promise<string[]> {
 test('final Calendar lock: legacy Calendar facade surface is gone', async () => {
   const googleApi = await readText('src/lib/googleApi.ts');
   const components = await collectSourceFiles('src/components');
-  const legacyConsumers = components.filter((file) => /getUpcomingCalendarEvents|CalendarEventItem|Google Calendar/.test(await readText(file)));
+  const legacyConsumers: string[] = [];
+  for (const file of components) {
+    const source = await readText(file);
+    if (/getUpcomingCalendarEvents|CalendarEventItem|executeWorkspaceTool\(["']get_calendar_events/.test(source)) legacyConsumers.push(file);
+  }
 
   assert.doesNotMatch(googleApi, /getUpcomingCalendarEvents|getCalendarEventsRange|getCalendarEvent|CalendarEventItem|get_calendar_events/);
   assert.deepEqual(legacyConsumers, []);
