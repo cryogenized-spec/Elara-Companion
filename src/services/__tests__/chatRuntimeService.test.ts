@@ -28,31 +28,47 @@ function createBackgroundMock(overrides: Partial<BackgroundRuntimeContract> = {}
   };
 }
 
-test('direct runtime execution delegates to the canonical runtime contract', async () => {
+test('server-authoritative Chat execution ignores the legacy client API key', async () => {
   const chunks: Array<{ text?: string }> = [];
-  let calls = 0;
+  let runtimeCalls = 0;
+  let requestedUrl = '';
 
-  await executeChatRuntime({
-    conversationId: 'conv_1',
-    assistantMessageId: 'msg_1',
-    message: 'hello',
-    history: [],
-    systemPrompt: 'system',
-    model: 'gemini-test',
-    apiKey: 'test-key',
-    runtime: {
-      ...createRuntimeMock([{ text: 'hello back' }]),
-      async stream(request) {
-        calls += 1;
-        request.onChunk({ text: 'hello back' });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    requestedUrl = String(input);
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const payload = 'data: {"text":"hello back"}\n\ndata: {"done":true}\n\n';
+        controller.enqueue(new TextEncoder().encode(payload));
+        controller.close();
       },
-    },
-    background: createBackgroundMock(),
-    onChunk: (chunk) => chunks.push(chunk),
-  });
+    });
+    return new Response(stream, { status: 200 });
+  };
 
-  assert.equal(calls, 1);
-  assert.deepEqual(chunks, [{ text: 'hello back' }]);
+  try {
+    await executeChatRuntime({
+      conversationId: 'conv_1',
+      assistantMessageId: 'msg_1',
+      message: 'hello',
+      history: [],
+      systemPrompt: 'system',
+      model: 'gemini-test',
+      apiKey: 'legacy-test-key',
+      runtime: {
+        ...createRuntimeMock([]),
+        async stream() { runtimeCalls += 1; },
+      },
+      background: createBackgroundMock(),
+      onChunk: (chunk) => chunks.push(chunk),
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requestedUrl, '/api/chat/stream');
+  assert.equal(runtimeCalls, 0);
+  assert.deepEqual(chunks.map((chunk) => chunk.text), ['hello back', undefined]);
 });
 
 test('accepted durable execution returns its completed result without starting a second Gemini stream', async () => {

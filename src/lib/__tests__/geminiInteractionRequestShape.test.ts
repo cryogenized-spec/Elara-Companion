@@ -52,9 +52,8 @@ test('Interactions runtime sends the selected model and provider-native generati
   assert.equal(request.generation_config.thinkingConfig, undefined);
   assert.equal(request.maxOutputTokens, undefined);
   assert.equal(request.thinkingConfig, undefined);
-  assert.equal(request.safety_settings[0].type, 'harassment');
-  assert.equal(request.safety_settings[0].threshold, 'block_none');
-  assert.equal(request.safetySettings, undefined);
+  assert.deepEqual(request.safetySettings, [{ category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' }]);
+  assert.equal(request.safety_settings, undefined);
   assert.equal(request.tools[0].type, 'function');
   assert.equal(request.tools[0].name, 'list_google_tasks');
 });
