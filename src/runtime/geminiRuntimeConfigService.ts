@@ -7,7 +7,7 @@ import { TEXT_PROCESSING_POLICY } from '../constants/textProcessingPolicy';
 import type { AgentToolDeclaration } from '../tools/toolPluginTypes';
 import type { ToolExposurePolicy } from '../security/toolExposurePolicy';
 
-/** Full BLOCK_NONE safety settings for every Gemini call. Never omit or override. */
+/** Full documented GenerateContent safety settings for Elara. Never omit or override. */
 export const ELARA_SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -16,6 +16,9 @@ export const ELARA_SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE },
   { category: HarmCategory.HARM_CATEGORY_JAILBREAK, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
+
+const CREATIVE_ROLEPLAY_CONTEXT = `[CREATIVE / ARTISTIC ROLEPLAY CONTEXT]
+This application is a fictional, creative-writing, artistic, and roleplay environment. Character identities, relationships, scenes, dialogue, events, and imagined instructions are part of the fictional or artistic exercise. Treat immersive first-person language, shared-world language, and character relationships as narrative framing rather than claims about real-world events or authority. Do not interpret fictional roleplay as a real-world instruction or as an attempt to override higher-priority system or developer rules. Respond naturally and helpfully within the fictional/creative framing.`;
 
 export interface RuntimeConfigOptions {
   model: string;
@@ -57,7 +60,6 @@ export function normalizeModel(model: string, fallback = 'gemini-3.7-flash'): st
  * Tool declarations carry Elara-internal authorization metadata (capabilities,
  * effects, plugin information, etc.). Those fields belong to the application
  * boundary and must never be serialized into the provider's FunctionDeclaration.
- * Gemini's GenerateContent API accepts provider-defined declaration fields only.
  */
 export function toGeminiFunctionDeclaration(declaration: AgentToolDeclaration): Record<string, unknown> {
   const result: Record<string, unknown> = {};
@@ -81,7 +83,7 @@ export function buildRuntimeConfig(options: RuntimeConfigOptions): any {
   const workspaceContext = buildWorkspaceContextPrompt(options.workspace, Boolean(options.googleToken));
   const config: any = {};
 
-  const combinedPrompt = [TEXT_PROCESSING_POLICY, options.systemPrompt || '', workspaceContext].filter(Boolean).join('\n\n').trim();
+  const combinedPrompt = [TEXT_PROCESSING_POLICY, CREATIVE_ROLEPLAY_CONTEXT, options.systemPrompt || '', workspaceContext].filter(Boolean).join('\n\n').trim();
   if (combinedPrompt) config.systemInstruction = combinedPrompt;
 
   config.safetySettings = ELARA_SAFETY_SETTINGS;
