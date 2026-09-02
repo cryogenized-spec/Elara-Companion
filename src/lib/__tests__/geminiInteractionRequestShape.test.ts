@@ -22,7 +22,7 @@ test('Interactions runtime sends the selected model and provider-native generati
 
   const result = await runResilientGeminiInteractionTurn({
     ai,
-    preferredModel: 'gemini-3.7-flash',
+    preferredModel: 'gemini-3.6-flash',
     buildConfig: () => ({
       systemInstruction: 'You are Elara.',
       maxOutputTokens: 4096,
@@ -39,20 +39,21 @@ test('Interactions runtime sends the selected model and provider-native generati
     policy: {
       failoverEnabled: false,
       retryPolicy: { maxAttempts: 1 },
-      preferenceOrder: ['gemini-3.7-flash'],
+      preferenceOrder: ['gemini-3.6-flash'],
       fallbackModels: [],
     },
   });
 
   const request = requests[0];
-  assert.equal(result.model, 'gemini-3.7-flash');
-  assert.equal(request.model, 'gemini-3.7-flash');
+  assert.equal(result.model, 'gemini-3.6-flash');
+  assert.equal(request.model, 'gemini-3.6-flash');
   assert.equal(request.generation_config.max_output_tokens, 4096);
   assert.equal(request.generation_config.thinking_level, 'medium');
+  assert.equal(request.generation_config.thinking_summaries, 'auto');
   assert.equal(request.generation_config.thinkingConfig, undefined);
   assert.equal(request.maxOutputTokens, undefined);
   assert.equal(request.thinkingConfig, undefined);
-  assert.deepEqual(request.safetySettings, [{ category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' }]);
+  assert.equal(request.safetySettings, undefined);
   assert.equal(request.safety_settings, undefined);
   assert.equal(request.tools[0].type, 'function');
   assert.equal(request.tools[0].name, 'list_google_tasks');
