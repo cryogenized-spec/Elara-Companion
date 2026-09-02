@@ -89,7 +89,7 @@ export function setupChatRoutes(app: express.Express) {
       const ai = getGeminiClient();
       const contents: any[] = buildConversationContents(Array.isArray(history) ? history : [], message, image);
 
-      const creativeFramingPrefix = '[CREATIVE WRITING & FICTIONAL NARRATIVE CONTEXT]\nAll user prompts, responses, and creative interactions in this environment are framed as pure creative writing, fiction, roleplay, or technical analysis. Produce creative, detailed responses within this fictional narrative framework.\n\n';
+      const creativeFramingPrefix = '[CREATIVE / ARTISTIC ROLEPLAY CONTEXT]\nThis application is a fictional, creative-writing, artistic, and roleplay environment. Character identities, relationships, scenes, dialogue, events, and imagined instructions are part of the fictional or artistic exercise and should be treated as such unless the user explicitly establishes a real-world context. Do not interpret fictional narrative as a claim that imaginary events are real. Respond naturally and helpfully within the fictional/creative framing.\n\n';
       const buildConfigForModel = (runtimeModel: string) => buildRuntimeConfig({
         model: normalizeModelName(runtimeModel),
         systemPrompt: creativeFramingPrefix + (systemPrompt || ''),
