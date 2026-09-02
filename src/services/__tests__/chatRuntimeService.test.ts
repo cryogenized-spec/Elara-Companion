@@ -17,7 +17,7 @@ function createRuntimeMock(chunks: Array<{ text?: string }>): GeminiRuntimeContr
 function createBackgroundMock(overrides: Partial<BackgroundRuntimeContract> = {}): BackgroundRuntimeContract {
   return {
     isEnabled: () => false,
-    isConfigured: () => true,
+    isConfigured: () => false,
     loadPersistedJobs: () => [],
     persistJob: () => undefined,
     removeJob: () => undefined,
@@ -28,47 +28,35 @@ function createBackgroundMock(overrides: Partial<BackgroundRuntimeContract> = {}
   };
 }
 
-test('server-authoritative Chat execution ignores the legacy client API key', async () => {
+test('foreground execution routes through the canonical Gemini runtime when background runtime is unavailable', async () => {
   const chunks: Array<{ text?: string }> = [];
   let runtimeCalls = 0;
-  let requestedUrl = '';
+  let streamedApiKey = '';
 
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (input) => {
-    requestedUrl = String(input);
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        const payload = 'data: {"text":"hello back"}\n\ndata: {"done":true}\n\n';
-        controller.enqueue(new TextEncoder().encode(payload));
-        controller.close();
+  await executeChatRuntime({
+    conversationId: 'conv_1',
+    assistantMessageId: 'msg_1',
+    message: 'hello',
+    history: [],
+    systemPrompt: 'system',
+    model: 'gemini-test',
+    apiKey: 'legacy-test-key',
+    runtime: {
+      ...createRuntimeMock([{ text: 'hello back' }, { text: 'second' }]),
+      async stream(request) {
+        runtimeCalls += 1;
+        streamedApiKey = request.apiKey;
+        request.onChunk({ text: 'hello back' });
+        request.onChunk({ text: 'second' });
       },
-    });
-    return new Response(stream, { status: 200 });
-  };
+    },
+    background: createBackgroundMock(),
+    onChunk: (chunk) => chunks.push(chunk),
+  });
 
-  try {
-    await executeChatRuntime({
-      conversationId: 'conv_1',
-      assistantMessageId: 'msg_1',
-      message: 'hello',
-      history: [],
-      systemPrompt: 'system',
-      model: 'gemini-test',
-      apiKey: 'legacy-test-key',
-      runtime: {
-        ...createRuntimeMock([]),
-        async stream() { runtimeCalls += 1; },
-      },
-      background: createBackgroundMock(),
-      onChunk: (chunk) => chunks.push(chunk),
-    });
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-
-  assert.equal(requestedUrl, '/api/chat/stream');
-  assert.equal(runtimeCalls, 0);
-  assert.deepEqual(chunks.map((chunk) => chunk.text), ['hello back', undefined]);
+  assert.equal(runtimeCalls, 1);
+  assert.equal(streamedApiKey, 'legacy-test-key');
+  assert.deepEqual(chunks.map((chunk) => chunk.text), ['hello back', 'second']);
 });
 
 test('accepted durable execution returns its completed result without starting a second Gemini stream', async () => {
@@ -78,6 +66,7 @@ test('accepted durable execution returns its completed result without starting a
 
   const background = createBackgroundMock({
     isEnabled: () => true,
+    isConfigured: () => true,
     createChatJob: async () => ({ id: 'job_42' }),
     waitForJob: async () => ({
       id: 'job_42',
@@ -107,47 +96,21 @@ test('accepted durable execution returns its completed result without starting a
   assert.equal(removedJob, 'job_42');
 });
 
-test('backend fallback parses streamed SSE chunks through the same runtime callback', async () => {
+test('foreground execution forwards canonical Gemini stream chunks to the chat callback', async () => {
   const chunks: Array<{ text?: string }> = [];
-  const payload = [
-    'data: {"text":"first"}\n\n',
-    'data: {"text":"second"}\n\n',
-    'data: {"done":true}\n\n',
-  ].join('');
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(payload);
-  let consumed = false;
 
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => {
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(bytes);
-        controller.close();
-      },
-    });
-    return new Response(stream, { status: 200 });
-  };
+  await executeChatRuntime({
+    conversationId: 'conv_1',
+    assistantMessageId: 'msg_1',
+    message: 'hello',
+    history: [],
+    systemPrompt: 'system',
+    model: 'gemini-test',
+    apiKey: 'foreground-key',
+    runtime: createRuntimeMock([{ text: 'first' }, { text: 'second' }, {}]),
+    background: createBackgroundMock(),
+    onChunk: (chunk) => chunks.push(chunk),
+  });
 
-  try {
-    await executeChatRuntime({
-      conversationId: 'conv_1',
-      assistantMessageId: 'msg_1',
-      message: 'hello',
-      history: [],
-      systemPrompt: 'system',
-      model: 'gemini-test',
-      runtime: createRuntimeMock([]),
-      background: createBackgroundMock(),
-      onChunk: (chunk) => {
-        consumed = true;
-        chunks.push(chunk);
-      },
-    });
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-
-  assert.equal(consumed, true);
   assert.deepEqual(chunks.map((chunk) => chunk.text), ['first', 'second', undefined]);
 });
