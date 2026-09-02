@@ -70,6 +70,23 @@ export interface CalendarFreeBusyResponse {
   calendars: Record<string, CalendarFreeBusyCalendar>;
 }
 
+export interface CalendarSyncResponse {
+  items: CalendarEventItem[];
+  nextSyncToken: string;
+}
+
+export interface CalendarListSyncResponse {
+  items: CalendarListItem[];
+  nextSyncToken: string;
+}
+
+export class CalendarSyncTokenExpiredError extends Error {
+  constructor(message = 'Google Calendar sync token is no longer valid; a full synchronization is required.') {
+    super(message);
+    this.name = 'CalendarSyncTokenExpiredError';
+  }
+}
+
 function authHeaders(token: string) {
   return { Authorization: `Bearer ${token}` };
 }
@@ -428,4 +445,94 @@ export async function deleteCalendarEventWithToken(
     },
   );
   if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to delete calendar event'));
+}
+
+async function listCalendarSyncPages(
+  token: string,
+  calendarId: string,
+  syncToken?: string,
+  pageSize = 2500,
+): Promise<CalendarSyncResponse> {
+  const safeCalendarId = String(calendarId || 'primary').trim() || 'primary';
+  const params = new URLSearchParams({
+    showDeleted: 'true',
+    maxResults: String(positiveLimit(pageSize, 2500)),
+  });
+  if (syncToken?.trim()) params.set('syncToken', syncToken.trim());
+
+  const items: CalendarEventItem[] = [];
+  let pageToken = '';
+  let nextSyncToken = '';
+
+  do {
+    const pageParams = new URLSearchParams(params);
+    if (pageToken) pageParams.set('pageToken', pageToken);
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(safeCalendarId)}/events?${pageParams.toString()}`,
+      { headers: authHeaders(token) },
+    );
+    if (res.status === 410 && syncToken?.trim()) {
+      throw new CalendarSyncTokenExpiredError(await parseGoogleApiError(res, 'Calendar incremental sync failed'));
+    }
+    if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to synchronize calendar events'));
+
+    const data: any = await res.json();
+    items.push(...(Array.isArray(data.items) ? data.items.map(normalizeEvent) : []));
+    pageToken = data.nextPageToken || '';
+    if (!pageToken && typeof data.nextSyncToken === 'string' && data.nextSyncToken.trim()) {
+      nextSyncToken = data.nextSyncToken.trim();
+    }
+  } while (pageToken);
+
+  if (!nextSyncToken) throw new Error('Google Calendar synchronization completed without a nextSyncToken.');
+  return { items, nextSyncToken };
+}
+
+export async function syncCalendarEventsWithToken(
+  token: string,
+  calendarId = 'primary',
+  syncToken?: string,
+  pageSize = 2500,
+): Promise<CalendarSyncResponse> {
+  return listCalendarSyncPages(token, calendarId, syncToken, pageSize);
+}
+
+export async function syncCalendarListWithToken(
+  token: string,
+  syncToken?: string,
+  pageSize = 250,
+): Promise<CalendarListSyncResponse> {
+  const params = new URLSearchParams({
+    showDeleted: 'true',
+    showHidden: 'true',
+    maxResults: String(positiveLimit(pageSize, 250, 250)),
+  });
+  if (syncToken?.trim()) params.set('syncToken', syncToken.trim());
+
+  const items: CalendarListItem[] = [];
+  let pageToken = '';
+  let nextSyncToken = '';
+
+  do {
+    const pageParams = new URLSearchParams(params);
+    if (pageToken) pageParams.set('pageToken', pageToken);
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/users/me/calendarList?${pageParams.toString()}`,
+      { headers: authHeaders(token) },
+    );
+    if (res.status === 410 && syncToken?.trim()) {
+      throw new CalendarSyncTokenExpiredError(await parseGoogleApiError(res, 'Calendar list incremental sync failed'));
+    }
+    if (!res.ok) throw new Error(await parseGoogleApiError(res, 'Failed to synchronize calendar list'));
+
+    const data: any = await res.json();
+    items.push(...(Array.isArray(data.items) ? data.items.map(normalizeCalendarListItem) : []));
+    pageToken = data.nextPageToken || '';
+    if (!pageToken && typeof data.nextSyncToken === 'string' && data.nextSyncToken.trim()) {
+      nextSyncToken = data.nextSyncToken.trim();
+    }
+  } while (pageToken);
+
+  if (!nextSyncToken) throw new Error('Google Calendar list synchronization completed without a nextSyncToken.');
+  return { items, nextSyncToken };
 }
