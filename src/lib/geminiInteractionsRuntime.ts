@@ -109,6 +109,7 @@ function toInteractionTools(config: any): any[] {
 
 function normalizeInteractionSafetySettings(settings: any): any[] | undefined {
   if (!Array.isArray(settings)) return undefined;
+  const supportedCategories = new Set(['harassment', 'hate_speech', 'sexually_explicit', 'dangerous_content']);
   return settings.map((setting) => {
     const rawType = String(setting?.type ?? setting?.category ?? '').trim();
     const rawThreshold = String(setting?.threshold ?? '').trim();
@@ -118,7 +119,7 @@ function normalizeInteractionSafetySettings(settings: any): any[] | undefined {
       ...(type ? { type } : {}),
       ...(threshold ? { threshold } : {}),
     };
-  }).filter((setting) => setting.type && setting.threshold);
+  }).filter((setting) => setting.type && setting.threshold && supportedCategories.has(setting.type));
 }
 
 function toInteractionRequest(model: string, config: any, input: any, previousInteractionId?: string): any {
