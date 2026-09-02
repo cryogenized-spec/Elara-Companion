@@ -4,10 +4,7 @@ import {
   CalendarSyncTokenExpiredError,
   syncCalendarEventsWithToken,
 } from '../../infrastructure/googleCalendarApi';
-import {
-  getCalendarTokenForService,
-  setCalendarTokenProvider,
-} from '../googleCalendarService';
+import { setCalendarTokenProvider } from '../googleCalendarService';
 import {
   getLocalGoogleCalendarSyncState,
   syncGoogleCalendar,
@@ -104,10 +101,9 @@ test('calendar incremental sync applies updates and removals against the stored 
 test('expired sync tokens trigger a clean full resynchronization without losing the canonical boundary', async () => {
   const originalFetch = globalThis.fetch;
   let call = 0;
-  globalThis.fetch = async (_input, init) => {
+  globalThis.fetch = async (input) => {
     call += 1;
-    const url = String(_input);
-    const params = new URL(url).searchParams;
+    const params = new URL(String(input)).searchParams;
     if (call === 1) return response({ items: [event('a', 'Original')], nextSyncToken: 'sync-old' });
     if (params.get('syncToken') === 'sync-old') return response({ error: { message: 'token expired' } }, 410);
     assert.equal(params.get('syncToken'), null);
@@ -144,13 +140,25 @@ test('transport raises a typed expiry error only when a supplied syncToken becom
   }
 });
 
-test('calendar token provider is the only authorization source for service-owned sync', async () => {
+test('calendar sync uses the canonical service token provider', async () => {
   setCalendarTokenProvider(async (capability) => {
     assert.equal(capability, 'calendar.read');
     return 'provider-token';
   });
   try {
-    assert.equal(await getCalendarTokenForService('calendar.read'), 'provider-token');
+    const originalFetch = globalThis.fetch;
+    let seenAuth = '';
+    globalThis.fetch = async (_input, init) => {
+      seenAuth = String((init?.headers as Record<string, string> | undefined)?.Authorization || '');
+      return response({ items: [], nextSyncToken: 'sync-provider' });
+    };
+    try {
+      await clearAllCalendarSyncState();
+      await syncGoogleCalendar('primary');
+      assert.equal(seenAuth, 'Bearer provider-token');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   } finally {
     setCalendarTokenProvider(null);
   }
