@@ -18,7 +18,7 @@ test('Google Hub capability state is needs-access for an authorized account miss
   const state = projectGoogleHubCapabilityState(descriptor, new Set(), true);
   assert.equal(state.status, 'needs-access');
   assert.deepEqual(state.missingBaseCapabilities, ['calendar.read']);
-  assert.deepEqual(state.blockedActions, ['Find availability', 'Create event']);
+  assert.deepEqual(state.blockedActions, ['Sync now', 'Find availability', 'Create event']);
 });
 
 test('Google Hub capability state is limited when base access is granted but action access is partial', () => {

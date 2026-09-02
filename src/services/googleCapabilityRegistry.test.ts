@@ -52,7 +52,7 @@ test('Google Hub module registry rejects duplicate factories and missing modules
 test('Google Hub capability descriptors cover the current UX actions', () => {
   const expected: Record<string, string[]> = {
     gmail: ['search','compose','send','open','ask'],
-    calendar: ['upcoming','availability','create','open','ask'],
+    calendar: ['upcoming','sync','availability','create','open','ask'],
     drive: ['search','work-with','upload','open','ask'],
     docs: ['create','work-with','open','ask'],
     sheets: ['inspect','write','create','open','ask'],
