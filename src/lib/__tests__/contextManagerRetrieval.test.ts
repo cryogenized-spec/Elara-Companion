@@ -59,4 +59,34 @@ describe('contextual memory integration', () => {
     assert.doesNotMatch(payload, /LEGACY SCRATCHPAD SHOULD NOT APPEAR/);
     assert.doesNotMatch(payload, /STALE DOM QUERY SHOULD NOT BE USED/);
   });
+
+  it('always includes the default adult-fiction creative framing unless explicitly disabled', () => {
+    installBrowserStubs();
+
+    const defaultPayload = buildSystemPayload({
+      baseSystemInstruction: 'Base',
+      personaProtocol: 'Persona',
+      intimacyModule: 'Intimacy',
+      runtimeRules: 'Runtime',
+      activeModelId: 'gemini-3.7-flash',
+      uiSettingsSummary: 'test',
+      userProfileNotes: '',
+    });
+
+    assert.match(defaultPayload, /ADULT FICTION & CREATIVE FRAMING/);
+    assert.match(defaultPayload, /fiction, creative writing, roleplay, and literary narrative/);
+
+    const disabledPayload = buildSystemPayload({
+      baseSystemInstruction: 'Base',
+      personaProtocol: 'Persona',
+      intimacyModule: 'Intimacy',
+      runtimeRules: 'Runtime',
+      adultFictionEnabled: false,
+      activeModelId: 'gemini-3.7-flash',
+      uiSettingsSummary: 'test',
+      userProfileNotes: '',
+    });
+
+    assert.doesNotMatch(disabledPayload, /ADULT FICTION & CREATIVE FRAMING/);
+  });
 });
