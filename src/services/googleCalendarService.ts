@@ -55,10 +55,6 @@ async function getCalendarToken(
   return token.trim();
 }
 
-export function getCalendarTokenForService(capability: CalendarTokenCapability): Promise<string> {
-  return getCalendarToken(capability);
-}
-
 export async function getUpcomingCalendarEvents(maxResults = 10, passedToken?: string, calendarId = 'primary'): Promise<{ items: CalendarEventItem[] }> {
   return getUpcomingCalendarEventsWithToken(await getCalendarToken('calendar.read', passedToken), maxResults, calendarId);
 }
