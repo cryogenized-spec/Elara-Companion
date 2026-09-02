@@ -126,9 +126,11 @@ function toInteractionRequest(model: string, config: any, input: any, previousIn
   if (previousInteractionId) request.previous_interaction_id = previousInteractionId;
   if (typeof config?.systemInstruction === 'string' && config.systemInstruction) request.system_instruction = config.systemInstruction;
 
-  // Interactions has its own generation_config schema. Custom safety_settings
-  // are not supported on the Interactions API, so GenerateContent safety policy
-  // is deliberately not serialized into this stateful request.
+  const safetySettings = normalizeInteractionSafetySettings(config?.safetySettings);
+  if (safetySettings?.length) request.safety_settings = safetySettings;
+
+  // Interactions uses its own generation_config schema for generation controls;
+  // safety_settings remain a top-level provider-native request field.
   const generationConfig: any = {};
   if (typeof config?.maxOutputTokens === 'number') generationConfig.max_output_tokens = config.maxOutputTokens;
   if (typeof config?.temperature === 'number') generationConfig.temperature = config.temperature;
