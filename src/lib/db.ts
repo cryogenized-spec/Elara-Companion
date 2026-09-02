@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS, normalizeSettings } from './storage';
 import { loadAgentOperatingPolicy, saveAgentOperatingPolicy, AGENT_OPERATING_POLICY_KEY } from './agentPolicy';
 import { saveActiveScratchpad, clearActiveScratchpad, clearUserProfileNotes, USER_PROFILE_NOTES_KEY, ACTIVE_SCRATCHPAD_KEY } from './contextProjectionStorage';
 import { clearWorkspace } from './workspaceStorage';
+import { clearAllCalendarSyncState } from './calendarSyncStorage';
 import { DEFAULT_WORLD_STATE } from '../constants/defaultWorldState';
 import { applySettingsAppearance } from './themeManager';
 import { DEFAULT_MEMORY_STATE, MEMORY_SCHEMA_VERSION, normalizeMemoryState } from './memoryStorage';
@@ -165,7 +166,7 @@ export async function clearDbStorage() {
     conversationPersistTimer = null;
   }
   conversationsCache = null;
-  await Promise.all([del(CONVERSATIONS_KEY),del(SETTINGS_KEY),del(PORTRAIT_KEY),del(FOLDERS_KEY),del(WORLD_STATE_KEY),del(MEMORY_STATE_KEY),del(SNAPSHOTS_KEY),del(MIGRATION_KEY)]);
+  await Promise.all([del(CONVERSATIONS_KEY),del(SETTINGS_KEY),del(PORTRAIT_KEY),del(FOLDERS_KEY),del(WORLD_STATE_KEY),del(MEMORY_STATE_KEY),del(SNAPSHOTS_KEY),del(MIGRATION_KEY),clearAllCalendarSyncState()]);
   clearWorkspace(); clearActiveScratchpad(); clearUserProfileNotes();
   try { const storage = getLocalStorage(); LEGACY_KEYS.forEach((key) => storage?.removeItem(key)); storage?.removeItem(AGENT_OPERATING_POLICY_KEY); storage?.removeItem(USER_PROFILE_NOTES_KEY); storage?.removeItem(ACTIVE_SCRATCHPAD_KEY); storage?.removeItem(MEMORY_CONTEXT_MIRROR_KEY); } catch (error) { console.error('Failed to clear browser persistence:', error); }
 }
