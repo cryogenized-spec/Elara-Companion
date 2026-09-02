@@ -31,9 +31,14 @@ export interface ChatRuntimeExecutionRequest {
   forceBackground?: boolean;
 }
 
-/** Foreground uses the browser Gemini runtime; durable background execution is handled by the Cloudflare-backed background contract. */
+/**
+ * Chat uses the durable Cloudflare background runtime whenever it is configured. This is
+ * deliberate: a browser tab/app can be suspended or killed without completing an in-flight
+ * request, so the only reliable closure-safe handoff is to queue the work before waiting for it.
+ * When no background runtime is configured, foreground browser Gemini streaming remains available.
+ */
 export async function executeChatRuntime(request: ChatRuntimeExecutionRequest): Promise<{ durable: boolean }> {
-  if (request.forceBackground || request.background.isEnabled()) {
+  if (request.forceBackground || request.background.isEnabled() || request.background.isConfigured()) {
     if (!request.background.isConfigured()) throw new Error('Elara background runtime is not configured.');
     return executeBackgroundChatJob({
       conversationId: request.conversationId,
