@@ -107,19 +107,40 @@ function toInteractionTools(config: any): any[] {
   }));
 }
 
+function normalizeInteractionSafetySettings(settings: any): any[] | undefined {
+  if (!Array.isArray(settings)) return undefined;
+  return settings.map((setting) => {
+    const rawType = String(setting?.type ?? setting?.category ?? '').trim();
+    const rawThreshold = String(setting?.threshold ?? '').trim();
+    const type = rawType.replace(/^HARM_CATEGORY_/i, '').toLowerCase();
+    const threshold = rawThreshold.replace(/^HARM_BLOCK_THRESHOLD_/i, '').replace(/^BLOCK_/i, 'block_').toLowerCase();
+    return {
+      ...(type ? { type } : {}),
+      ...(threshold ? { threshold } : {}),
+    };
+  }).filter((setting) => setting.type && setting.threshold);
+}
+
 function toInteractionRequest(model: string, config: any, input: any, previousInteractionId?: string): any {
   const request: any = { model, input, stream: true, store: true };
   if (previousInteractionId) request.previous_interaction_id = previousInteractionId;
   if (typeof config?.systemInstruction === 'string' && config.systemInstruction) request.system_instruction = config.systemInstruction;
-  if (Array.isArray(config?.safetySettings)) request.safety_settings = config.safetySettings;
 
+  // Interactions API uses its own generation_config schema. Do not pass the
+  // GenerateContent camelCase thinkingConfig/sampling fields through verbatim.
   const generationConfig: any = {};
+  if (typeof config?.maxOutputTokens === 'number') generationConfig.max_output_tokens = config.maxOutputTokens;
   if (typeof config?.temperature === 'number') generationConfig.temperature = config.temperature;
-  if (typeof config?.maxOutputTokens === 'number') generationConfig.maxOutputTokens = config.maxOutputTokens;
-  if (typeof config?.topP === 'number') generationConfig.topP = config.topP;
-  if (typeof config?.topK === 'number') generationConfig.topK = config.topK;
-  if (config?.thinkingConfig !== undefined) generationConfig.thinkingConfig = config.thinkingConfig;
+  if (typeof config?.topP === 'number') generationConfig.top_p = config.topP;
+  if (typeof config?.topK === 'number') generationConfig.top_k = config.topK;
+  if (config?.thinkingConfig && typeof config.thinkingConfig === 'object') {
+    if (typeof config.thinkingConfig.thinkingLevel === 'string') generationConfig.thinking_level = config.thinkingConfig.thinkingLevel;
+    if (typeof config.thinkingConfig.thinkingBudget === 'number') generationConfig.thinking_budget = config.thinkingConfig.thinkingBudget;
+  }
   if (Object.keys(generationConfig).length > 0) request.generation_config = generationConfig;
+
+  const safetySettings = normalizeInteractionSafetySettings(config?.safetySettings);
+  if (safetySettings?.length) request.safety_settings = safetySettings;
 
   const tools = toInteractionTools(config);
   if (tools.length > 0) request.tools = tools;
